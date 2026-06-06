@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cn } from '@/utils';
 
 interface AnimatedCounterProps {
@@ -20,12 +20,12 @@ export function AnimatedCounter({
   isInView = true,
 }: AnimatedCounterProps) {
   const [count, setCount] = useState(0);
-  const [hasAnimated, setHasAnimated] = useState(false);
+  const hasAnimatedRef = useRef(false);
 
   useEffect(() => {
-    if (!isInView || hasAnimated) return;
+    if (!isInView || hasAnimatedRef.current) return;
 
-    setHasAnimated(true);
+    hasAnimatedRef.current = true;
     const startTime = performance.now();
     const startValue = 0;
 
@@ -45,7 +45,7 @@ export function AnimatedCounter({
     };
 
     requestAnimationFrame(animate);
-  }, [isInView, end, duration, hasAnimated]);
+  }, [isInView, end, duration]);
 
   return (
     <span className={cn('tabular-nums', className)}>

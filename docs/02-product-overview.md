@@ -10,7 +10,7 @@ The 360 Tours Platform is a comprehensive SaaS solution that enables professiona
 A complete virtual tour creation and hosting platform that allows users to:
 1. **Upload** 360° panoramic images from any camera or source
 2. **Edit** tours with professional tools (hotspots, labels, branding)
-3. **Automate** tour creation using AI (post-MVP feature)
+3. **Automate** tour creation using AI (core feature)
 4. **Share** tours via embed codes, links, or platform integrations
 5. **Host** tours with high-performance global CDN delivery
 6. **Analyze** tour performance with detailed analytics
@@ -34,7 +34,7 @@ A complete virtual tour creation and hosting platform that allows users to:
 - Batch upload and organization
 - Quick hotspot placement tools
 - MLS-compliant branding
-- Seamless 360Ghar integration
+- Seamless 360 Ghar integration
 
 #### 2. Real Estate Agency (Secondary)
 **Goals**:
@@ -107,7 +107,7 @@ A complete virtual tour creation and hosting platform that allows users to:
 3. Click "Auto-Generate Tour"
 4. Review and fine-tune AI suggestions
 5. Add property information and branding
-6. Share via Zillow, 360Ghar, or direct link
+6. Share via Zillow, 360 Ghar, or direct link
 
 ## Platform Features
 **Scenario**: An architectural firm creates a virtual walkthrough of a new building design. They need precise control over the presentation to highlight design features and flow.
@@ -142,28 +142,6 @@ All features are available to all 360 Ghar authenticated users at no cost:
 | **Integrations** | Real Estate Platforms | ✓ |
 | | Social Media | ✓ |
 | | Street View Export | ✓ |
-| | Custom Icons | ✗ | ✓ | ✓ |
-| | Labels & Stickers | ✗ | ✓ | ✓ |
-| | Floor Plans | ✗ | ✓ | ✓ |
-| | Audio Support | ✗ | ✓ | ✓ |
-| | Nadir/Zenith Patches | ✗ | ✓ | ✓ |
-| **AI Features** | Scene Detection | ✗ | ✗ | ✓ |
-| | Auto Hotspot Placement | ✗ | ✗ | ✓ |
-| | Tour Assembly | ✗ | ✗ | ✓ |
-| | Smart Optimization | ✗ | ✗ | ✓ |
-| **Branding** | Custom Logo | ✗ | ✓ | ✓ |
-| | Brand Colors | ✗ | Basic | Full |
-| | Custom Domain | ✗ | ✗ | ✓ |
-| | White Label | ✗ | ✗ | ✓ |
-| **Sharing** | Direct Links | ✓ | ✓ | ✓ |
-| | Embed Codes | ✓ | ✓ | ✓ |
-| | Privacy Controls | Basic | Unlisted | Password Protected |
-| **Analytics** | Basic Stats | ✓ | ✓ | ✓ |
-| | Google Analytics | ✗ | ✗ | ✓ |
-| | Custom Dashboards | ✗ | ✗ | ✓ |
-| **Integrations** | Real Estate Platforms | Basic | Basic | Advanced |
-| | Social Media | ✓ | ✓ | Enhanced |
-| | Street View Export | ✓ | ✓ | ✓ |
 
 ## Technical Capabilities
 
@@ -181,7 +159,7 @@ All features are available to all 360 Ghar authenticated users at no cost:
 - **Accessibility**: WCAG 2.1 compliance, keyboard navigation, screen reader support
 - **Performance**: < 3s initial load, < 100ms navigation response
 
-### AI Processing Pipeline (Post-MVP)
+### AI Processing Pipeline (MVP)
 1. **Scene Detection**: Computer Vision to identify distinct spaces
 2. **Similarity Analysis**: Deep learning to find related images
 3. **Transition Detection**: Identify logical connections between scenes
@@ -219,7 +197,7 @@ All features are available to all 360 Ghar authenticated users at no cost:
 - **Intelligent Suggestions**: Context-aware hotspot placement
 - **Continuous Learning**: Improves based on user feedback
 
-### 2. Deep 360Ghar Integration
+### 2. Deep 360 Ghar Integration
 - **Shared Authentication**: Single sign-on across platforms
 - **Property Sync**: Virtual tours automatically linked to property listings
 - **Workflow Integration**: Streamlined content creation pipeline

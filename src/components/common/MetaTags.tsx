@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { APP_NAME } from '@/constants';
 
 interface MetaTagsProps {
@@ -39,11 +39,11 @@ export function MetaTags({
   const metaDescription = description || defaultDescription;
   const currentUrl = url || (typeof window !== 'undefined' ? window.location.href : '');
 
-  useEffect(() => {
-    // Update document title
-    document.title = fullTitle;
+  const managedElementsRef = useRef<Element[]>([]);
 
-    // Helper to set or update meta tag
+  useEffect(() => {
+    const managed: Element[] = [];
+
     const setMetaTag = (name: string, content: string, property = false) => {
       const selector = property ? `meta[property="${name}"]` : `meta[name="${name}"]`;
       let element = document.querySelector(selector);
@@ -56,12 +56,14 @@ export function MetaTags({
           element.setAttribute('name', name);
         }
         document.head.appendChild(element);
+        managed.push(element);
       }
 
       element.setAttribute('content', content);
     };
 
-    // Basic meta tags
+    document.title = fullTitle;
+
     setMetaTag('description', metaDescription);
     if (keywords.length > 0) {
       setMetaTag('keywords', keywords.join(', '));
@@ -75,7 +77,6 @@ export function MetaTags({
       setMetaTag('robots', 'index, follow');
     }
 
-    // Open Graph tags
     setMetaTag('og:title', fullTitle, true);
     setMetaTag('og:description', metaDescription, true);
     setMetaTag('og:type', type, true);
@@ -92,7 +93,6 @@ export function MetaTags({
       setMetaTag('article:modified_time', modifiedTime, true);
     }
 
-    // Twitter Card tags
     setMetaTag('twitter:card', twitterCard);
     setMetaTag('twitter:title', fullTitle);
     setMetaTag('twitter:description', metaDescription);
@@ -100,17 +100,24 @@ export function MetaTags({
       setMetaTag('twitter:image', image);
     }
 
-    // Canonical URL
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {
       canonical = document.createElement('link');
       canonical.setAttribute('rel', 'canonical');
       document.head.appendChild(canonical);
+      managed.push(canonical);
     }
     canonical.setAttribute('href', currentUrl);
 
-    // Cleanup function (optional - reset to defaults)
+    managedElementsRef.current = managed;
+
     return () => {
+      for (const el of managedElementsRef.current) {
+        if (el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      }
+      managedElementsRef.current = [];
       document.title = APP_NAME;
     };
   }, [
@@ -151,14 +158,13 @@ export function StructuredData({ type, data }: StructuredDataProps) {
     document.head.appendChild(script);
 
     return () => {
-      script.remove();
+      const el = document.getElementById(`structured-data-${type}`);
+      if (el) el.remove();
     };
   }, [type, data]);
 
   return null;
 }
-
-// Pre-configured structured data for common use cases
 
 export function OrganizationStructuredData({
   name = APP_NAME,

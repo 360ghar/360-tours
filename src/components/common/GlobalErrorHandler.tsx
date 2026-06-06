@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WifiOff, AlertCircle, RefreshCw } from 'lucide-react';
 import { useUIStore, useAuthStore } from '@/stores';
 import { ROUTES, ERROR_MESSAGES } from '@/constants';
 import type { AxiosError } from 'axios';

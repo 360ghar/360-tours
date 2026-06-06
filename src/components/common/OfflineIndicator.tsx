@@ -11,11 +11,12 @@ export function OfflineIndicator({ className }: OfflineIndicatorProps) {
   const [showReconnected, setShowReconnected] = useState(false);
 
   useEffect(() => {
+    let reconnectedTimer: ReturnType<typeof setTimeout>;
+
     const handleOnline = () => {
       setIsOnline(true);
       setShowReconnected(true);
-      // Hide the reconnected message after 3 seconds
-      setTimeout(() => setShowReconnected(false), 3000);
+      reconnectedTimer = setTimeout(() => setShowReconnected(false), 3000);
     };
 
     const handleOffline = () => {
@@ -29,10 +30,10 @@ export function OfflineIndicator({ className }: OfflineIndicatorProps) {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      clearTimeout(reconnectedTimer);
     };
   }, []);
 
-  // Don't show anything if online and not recently reconnected
   if (isOnline && !showReconnected) {
     return null;
   }

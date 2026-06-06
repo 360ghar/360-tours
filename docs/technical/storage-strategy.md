@@ -41,12 +41,11 @@ Notes:
 
 ## Upload flow (MVP)
 
-The backend MUST support a presigned upload flow:
+The backend supports a presigned upload flow:
 
-1. Client calls `POST /api/v1/uploads/presign` with filename, MIME type, and byte size.
-2. Client uploads bytes to `upload_url` using the provided method/headers.
-3. Client calls `POST /api/v1/uploads/complete`.
-4. Backend returns a `MediaFile` record and (optionally) triggers processing.
+1. Client calls `POST /api/v1/upload/presigned` with a list of files to upload.
+2. Client uploads bytes to `signed_url` using `PUT` and the required Supabase headers.
+3. Client updates the relevant resource to reference `public_url` (e.g., `Scene.image_url`, `FloorPlan.image_url`).
 
 Uploads MUST validate:
 - MIME type and extension

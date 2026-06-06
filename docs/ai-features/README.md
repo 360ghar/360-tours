@@ -1,112 +1,45 @@
-# AI Features Documentation
+# AI Features
 
-## Executive Summary
+AI functionality is a core product path in this project.
 
-AI features are **Post‑MVP** capabilities that add assisted authoring and automation (scene analysis, hotspot suggestions, draft tour generation). This documentation describes the target AI workflows and the backend contracts required to support them.
+## Current Goal
 
-## Backend Infrastructure
+Use AI to reduce manual tour-authoring work while keeping human review in control:
+- Generate draft tours from uploaded panoramas
+- Suggest scene structure and labeling
+- Suggest hotspot placement/navigation links
+- Generate scene descriptions
 
-AI features rely on the platform backend API contract defined in `../technical/api-specification.md` and shared schemas in `../00-conventions.md`. This documentation describes the **target** AI capabilities and how the backend should expose them (jobs, status polling, applying suggestions, and governance).
+## Workflow
 
-## AI Technology Stack
+1. User uploads 360 images via AI wizard.
+2. Backend creates an AI job.
+3. Frontend tracks progress via **WebSocket** (with polling fallback).
+4. User reviews generated output.
+5. User continues in editor to finalize and publish.
 
-### Core AI Services
-- **Vision Language Models (VLLMs)**: Advanced multimodal understanding for scene analysis, object detection, and spatial reasoning
-- **Natural Language Processing**: Content generation, tour descriptions, and automated metadata creation
-- **Computer Vision Processing**: Scene analysis, object detection, and intelligent image understanding
-- **Audio Analysis**: Transcription capabilities and audio content processing
-- **Custom Model Training**: Domain-specific model fine-tuning and deployment
-- **Text Understanding**: Natural language comprehension for contextual analysis
-- **Multi-language Support**: Translation and localization for global tours
+## Key Docs
 
-### AI Architecture Overview
-```mermaid
-graph TB
-    subgraph "AI Services Layer"
-        A[VLLM Services]
-        B[Computer Vision]
-        C[Audio Processing]
-        D[Text Understanding]
-        E[Translation Services]
-        F[Model Training]
-    end
+- `automatic-tour-creation.md`
+- `scene-detection.md`
+- `auto-hotspot-placement.md`
+- `tech-stack.md`
+- `../technical/api-specification.md`
 
-    subgraph "AI Processing Pipeline"
-        G[Input Processing]
-        H[Feature Extraction]
-        I[Model Inference]
-        J[Result Aggregation]
-        K[Output Generation]
-    end
+## Real-time job monitoring
 
-    subgraph "Application Layer"
-        L[Auto Tour Creation]
-        M[Scene Analysis]
-        N[Hotspot Placement]
-        O[Content Generation]
-        P[Predictive Analytics]
-    end
+AI job progress is tracked via WebSocket:
 
-    subgraph "Data Layer"
-        Q[Training Data]
-        R[Feature Store]
-        S[Model Registry]
-        T[Performance Metrics]
-    end
+- **Endpoint**: `ws(s)://<host>/ws/jobs/{job_id}?token=<access_token>`
+- **Hook**: `useAIJobWebSocket(jobId, options)` in `src/hooks/useAIJobWebSocket.ts`
+- **Messages**: `job_update` (status + progress), `connected`, `heartbeat`, `error`
+- **Features**: Auto-reconnect on disconnect (3-second delay), keep-alive ping every 25 seconds
+- **Callbacks**: `onUpdate`, `onComplete`, `onError`
 
-    G --> H
-    H --> I
-    I --> J
-    J --> K
-    K --> L
-    K --> M
-    K --> N
-    K --> O
-    K --> P
+A separate `useUserNotifications` hook connects to `ws(s)://<host>/ws/user?token=...` for user-level notifications.
 
-    A --> I
-    B --> H
-    C --> G
-    D --> H
-    E --> I
-    F --> I
+## Guardrails
 
-    Q --> F
-    R --> F
-    S --> F
-    T --> F
-```
-
-## AI Strategy & Vision
-
-### 1. AI-Powered Automation Goals
-- **Reduce Creation Time**: Automate 80% of tour creation process
-- **Improve Quality**: AI-assisted optimization for better user experience
-- **Enhance Engagement**: Smart recommendations and personalized content
-- **Global Accessibility**: Multi-language support and cultural adaptation
-- **Predictive Insights**: User behavior analysis and optimization suggestions
-
-### 2. AI Rollout Phases
-
-- **Phase 1 (Post‑MVP)**: assisted authoring (scene detection, hotspot suggestions, tour generation drafts)
-- **Phase 2 (Optional)**: quality checks and automation improvements
-- **Phase 3 (Optional/Enterprise)**: custom models, advanced governance
-
-### 3. AI Ethics & Privacy
-- **Data Privacy**: All AI processing respects user consent and data protection
-- **Transparency**: Clear indication when AI is assisting with tour creation
-- **Control**: Users maintain full control over AI-generated content
-- **Bias Mitigation**: Regular audits to ensure fair and unbiased AI performance
-- **Safety**: Content filtering to prevent inappropriate material
-
----
-
-**Navigation**:
-- [Automatic Tour Creation](automatic-tour-creation.md) ← Next: AI-powered tour generation
-- [Scene Detection](scene-detection.md) → Scene analysis and optimization
-- [Hotspot Placement](auto-hotspot-placement.md) → Intelligent hotspot suggestions
-- [Tech Stack](tech-stack.md) → Implementation details
-
-**Document Links**:
-- [Features Overview](../features/README.md) ← Return to features documentation
-- [Technical Architecture](../technical/architecture.md) → Technical implementation
+- AI output is always reviewable/editable before publish.
+- API errors must fail gracefully and preserve user progress.
+- Client should never block solely on WebSocket availability (polling fallback).

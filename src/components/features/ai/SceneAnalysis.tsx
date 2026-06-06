@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   Sparkles,
   Check,
-  X,
   AlertTriangle,
   RefreshCw,
   Home,
@@ -28,9 +27,9 @@ import {
   Badge,
   ScrollArea,
   Checkbox,
-  Label,
 } from '@/components/ui';
 import { cn } from '@/utils';
+import { useToast } from '@/hooks';
 import type { Scene } from '@/types';
 import type { SceneAnalysisResult } from '@/api';
 import { AIJobStatus } from './AIJobStatus';
@@ -85,6 +84,7 @@ export function SceneAnalysis({
   onApply,
   isLoading = false,
 }: SceneAnalysisProps) {
+  const { error: toastError } = useToast();
   const [jobId, setJobId] = useState<string | null>(null);
   const [analysisResults, setAnalysisResults] = useState<SceneAnalysisResult[]>([]);
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set());
@@ -114,9 +114,10 @@ export function SceneAnalysis({
     }
   };
 
-  const handleJobError = () => {
+  const handleJobError = (job: unknown, errorMessage: string) => {
     setIsAnalyzing(false);
     setJobId(null);
+    toastError(errorMessage || 'Scene analysis failed', { title: 'Analysis failed' });
   };
 
   const handleToggleScene = (sceneId: string) => {

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   Sparkles,
   Check,
-  X,
   Navigation,
   Info,
   MapPin,
@@ -20,9 +19,9 @@ import {
   Button,
   Badge,
   ScrollArea,
-  Checkbox,
 } from '@/components/ui';
 import { cn } from '@/utils';
+import { useToast } from '@/hooks';
 import type { Scene } from '@/types';
 import type { HotspotSuggestion } from '@/api';
 import { AIJobStatus } from './AIJobStatus';
@@ -47,6 +46,7 @@ export function HotspotSuggestions({
   onApply,
   isLoading = false,
 }: HotspotSuggestionsProps) {
+  const { error: toastError } = useToast();
   const [jobId, setJobId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<HotspotSuggestion[]>([]);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
@@ -74,9 +74,10 @@ export function HotspotSuggestions({
     }
   };
 
-  const handleJobError = () => {
+  const handleJobError = (job: unknown, errorMessage: string) => {
     setIsAnalyzing(false);
     setJobId(null);
+    toastError(errorMessage || 'Failed to get hotspot suggestions', { title: 'Suggestion failed' });
   };
 
   const handleToggleSuggestion = (suggestionId: string) => {

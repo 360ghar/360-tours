@@ -2,7 +2,7 @@
 
 This feature describes AI suggestions for hotspot creation and placement.
 
-Status: **Post‑MVP** (opt-in)
+Status: **MVP** (opt-in)
 
 Related docs:
 - Hotspot schema: `../00-conventions.md`
