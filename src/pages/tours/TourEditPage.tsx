@@ -13,6 +13,11 @@ import {
   Copy,
   Upload,
   Crosshair,
+  Palette,
+  Map,
+  Sparkles,
+  Wand2,
+  Lightbulb,
 } from 'lucide-react';
 import {
   Button,
@@ -45,10 +50,15 @@ import { HotspotPanel } from '@/components/features/HotspotPanel';
 import { HotspotEditorModal } from '@/components/features/HotspotEditorModal';
 import { TourSettingsPanel } from '@/components/features/TourSettingsPanel';
 import { BulkUploader } from '@/components/features/BulkUploader';
+import { BrandingPanel } from '@/components/features/BrandingPanel';
+import { FloorPlanEditor } from '@/components/features/FloorPlanEditor';
+import { SceneAnalysis, DescriptionGenerator, HotspotSuggestions } from '@/components/features/ai';
 import { cn } from '@/utils';
 import { useEffect, useState, useCallback } from 'react';
 import { useToast } from '@/hooks/useToast';
-import type { Tour } from '@/types';
+import { DEFAULT_TOUR_SETTINGS } from '@/constants';
+import type { BrandingSettings, FloorPlan, HotspotCreateInput, Tour } from '@/types';
+import type { HotspotSuggestion } from '@/api';
 
 export function TourEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -60,6 +70,11 @@ export function TourEditPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showBulkUploader, setShowBulkUploader] = useState(false);
+  const [showBranding, setShowBranding] = useState(false);
+  const [showFloorPlans, setShowFloorPlans] = useState(false);
+  const [showSceneAnalysis, setShowSceneAnalysis] = useState(false);
+  const [showDescriptions, setShowDescriptions] = useState(false);
+  const [showHotspotSuggestions, setShowHotspotSuggestions] = useState(false);
   const [isPlacingHotspot, setIsPlacingHotspot] = useState(false);
   const [placementPosition, setPlacementPosition] = useState<{ yaw: number; pitch: number } | null>(null);
   const [showHotspotEditor, setShowHotspotEditor] = useState(false);
@@ -72,14 +87,63 @@ export function TourEditPage() {
     hasUnsavedChanges,
     setCurrentTour,
     setCurrentScene,
+    selectHotspot,
     reset,
   } = useTourEditorStore();
+  const currentScene = currentTour?.scenes?.find((s) => s.id === currentSceneId);
 
   // Block navigation if there are unsaved changes
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       hasUnsavedChanges && currentLocation.pathname !== nextLocation.pathname
   );
+
+  // Block browser close/refresh if there are unsaved changes
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Fetch tour data
+  const { data: tour, isLoading } = useQuery({
+    queryKey: [QUERY_KEYS.TOUR, id],
+    queryFn: () => toursApi.getTour(id!),
+    enabled: !!id,
+  });
+
+  // Fetch scenes
+  const { data: scenes } = useQuery({
+    queryKey: [QUERY_KEYS.SCENES, id],
+    queryFn: () => toursApi.getScenes(id!),
+    enabled: !!id,
+  });
+
+  // Update tour mutation
+  const updateMutation = useMutation({
+    mutationFn: () => {
+      if (!currentTour) throw new Error('No tour to update');
+      return toursApi.updateTour(currentTour.id, {
+        title: currentTour.title,
+        description: currentTour.description ?? undefined,
+        status: currentTour.status,
+        visibility: currentTour.visibility,
+        settings: currentTour.settings ?? undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+      toast('success', 'Your changes have been saved successfully.', { title: 'Tour saved' });
+    },
+    onError: () => {
+      toast('error', 'Something went wrong. Please try again.', { title: 'Failed to save' });
+    },
+  });
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -115,42 +179,13 @@ export function TourEditPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasUnsavedChanges, currentSceneId, setCurrentScene, isPlacingHotspot]);
-
-  // Fetch tour data
-  const { data: tour, isLoading } = useQuery({
-    queryKey: [QUERY_KEYS.TOUR, id],
-    queryFn: () => toursApi.getTour(id!),
-    enabled: !!id,
-  });
-
-  // Fetch scenes
-  const { data: scenes } = useQuery({
-    queryKey: [QUERY_KEYS.SCENES, id],
-    queryFn: () => toursApi.getScenes(id!),
-    enabled: !!id,
-  });
-
-  // Update tour mutation
-  const updateMutation = useMutation({
-    mutationFn: () => {
-      if (!currentTour) throw new Error('No tour to update');
-      return toursApi.updateTour(currentTour.id, {
-        title: currentTour.title,
-        description: currentTour.description ?? undefined,
-        status: currentTour.status,
-        is_public: currentTour.is_public,
-        settings: currentTour.settings ?? undefined,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
-      toast('success', 'Your changes have been saved successfully.', { title: 'Tour saved' });
-    },
-    onError: () => {
-      toast('error', 'Something went wrong. Please try again.', { title: 'Failed to save' });
-    },
-  });
+  }, [
+    currentSceneId,
+    hasUnsavedChanges,
+    isPlacingHotspot,
+    setCurrentScene,
+    updateMutation,
+  ]);
 
   // Publish tour mutation
   const publishMutation = useMutation({
@@ -258,6 +293,135 @@ export function TourEditPage() {
     }
   }, [id, queryClient, toast]);
 
+  const saveTourSettings = useCallback(
+    async (settings: Tour['settings'], successTitle: string, successMessage: string) => {
+      if (!currentTour || !settings) return;
+
+      setCurrentTour({
+        ...currentTour,
+        settings,
+      });
+
+      await toursApi.updateTour(currentTour.id, { settings });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+      toast('success', successMessage, { title: successTitle });
+    },
+    [currentTour, id, queryClient, setCurrentTour, toast]
+  );
+
+  const handleBrandingSave = useCallback(
+    (branding: BrandingSettings) => {
+      const settings = {
+        ...DEFAULT_TOUR_SETTINGS,
+        ...(currentTour?.settings ?? {}),
+        branding: {
+          ...DEFAULT_TOUR_SETTINGS.branding,
+          ...branding,
+        },
+      };
+
+      saveTourSettings(settings, 'Branding saved', 'Branding has been applied to this tour.').catch(() => {
+        toast('error', 'Could not save branding. Please try again.', { title: 'Failed to save branding' });
+      });
+    },
+    [currentTour?.settings, saveTourSettings, toast]
+  );
+
+  const handleFloorPlansSave = useCallback(
+    (floorPlans: FloorPlan[]) => {
+      const settings = {
+        ...DEFAULT_TOUR_SETTINGS,
+        ...(currentTour?.settings ?? {}),
+        floor_plans: floorPlans,
+      };
+
+      saveTourSettings(settings, 'Floor plans saved', 'Floor plan navigation has been updated.').catch(() => {
+        toast('error', 'Could not save floor plans. Please try again.', { title: 'Failed to save floor plans' });
+      });
+    },
+    [currentTour?.settings, saveTourSettings, toast]
+  );
+
+  const handleApplySceneAnalysis = useCallback(
+    (updates: Array<{ scene_id: string; title?: string; description?: string }>) => {
+      Promise.all(
+        updates.map((update) =>
+          toursApi.updateScene(update.scene_id, {
+            title: update.title,
+            description: update.description,
+          })
+        )
+      )
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+          toast('success', `${updates.length} scene${updates.length === 1 ? '' : 's'} updated.`, {
+            title: 'AI suggestions applied',
+          });
+        })
+        .catch(() => {
+          toast('error', 'Could not apply AI scene suggestions.', { title: 'Failed to update scenes' });
+        });
+    },
+    [id, queryClient, toast]
+  );
+
+  const handleApplyDescriptions = useCallback(
+    (descriptions: Record<string, string>) => {
+      const entries = Object.entries(descriptions);
+      Promise.all(
+        entries.map(([sceneId, description]) =>
+          toursApi.updateScene(sceneId, { description })
+        )
+      )
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+          toast('success', `${entries.length} description${entries.length === 1 ? '' : 's'} applied.`, {
+            title: 'Descriptions updated',
+          });
+        })
+        .catch(() => {
+          toast('error', 'Could not apply AI descriptions.', { title: 'Failed to update descriptions' });
+        });
+    },
+    [id, queryClient, toast]
+  );
+
+  const handleApplyHotspotSuggestions = useCallback(
+    (suggestions: HotspotSuggestion[]) => {
+      if (!currentScene) return;
+
+      Promise.all(
+        suggestions.map((suggestion) => {
+          const payload: HotspotCreateInput = {
+            type: suggestion.type,
+            position: suggestion.position,
+            target_scene_id: suggestion.target_scene_id ?? null,
+            title: suggestion.suggested_title ?? null,
+            icon_name: suggestion.type === 'navigation' ? 'arrow-right' : 'info',
+            icon_color: suggestion.type === 'navigation' ? '#FF5733' : '#10b981',
+            icon_size: 32,
+            content:
+              suggestion.type === 'navigation'
+                ? { kind: 'navigation', label: suggestion.suggested_title }
+                : { kind: 'info', text: suggestion.reasoning },
+          };
+
+          return toursApi.createHotspot(currentScene.id, payload);
+        })
+      )
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+          toast('success', `${suggestions.length} hotspot${suggestions.length === 1 ? '' : 's'} added.`, {
+            title: 'AI hotspots applied',
+          });
+        })
+        .catch(() => {
+          toast('error', 'Could not add AI hotspot suggestions.', { title: 'Failed to add hotspots' });
+        });
+    },
+    [currentScene, id, queryClient, toast]
+  );
+
   // Initialize tour in store
   useEffect(() => {
     if (tour && scenes) {
@@ -265,8 +429,6 @@ export function TourEditPage() {
     }
     return () => reset();
   }, [tour, scenes, setCurrentTour, reset]);
-
-  const currentScene = currentTour?.scenes?.find((s) => s.id === currentSceneId);
 
   if (isLoading) {
     return <PageLoader message="Loading tour..." />;
@@ -412,6 +574,30 @@ export function TourEditPage() {
                   <Share2 className="h-4 w-4" />
                   Share & Embed
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowBranding(true)}>
+                  <Palette className="h-4 w-4" />
+                  Branding
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowFloorPlans(true)}>
+                  <Map className="h-4 w-4" />
+                  Floor Plans
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowSceneAnalysis(true)}>
+                  <Sparkles className="h-4 w-4" />
+                  AI Scene Analysis
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowDescriptions(true)}>
+                  <Wand2 className="h-4 w-4" />
+                  AI Descriptions
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowHotspotSuggestions(true)}
+                  disabled={!currentScene}
+                >
+                  <Lightbulb className="h-4 w-4" />
+                  AI Hotspots
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => duplicateMutation.mutate()}
@@ -461,6 +647,8 @@ export function TourEditPage() {
                   isEditor
                   onPositionClick={handlePositionClick}
                   onHotspotDrag={handleHotspotDrag}
+                  onHotspotSelect={selectHotspot}
+                  onSceneChange={setCurrentScene}
                 />
                 {/* Hotspot Placement Mode Indicator & Toggle */}
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
@@ -535,6 +723,52 @@ export function TourEditPage() {
           open={showBulkUploader}
           onOpenChange={setShowBulkUploader}
         />
+
+        <BrandingPanel
+          open={showBranding}
+          onOpenChange={setShowBranding}
+          settings={currentTour?.settings?.branding ?? DEFAULT_TOUR_SETTINGS.branding ?? {}}
+          onSave={handleBrandingSave}
+        />
+
+        <FloorPlanEditor
+          open={showFloorPlans}
+          onOpenChange={setShowFloorPlans}
+          floorPlans={currentTour?.settings?.floor_plans ?? []}
+          scenes={currentTour?.scenes ?? []}
+          onSave={handleFloorPlansSave}
+        />
+
+        {currentTour && (
+          <>
+            <SceneAnalysis
+              open={showSceneAnalysis}
+              onOpenChange={setShowSceneAnalysis}
+              tourId={currentTour.id}
+              scenes={currentTour.scenes ?? []}
+              onApply={handleApplySceneAnalysis}
+            />
+
+            <DescriptionGenerator
+              open={showDescriptions}
+              onOpenChange={setShowDescriptions}
+              tourId={currentTour.id}
+              scenes={currentTour.scenes ?? []}
+              onApply={handleApplyDescriptions}
+            />
+          </>
+        )}
+
+        {currentScene && currentTour && (
+          <HotspotSuggestions
+            open={showHotspotSuggestions}
+            onOpenChange={setShowHotspotSuggestions}
+            sceneId={currentScene.id}
+            scene={currentScene}
+            allScenes={currentTour.scenes ?? []}
+            onApply={handleApplyHotspotSuggestions}
+          />
+        )}
 
         {/* Hotspot Editor Modal for click-to-place */}
         {currentScene && (
