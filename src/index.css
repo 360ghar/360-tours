@@ -50,22 +50,41 @@
   --color-secondary-900: #78350F;
   --color-secondary-950: #451A03;
 
-  /* Semantic Colors */
+  /* Semantic Colors - Success (Emerald palette) */
   --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-200: #a7f3d0;
   --color-success-500: #10b981;
   --color-success-600: #059669;
+  --color-success-700: #047857;
+  --color-success-800: #065f46;
 
+  /* Semantic Colors - Warning (Amber palette) */
   --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
   --color-warning-500: #f59e0b;
   --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning-800: #92400e;
 
+  /* Semantic Colors - Error (Red palette) */
   --color-error-50: #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-200: #fecaca;
   --color-error-500: #ef4444;
   --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+  --color-error-800: #991b1b;
 
-  --color-info-50: #F5F5F5;
-  --color-info-500: #6B6B6B;
+  /* Semantic Colors - Info (Neutral palette) */
+  --color-info-50: #f5f5f5;
+  --color-info-100: #e5e5e5;
+  --color-info-200: #d4d4d4;
+  --color-info-500: #6b6b6b;
   --color-info-600: #525252;
+  --color-info-700: #404040;
+  --color-info-800: #262626;
 
   /* Background & Surface */
   --color-background: #ffffff;
@@ -133,6 +152,44 @@
   --color-primary-50: #1F1510;
   --color-primary-100: #2D1A14;
   --color-primary-200: #4A1610;
+  --color-primary-600: #FF8A5C;
+  --color-primary-800: #FFCFC2;
+
+  /* Success - Dark mode (dark bg, light text for contrast) */
+  --color-success-50: #064e3b;
+  --color-success-100: #065f46;
+  --color-success-200: #047857;
+  --color-success-500: #10b981;
+  --color-success-600: #34d399;
+  --color-success-700: #6ee7b7;
+  --color-success-800: #a7f3d0;
+
+  /* Warning - Dark mode */
+  --color-warning-50: #451a03;
+  --color-warning-100: #78350f;
+  --color-warning-200: #92400e;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #fbbf24;
+  --color-warning-700: #fcd34d;
+  --color-warning-800: #fde68a;
+
+  /* Error - Dark mode */
+  --color-error-50: #450a0a;
+  --color-error-100: #7f1d1d;
+  --color-error-200: #991b1b;
+  --color-error-500: #ef4444;
+  --color-error-600: #f87171;
+  --color-error-700: #fca5a5;
+  --color-error-800: #fecaca;
+
+  /* Info - Dark mode */
+  --color-info-50: #1a1a1f;
+  --color-info-100: #2a2a2f;
+  --color-info-200: #3a3a3f;
+  --color-info-500: #9a9a9a;
+  --color-info-600: #b8b8b8;
+  --color-info-700: #d4d4d4;
+  --color-info-800: #e5e5e5;
 
   /* Landing page dark mode */
   --landing-bg: #0A0A0B;
@@ -154,6 +211,11 @@ body {
   background-color: var(--color-background);
   color: var(--color-text-primary);
   min-height: 100vh;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* Focus Styles */

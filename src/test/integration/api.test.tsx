@@ -10,7 +10,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterAll(() => server.close());
 afterEach(() => server.resetHandlers());
 
-// We'll create a simple login component for testing
+// Simple authenticated profile fetch component for integration testing
 function LoginForm({ onSuccess }: { onSuccess: (data: { email: string }) => void }) {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -18,10 +18,11 @@ function LoginForm({ onSuccess }: { onSuccess: (data: { email: string }) => void
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
 
-    const response = await fetch('/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+    const response = await fetch('/api/v1/users/me', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer mock-token-for-${email}:${password}`,
+      },
     });
 
     if (response.ok) {
@@ -58,7 +59,7 @@ describe('Auth Integration', () => {
     it('handles login error', async () => {
       // Override handler to return error
       server.use(
-        http.post('/api/v1/auth/login', () => {
+        http.get('/api/v1/users/me', () => {
           return HttpResponse.json(
             { detail: 'Invalid credentials' },
             { status: 401 }

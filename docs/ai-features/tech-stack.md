@@ -2,7 +2,7 @@
 
 This document defines a provider-agnostic technical approach for AI features.
 
-Status: **Post‑MVP**
+Status: **MVP** (opt-in)
 
 Related docs:
 - AI job model: `../00-conventions.md`

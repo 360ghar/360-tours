@@ -4,7 +4,6 @@ import {
   Sparkles,
   Upload,
   X,
-  Image as ImageIcon,
   ArrowRight,
   ArrowLeft,
   Check,
@@ -27,6 +26,7 @@ import {
   Progress,
 } from '@/components/ui';
 import { cn } from '@/utils';
+import { useToast } from '@/hooks';
 import { AIJobStatus } from './AIJobStatus';
 import { aiApi } from '@/api';
 import type { Tour, Scene } from '@/types';
@@ -46,6 +46,7 @@ interface UploadedImage {
 }
 
 export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardProps) {
+  const { error: toastError } = useToast();
   const [step, setStep] = useState<WizardStep>('upload');
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -152,6 +153,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     setJobId(null);
     setError(errorMessage);
     setStep('options');
+    toastError(errorMessage, { title: 'Tour generation failed' });
   };
 
   const handleComplete = () => {

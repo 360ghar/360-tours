@@ -22,12 +22,11 @@ Related docs:
 
 ## Uploading video assets (MVP)
 
-If direct uploads are supported, they use the standard upload flow:
+If direct uploads are supported, they use the presigned upload flow:
 
-1. `POST /api/v1/uploads/presign` with purpose `hotspot_media`
-2. Upload bytes to `upload_url`
-3. `POST /api/v1/uploads/complete` → `MediaFile`
-4. Create/update hotspot `content.video_url` to the file URL
+1. `POST /api/v1/upload/presigned` with `folder_type: "hotspot_media"` → returns `signed_url` and `public_url`.
+2. `PUT signed_url` with file bytes and Supabase headers.
+3. Create/update hotspot `content.video_url` to the `public_url`.
 
 ## Viewer behavior
 

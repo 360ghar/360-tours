@@ -42,11 +42,13 @@ The 360 Viewer database extends the 360 Ghar backend database infrastructure. Th
 | Column | Data Type | Constraints | Description |
 |--------|-----------|-------------|-------------|
 | id | UUID | Primary Key, Auto-generated | Unique identifier for the user |
-| email | VARCHAR(255) | Unique, Not Null | User's email address for authentication and communication |
+| supabase_user_id | UUID | Unique, Not Null | Supabase Auth user ID (links to auth.users) |
+| phone | VARCHAR(20) | Unique, Not Null | User's phone number (primary auth identifier, e.g., +91XXXXXXXXXX) |
+| phone_verified | BOOLEAN | Default: false | Indicates whether the phone has been verified via OTP |
+| email | VARCHAR(255) | Unique, Nullable | User's email address (optional profile field, not used for auth) |
 | email_verified | BOOLEAN | Default: false | Indicates whether the email has been verified |
-| password_hash | VARCHAR(255) | Not Null | Bcrypt-hashed password for secure authentication |
-| first_name | VARCHAR(100) | Not Null | User's first name |
-| last_name | VARCHAR(100) | Not Null | User's last name |
+| full_name | VARCHAR(200) | Nullable | User's full name |
+| date_of_birth | DATE | Nullable | User's date of birth |
 | profile_image_url | VARCHAR(512) | Nullable | URL to the user's profile image |
 | storage_usage | BIGINT | Default: 0 | Current storage used in bytes |
 | created_at | TIMESTAMP WITH TIME ZONE | Default: NOW() | Account creation timestamp |
@@ -55,7 +57,9 @@ The 360 Viewer database extends the 360 Ghar backend database infrastructure. Th
 | deleted_at | TIMESTAMP WITH TIME ZONE | Nullable | Soft delete timestamp (null if active) |
 
 **Indexes**:
-- **idx_users_email**: B-tree index on email for fast login lookups
+- **idx_users_phone**: B-tree index on phone for fast login lookups
+- **idx_users_supabase_id**: B-tree index on supabase_user_id for Supabase Auth lookups
+- **idx_users_email**: B-tree index on email for email-based queries
 - **idx_users_created_at**: B-tree index on created_at for chronological queries
 - **idx_users_deleted_at**: Partial B-tree index on deleted_at where deleted_at IS NOT NULL for efficient soft-delete queries
 
@@ -262,7 +266,7 @@ The 360 Viewer database extends the 360 Ghar backend database infrastructure. Th
 - **idx_analytics_created_at**: B-tree index on created_at for time-range queries
 - **idx_analytics_tour_event_date**: Composite B-tree index on (tour_id, event_type, created_at) for efficient aggregation queries
 
-### 8. User Sessions Table
+### 9. User Sessions Table
 
 **Purpose**: Manages user sessions and refresh tokens. This table stores authentication session data for secure token management and session invalidation.
 
@@ -288,9 +292,32 @@ The 360 Viewer database extends the 360 Ghar backend database infrastructure. Th
 - **idx_sessions_expires_at**: B-tree index on expires_at for cleanup queries
 - **idx_sessions_revoked**: Partial B-tree index on is_revoked where is_revoked = false for active session queries
 
+### 8. Floor Plans Table
+
+**Purpose**: Stores floor plan images and scene markers for tours. Each floor plan represents one floor/level with interactive markers that link to scenes.
+
+**Columns**:
+
+| Column | Data Type | Constraints | Description |
+|--------|-----------|-------------|-------------|
+| id | UUID | Primary Key, Auto-generated | Unique identifier for the floor plan |
+| tour_id | UUID | Foreign Key → tours(id), Not Null, ON DELETE CASCADE | Parent tour |
+| name | VARCHAR(255) | Not Null | Floor plan name (e.g., "Ground Floor") |
+| image_url | VARCHAR(512) | Not Null | URL to the floor plan image |
+| floor_number | INTEGER | Default: 0 | Floor/level number for ordering |
+| markers | JSONB | Default: '[]' | Array of scene markers with x/y coordinates (percentage 0-100) |
+| created_at | TIMESTAMP WITH TIME ZONE | Default: NOW() | Creation timestamp |
+| updated_at | TIMESTAMP WITH TIME ZONE | Default: NOW() | Last modification timestamp |
+
+**Indexes**:
+- **idx_floor_plans_tour_id**: B-tree index on tour_id for fetching tour's floor plans
+- **idx_floor_plans_floor_number**: Composite B-tree index on (tour_id, floor_number) for ordered retrieval
+
+**Notes**: Public tour payloads "hydrate" `settings.floor_plans` from this table for viewer consumption.
+
 ## Geospatial Tables
 
-### 9. Locations Table
+### 10. Locations Table
 
 **Purpose**: Stores location information for tours with geographic features. This table enables location-based tour discovery and mapping functionality using PostGIS spatial data types.
 
@@ -319,7 +346,7 @@ The 360 Viewer database extends the 360 Ghar backend database infrastructure. Th
 
 ## Performance Optimization Tables
 
-### 10. Search Index Table
+### 11. Search Index Table
 
 **Purpose**: Full-text search for tours and scenes. This table maintains pre-computed text search vectors for fast full-text search across tour and scene content.
 
@@ -344,7 +371,7 @@ The 360 Viewer database extends the 360 Ghar backend database infrastructure. Th
 - **trigger_update_tour_search_vector**: After insert or update trigger on tours table that automatically updates the search_vector by combining the tour title and description into a single searchable text vector using English language stemming
 - **trigger_update_scene_search_vector**: After insert or update trigger on scenes table that automatically updates the search_vector by combining the scene title and description into a searchable text vector
 
-### 11. Cache Table
+### 12. Cache Table
 
 **Purpose**: Database-level caching for frequently accessed data. This table provides a key-value cache with automatic expiration for reducing database load on frequently accessed data.
 

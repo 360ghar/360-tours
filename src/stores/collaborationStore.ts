@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { collaborationApi } from '@/api';
 
 // Activity item type for tour collaboration
 export interface ActivityItem {
@@ -18,28 +19,34 @@ export interface ActivityItem {
   created_at: string;
 }
 
+interface Collaborator {
+  id: string;
+  user_id: string;
+  role: 'owner' | 'editor' | 'viewer';
+  user?: {
+    full_name: string | null;
+    email: string | null;
+    profile_image_url: string | null;
+  };
+}
+
 interface CollaborationState {
   activities: ActivityItem[];
   isLoadingActivities: boolean;
-  collaborators: Array<{
-    id: string;
-    user_id: string;
-    role: 'owner' | 'editor' | 'viewer';
-    user?: {
-      full_name: string | null;
-      email: string | null;
-      profile_image_url: string | null;
-    };
-  }>;
+  collaborators: Collaborator[];
   isLoadingCollaborators: boolean;
 
   // Actions
   setActivities: (activities: ActivityItem[]) => void;
   addActivity: (activity: ActivityItem) => void;
   setLoadingActivities: (loading: boolean) => void;
-  setCollaborators: (collaborators: CollaborationState['collaborators']) => void;
+  setCollaborators: (collaborators: Collaborator[]) => void;
   setLoadingCollaborators: (loading: boolean) => void;
   clearCollaboration: () => void;
+  fetchActivities: (tourId: string) => Promise<void>;
+  fetchCollaborators: (tourId: string) => Promise<void>;
+  inviteCollaborator: (tourId: string, email: string, role: 'editor' | 'viewer') => Promise<void>;
+  removeCollaborator: (tourId: string, userId: string) => Promise<void>;
 }
 
 export const useCollaborationStore = create<CollaborationState>((set) => ({
@@ -68,4 +75,38 @@ export const useCollaborationStore = create<CollaborationState>((set) => ({
       collaborators: [],
       isLoadingCollaborators: false,
     }),
+
+  fetchActivities: async (tourId) => {
+    set({ isLoadingActivities: true });
+    try {
+      const activities = await collaborationApi.getActivities(tourId);
+      set({ activities });
+    } finally {
+      set({ isLoadingActivities: false });
+    }
+  },
+
+  fetchCollaborators: async (tourId) => {
+    set({ isLoadingCollaborators: true });
+    try {
+      const collaborators = await collaborationApi.getCollaborators(tourId);
+      set({ collaborators });
+    } finally {
+      set({ isLoadingCollaborators: false });
+    }
+  },
+
+  inviteCollaborator: async (tourId, email, role) => {
+    const collaborator = await collaborationApi.inviteCollaborator(tourId, { email, role });
+    set((state) => ({
+      collaborators: [...state.collaborators, collaborator],
+    }));
+  },
+
+  removeCollaborator: async (tourId, userId) => {
+    await collaborationApi.removeCollaborator(tourId, userId);
+    set((state) => ({
+      collaborators: state.collaborators.filter((c) => c.user_id !== userId),
+    }));
+  },
 }));

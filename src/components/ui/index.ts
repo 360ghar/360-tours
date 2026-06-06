@@ -1,5 +1,6 @@
 // Core UI Components
-export { Button, buttonVariants } from './Button';
+export { Button } from './Button';
+export { buttonVariants } from './buttonVariants';
 export { Input } from './Input';
 export { Label } from './Label';
 export { Textarea } from './Textarea';
@@ -11,7 +12,8 @@ export { ScrollArea, ScrollBar } from './ScrollArea';
 
 // Display Components
 export { Avatar, AvatarRoot, AvatarImage, AvatarFallback } from './Avatar';
-export { Badge, badgeVariants } from './Badge';
+export { Badge } from './Badge';
+export { badgeVariants } from './badgeVariants';
 export { Progress } from './Progress';
 export { Skeleton, SkeletonCard, SkeletonTable, SkeletonAvatar } from './Skeleton';
 export { Spinner, LoadingOverlay, PageLoader } from './Spinner';
@@ -21,6 +23,7 @@ export { Checkbox } from './Checkbox';
 export { RadioGroup, RadioGroupItem } from './RadioGroup';
 export { Switch } from './Switch';
 export { Slider } from './Slider';
+export { PhoneInput } from './PhoneInput';
 export {
   Select,
   SelectGroup,

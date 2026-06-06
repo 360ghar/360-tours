@@ -28,9 +28,12 @@ This platform is powered by the REST API (`../technical/api-specification.md`) a
 ---
 
 **Navigation**:
-- [User Flows](user-flows.md) <- Next: Complete user journey maps
-- [UI Components](ui-components.md) -> Next: Design system and components
+- [User Flows](user-flows.md) — Complete user journey maps
+- [UI Components](ui-components.md) — Design system and components
+- [Theming](theming.md) — Dark/light/system theme support
+- [Offline Support](offline-support.md) — Offline indicator and future offline plans
+- [SEO & Meta Tags](seo-meta-tags.md) — Dynamic meta tags and rich previews
 
 **Document Links**:
-- [Features Overview](../features/README.md) <- Return to features documentation
-- [Technical Architecture](../technical/architecture.md) -> Technical implementation details
+- [Features Overview](../features/README.md) ← Return to features documentation
+- [Technical Architecture](../technical/architecture.md) → Technical implementation details

@@ -16,11 +16,19 @@ test.describe('Landing Page', () => {
 
     // Check login link is visible
     const loginLink = page.getByRole('link', { name: /login|sign in/i });
-    await expect(loginLink).toBeVisible();
+    if (!(await loginLink.first().isVisible())) {
+      const menuButton = page.getByRole('button', { name: /toggle menu/i });
+      if (await menuButton.isVisible()) {
+        await menuButton.click();
+      }
+    }
+    await expect(loginLink.first()).toBeVisible();
 
     // Check signup link is visible
-    const signupLink = page.getByRole('link', { name: /sign up|get started|register/i });
-    await expect(signupLink).toBeVisible();
+    const signupLink = page.getByRole('link', {
+      name: /sign up|get started|register|start free/i,
+    });
+    await expect(signupLink.first()).toBeVisible();
   });
 
   test('should be responsive', async ({ page }) => {

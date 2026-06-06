@@ -10,11 +10,14 @@ Related docs:
 
 - Create/edit/delete hotspots on a scene.
 - Place hotspots by clicking in the viewer and adjust by dragging.
-- Support hotspot types:
+- Custom icon picker with color and size options (see `custom-hotspot-icons.md`).
+- Support all 6 hotspot types:
   - `navigation` (scene-to-scene)
   - `info` (text/image/modal)
   - `link` (external URL)
-  - `audio` / `video` (media playback)
+  - `audio` (audio playback)
+  - `video` (video playback — direct, YouTube, Vimeo)
+  - `custom` (custom HTML or component)
 - Track hotspot interactions via analytics.
 
 ## Post‑MVP scope
@@ -44,9 +47,29 @@ Types and typed `content` are defined in `../00-conventions.md`.
   - allowed protocols: `https:` (and `http:` only if explicitly allowed)
   - reject `javascript:` and other unsafe schemes
 
-### Audio / Video
+### Audio
 
-- Opens a media UI using `content.audio_url` or `content.video_url`/`youtube_id`/`vimeo_id`.
+- Opens an audio player using `content.audio_url`.
+- Options: `autoplay`, `loop`.
+
+### Video
+
+- Opens a video player modal using `content.video_url`, `content.youtube_id`, or `content.vimeo_id`.
+- Options: `autoplay`, `muted`, `poster_url`.
+
+### Custom
+
+- Renders custom HTML (`content.html`) or a registered component (`content.component_key`).
+- Custom content MUST be sandboxed to prevent XSS.
+- Props can be passed via `content.props`.
+
+## Icon customization
+
+Each hotspot supports custom icons (see `custom-hotspot-icons.md`):
+
+- `icon_name` — Predefined icon from the icon set.
+- `icon_color` — Hex color code (default: `#ffffff`).
+- `icon_size` — Size in pixels, 1-100 (default: 32).
 
 ## Placement and coordinates
 

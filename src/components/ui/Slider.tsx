@@ -30,7 +30,8 @@ const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
     },
     ref
   ) => {
-    const inputId = id || React.useId();
+    const autoId = React.useId();
+    const inputId = id || autoId;
     const [internalValue, setInternalValue] = React.useState(defaultValue);
     const currentValue = value !== undefined ? value : internalValue;
 

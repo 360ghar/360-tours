@@ -95,7 +95,7 @@ Canonical schemas are defined in `../00-conventions.md`.
 - Backend enqueues a processing job.
 - Workers generate derivatives (thumbnails, web-optimized variants) and update scene/media metadata.
 
-### AI processing (Post‑MVP unless explicitly required)
+### AI processing (MVP, opt-in)
 
 - Backend enqueues AI jobs (e.g., hotspot suggestions).
 - Workers produce structured outputs that can be applied to drafts with explicit user confirmation.

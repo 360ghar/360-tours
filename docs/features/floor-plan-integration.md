@@ -27,7 +27,7 @@ Use `FloorPlan` and `FloorPlanMarker` from `../00-conventions.md`.
 ## Upload (MVP)
 
 - Supported image types: `image/jpeg`, `image/png`, `image/webp`.
-- Upload via `POST /api/v1/uploads/presign` (purpose: `floor_plan`).
+- Upload via `POST /api/v1/upload/presigned` (use `folder: "floor-plans"`).
 - Create a floor plan via `POST /api/v1/tours/{tour_id}/floor-plans`.
 
 ## Marker placement (MVP)

@@ -1,11 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import {
   Video,
   Upload,
   X,
-  Play,
-  Pause,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -74,7 +72,6 @@ export function VideoUploader({
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [quality, setQuality] = useState<'auto' | '720p' | '1080p' | '4k'>('auto');
   const [isUploading, setIsUploading] = useState(false);
-  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -168,7 +165,7 @@ export function VideoUploader({
             status: 'pending',
             progress: 0,
           });
-        } catch (error) {
+        } catch {
           newVideos.push({
             id,
             file,

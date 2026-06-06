@@ -84,7 +84,8 @@ interface RadioGroupItemProps
 const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
   ({ className, value, id, disabled: itemDisabled, ...props }, ref) => {
     const context = React.useContext(RadioGroupContext);
-    const inputId = id || React.useId();
+    const autoId = React.useId();
+    const inputId = id || autoId;
     const isChecked = context.value === value;
     const isDisabled = itemDisabled || context.disabled;
 

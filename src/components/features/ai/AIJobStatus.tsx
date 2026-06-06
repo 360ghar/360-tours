@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { CheckCircle2, XCircle, Loader2, Clock, AlertCircle, X, Wifi, WifiOff } from 'lucide-react';
 import { Button, Progress, Badge } from '@/components/ui';
 import { aiApi } from '@/api';
@@ -30,6 +30,11 @@ export function AIJobStatus({
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const terminalCallbackHandledRef = useRef(false);
+
+  useEffect(() => {
+    terminalCallbackHandledRef.current = false;
+  }, [jobId]);
 
   // WebSocket for real-time updates
   const { state: wsState, isConnected } = useAIJobWebSocket(
@@ -54,12 +59,12 @@ export function AIJobStatus({
           }
         }
       },
-      onComplete: (wsResult) => {
+      onComplete: (wsResult: Record<string, unknown>) => {
         setResult(wsResult);
         // Get final job state from API
         fetchJobStatus();
       },
-      onError: (errorMsg) => {
+      onError: (errorMsg: string) => {
         setError(errorMsg);
         setJob((prev) => {
           if (!prev) return prev;
@@ -78,12 +83,14 @@ export function AIJobStatus({
         setResult(response.result);
       }
 
-      if (response.job.status === 'completed') {
+      if (response.job.status === 'completed' && !terminalCallbackHandledRef.current) {
+        terminalCallbackHandledRef.current = true;
         onComplete?.(response.job, response.result);
         return true; // Stop polling
       }
 
-      if (response.job.status === 'failed') {
+      if ((response.job.status === 'failed' || response.job.status === 'canceled') && !terminalCallbackHandledRef.current) {
+        terminalCallbackHandledRef.current = true;
         const errorMsg = response.job.error_message || 'Processing failed';
         setError(errorMsg);
         onError?.(response.job, errorMsg);
@@ -133,9 +140,13 @@ export function AIJobStatus({
   useEffect(() => {
     if (!job) return;
 
+    if (terminalCallbackHandledRef.current) return;
+
     if (job.status === 'completed' && result) {
+      terminalCallbackHandledRef.current = true;
       onComplete?.(job, result);
-    } else if (job.status === 'failed' && job.error_message) {
+    } else if ((job.status === 'failed' || job.status === 'canceled') && job.error_message) {
+      terminalCallbackHandledRef.current = true;
       onError?.(job, job.error_message);
     }
   }, [job?.status, result, job, onComplete, onError]);
@@ -156,6 +167,7 @@ export function AIJobStatus({
     if (!job) return <Loader2 className="h-5 w-5 animate-spin text-[var(--color-primary-500)]" />;
 
     switch (job.status) {
+      case 'queued':
       case 'pending':
         return <Clock className="h-5 w-5 text-[var(--color-warning-500)]" />;
       case 'processing':
@@ -164,6 +176,8 @@ export function AIJobStatus({
         return <CheckCircle2 className="h-5 w-5 text-[var(--color-success-500)]" />;
       case 'failed':
         return <XCircle className="h-5 w-5 text-[var(--color-error-500)]" />;
+      case 'canceled':
+        return <XCircle className="h-5 w-5 text-[var(--color-text-muted)]" />;
       default:
         return <AlertCircle className="h-5 w-5 text-[var(--color-text-muted)]" />;
     }
@@ -173,6 +187,7 @@ export function AIJobStatus({
     if (!job) return 'Loading...';
 
     switch (job.status) {
+      case 'queued':
       case 'pending':
         return 'Waiting to start...';
       case 'processing':
@@ -181,6 +196,8 @@ export function AIJobStatus({
         return 'Completed';
       case 'failed':
         return 'Failed';
+      case 'canceled':
+        return 'Canceled';
       default:
         return job.status;
     }
@@ -194,8 +211,13 @@ export function AIJobStatus({
         return 'Tour Generation';
       case 'scene_detection':
         return 'Scene Analysis';
+      case 'hotspot_suggestions':
       case 'hotspot_placement':
         return 'Hotspot Suggestions';
+      case 'description_generation':
+        return 'Description Generation';
+      case 'quality_checks':
+        return 'Quality Checks';
       case 'optimization':
         return 'Tour Optimization';
       default:
@@ -252,7 +274,7 @@ export function AIJobStatus({
       </div>
 
       {/* Progress bar */}
-      {job && (job.status === 'pending' || job.status === 'processing') && (
+      {job && (job.status === 'queued' || job.status === 'pending' || job.status === 'processing') && (
         <div className="space-y-2">
           <Progress value={job.progress} />
           <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
@@ -285,7 +307,7 @@ export function AIJobStatus({
       )}
 
       {/* Cancel button */}
-      {showCancelButton && job && (job.status === 'pending' || job.status === 'processing') && (
+      {showCancelButton && job && (job.status === 'queued' || job.status === 'pending' || job.status === 'processing') && (
         <div className="mt-4 pt-3 border-t border-[var(--color-border)]">
           <Button
             variant="outline"

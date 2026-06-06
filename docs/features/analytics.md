@@ -33,8 +33,8 @@ Analytics is built from an append-only event stream.
 
 ## API usage (MVP)
 
-- Ingest: `POST /api/v1/public/events`
-- Summary: `GET /api/v1/tours/{tour_id}/analytics/summary?from=...&to=...`
+- Ingest: `POST /api/v1/public/tours/{tour_id}/events`
+- Summary: `GET /api/v1/tours/{tour_id}/analytics?start_date=...&end_date=...`
 
 ## Post‑MVP scope
 

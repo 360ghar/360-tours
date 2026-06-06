@@ -2,7 +2,7 @@
 
 This feature describes AI analysis that produces metadata and quality checks for scenes.
 
-Status: **Post‑MVP** (opt-in)
+Status: **MVP** (opt-in)
 
 Related docs:
 - AI job model: `../00-conventions.md`
@@ -52,9 +52,3 @@ Related docs:
 **Document Links**:
 - [Automatic Tour Creation](automatic-tour-creation.md) ← Previous
 - [Auto Hotspot Placement](auto-hotspot-placement.md) → Next
-
-**Document Links**:
-- [Automatic Tour Creation](automatic-tour-creation.md) <- Previous: AI-powered tour generation
-- [Scene Detection](scene-detection.md) <- Current: Scene analysis and optimization
-- [Hotspot Placement](auto-hotspot-placement.md) -> Next: Intelligent hotspot suggestions
-- [Tech Stack](tech-stack.md) -> Implementation details

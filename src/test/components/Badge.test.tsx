@@ -34,7 +34,7 @@ describe('Badge', () => {
       </Badge>
     );
     const badge = screen.getByTestId('badge');
-    expect(badge).toHaveStyle({ backgroundColor: 'red' });
+    expect(badge).toHaveStyle('background-color: rgb(255, 0, 0)');
   });
 
   it('has correct base styling classes', () => {

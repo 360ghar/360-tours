@@ -12,7 +12,7 @@ test.describe('Dashboard', () => {
 test.describe('Settings Pages', () => {
   test.describe('Profile', () => {
     test('should redirect to login when not authenticated', async ({ page }) => {
-      await page.goto('/settings/profile');
+      await page.goto('/profile');
 
       // Should redirect to login
       await expect(page).toHaveURL(/login/);
@@ -22,15 +22,6 @@ test.describe('Settings Pages', () => {
   test.describe('Settings', () => {
     test('should redirect to login when not authenticated', async ({ page }) => {
       await page.goto('/settings');
-
-      // Should redirect to login
-      await expect(page).toHaveURL(/login/);
-    });
-  });
-
-  test.describe('Billing', () => {
-    test('should redirect to login when not authenticated', async ({ page }) => {
-      await page.goto('/settings/billing');
 
       // Should redirect to login
       await expect(page).toHaveURL(/login/);

@@ -68,7 +68,7 @@ describe('Input', () => {
   it('has correct base styling classes', () => {
     render(<Input placeholder="Styled" />);
     const input = screen.getByPlaceholderText('Styled');
-    expect(input).toHaveClass('rounded-md');
+    expect(input).toHaveClass('rounded-lg');
     expect(input).toHaveClass('border');
   });
 });

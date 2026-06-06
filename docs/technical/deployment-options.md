@@ -68,7 +68,7 @@ Each environment MUST have its own:
 
 ## Feature flags
 
-- Post‑MVP features (AI, advanced analytics) SHOULD be guarded by feature flags.
+- AI features (MVP, opt-in) and advanced analytics SHOULD be guarded by feature flags.
 - Flags MUST be server-enforced when they affect data access.
 
 **Document Links**:

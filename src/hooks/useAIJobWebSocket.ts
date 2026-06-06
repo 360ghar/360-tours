@@ -1,9 +1,20 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
+import { API_BASE_URL } from '@/constants';
+import { supabaseAuth } from '@/lib/supabaseAuth';
 
-/**
- * WebSocket job update message structure
- */
+function buildWebSocketBaseUrl(): string {
+  try {
+    const apiUrl = new URL(API_BASE_URL, window.location.origin);
+    const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProtocol}//${apiUrl.host}`;
+  } catch {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${wsProtocol}//${window.location.host}`;
+  }
+}
+
 export interface AIJobUpdate {
   type: 'job_update' | 'notification' | 'heartbeat' | 'connected' | 'error';
   job_id?: string;
@@ -16,67 +27,32 @@ export interface AIJobUpdate {
   message?: string;
 }
 
-/**
- * WebSocket connection state
- */
 export type WebSocketState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-/**
- * Hook options
- */
 interface UseAIJobWebSocketOptions {
-  /** Called when a job update is received */
   onUpdate?: (update: AIJobUpdate) => void;
-  /** Called when the job completes */
   onComplete?: (result: Record<string, unknown>) => void;
-  /** Called when the job fails */
-  onError?: (error: string) => void;
-  /** Auto-reconnect on disconnect (default: true) */
+  onError?: (message: string) => void;
   autoReconnect?: boolean;
-  /** Reconnect delay in ms (default: 3000) */
   reconnectDelay?: number;
 }
 
-/**
- * Hook for real-time AI job progress updates via WebSocket.
- *
- * @param jobId - The AI job ID to subscribe to (null to not connect)
- * @param options - Configuration options
- * @returns Connection state and control functions
- *
- * @example
- * ```tsx
- * const { state, disconnect } = useAIJobWebSocket(jobId, {
- *   onUpdate: (update) => {
- *     setProgress(update.data?.progress ?? 0);
- *   },
- *   onComplete: (result) => {
- *     console.log('Job completed:', result);
- *   },
- *   onError: (error) => {
- *     console.error('Job failed:', error);
- *   },
- * });
- * ```
- */
+const PING_INTERVAL = 25000;
+const DEFAULT_RECONNECT_DELAY = 3000;
+
 export function useAIJobWebSocket(
   jobId: string | null,
   options: UseAIJobWebSocketOptions = {}
 ) {
-  const {
-    onUpdate,
-    onComplete,
-    onError,
-    autoReconnect = true,
-    reconnectDelay = 3000,
-  } = options;
+  const { onUpdate, onComplete, onError, autoReconnect = true, reconnectDelay = 3000 } = options;
 
-  const [state, setState] = useState<WebSocketState>('disconnected');
+  const stateRef = useRef<WebSocketState>('disconnected');
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const { tokens } = useAuthStore();
+  const connectionIdRef = useRef(0);
+  const { isAuthenticated } = useAuthStore();
+  const [state, setState] = useState<WebSocketState>('disconnected');
 
   const cleanup = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -94,111 +70,130 @@ export function useAIJobWebSocket(
   }, []);
 
   const disconnect = useCallback(() => {
+    connectionIdRef.current += 1;
     cleanup();
     setState('disconnected');
+    stateRef.current = 'disconnected';
   }, [cleanup]);
 
   const connect = useCallback(() => {
-    if (!jobId || !tokens?.access_token) {
-      return;
-    }
+    if (!jobId || !isAuthenticated) return;
 
+    connectionIdRef.current += 1;
+    const connectionId = connectionIdRef.current;
     cleanup();
+
     setState('connecting');
+    stateRef.current = 'connecting';
 
-    // Build WebSocket URL
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const apiHost = import.meta.env.VITE_API_URL?.replace(/^https?:\/\//, '') || 'localhost:8000';
-    const wsUrl = `${wsProtocol}//${apiHost}/ws/jobs/${jobId}?token=${encodeURIComponent(tokens.access_token)}`;
+    void (async () => {
+      const accessToken = await supabaseAuth.getAccessToken();
+      if (connectionIdRef.current !== connectionId) return;
+      if (!accessToken) {
+        setState('disconnected');
+        stateRef.current = 'disconnected';
+        return;
+      }
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+      const wsBaseUrl = buildWebSocketBaseUrl();
+      const wsUrl = `${wsBaseUrl}/ws/jobs/${jobId}?token=${encodeURIComponent(accessToken)}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      setState('connected');
+      ws.onopen = () => {
+        if (connectionIdRef.current !== connectionId) return;
+        setState('connected');
+        stateRef.current = 'connected';
 
-      // Set up ping interval for keep-alive
-      pingIntervalRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send('ping');
-        }
-      }, 25000);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as AIJobUpdate;
-
-        // Handle different message types
-        if (data.type === 'job_update' && data.data) {
-          onUpdate?.(data);
-
-          if (data.data.status === 'completed' && data.data.result) {
-            onComplete?.(data.data.result);
-            // Job is done, disconnect
-            disconnect();
-          } else if (data.data.status === 'failed') {
-            onError?.(data.data.error_message || 'Job failed');
-            disconnect();
+        pingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
           }
-        } else if (data.type === 'error') {
-          onError?.(data.message || 'WebSocket error');
+        }, PING_INTERVAL);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          if (event.data === 'pong') return;
+          const data = JSON.parse(event.data) as AIJobUpdate;
+
+          if (data.type === 'job_update' && data.data) {
+            onUpdate?.(data);
+
+            if (data.data.status === 'completed' && data.data.result) {
+              onComplete?.(data.data.result);
+              disconnect();
+            } else if (data.data.status === 'failed') {
+              onError?.(data.data.error_message || 'Job failed');
+              disconnect();
+            }
+          } else if (data.type === 'error') {
+            onError?.(data.message || 'WebSocket error');
+          }
+        } catch (e) {
+          if (event.data !== 'pong') {
+            console.error('Failed to parse WebSocket message:', e);
+          }
         }
-      } catch (e) {
-        // Handle pong response (plain text)
-        if (event.data === 'pong') {
-          return;
+      };
+
+      ws.onerror = () => {
+        if (connectionIdRef.current !== connectionId) return;
+        setState('error');
+        stateRef.current = 'error';
+      };
+
+      ws.onclose = () => {
+        if (connectionIdRef.current !== connectionId) return;
+
+        cleanup();
+        setState('disconnected');
+        stateRef.current = 'disconnected';
+
+        if (autoReconnect && jobId) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            void (async () => {
+              const nextToken = await supabaseAuth.getAccessToken();
+              if (!nextToken) return;
+              setState('connecting');
+              stateRef.current = 'connecting';
+
+              const wsBaseUrl2 = buildWebSocketBaseUrl();
+              const wsUrl2 = `${wsBaseUrl2}/ws/jobs/${jobId}?token=${encodeURIComponent(nextToken)}`;
+              const ws2 = new WebSocket(wsUrl2);
+              wsRef.current = ws2;
+
+              ws2.onopen = () => {
+                setState('connected');
+                stateRef.current = 'connected';
+                pingIntervalRef.current = setInterval(() => {
+                  if (ws2.readyState === WebSocket.OPEN) ws2.send('ping');
+                }, PING_INTERVAL);
+              };
+
+              ws2.onmessage = ws.onmessage;
+              ws2.onerror = ws.onerror;
+              ws2.onclose = ws.onclose;
+            })();
+          }, reconnectDelay);
         }
-        console.error('Failed to parse WebSocket message:', e);
-      }
-    };
+      };
+    })();
+  }, [jobId, isAuthenticated, onUpdate, onComplete, onError, autoReconnect, reconnectDelay, cleanup, disconnect]);
 
-    ws.onerror = () => {
-      setState('error');
-    };
-
-    ws.onclose = () => {
-      cleanup();
-      setState('disconnected');
-
-      // Auto-reconnect if enabled and we have a job ID
-      if (autoReconnect && jobId && tokens?.access_token) {
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, reconnectDelay);
-      }
-    };
-  }, [jobId, tokens?.access_token, onUpdate, onComplete, onError, autoReconnect, reconnectDelay, cleanup, disconnect]);
-
-  // Connect when jobId changes
   useEffect(() => {
-    if (jobId && tokens?.access_token) {
-      connect();
-    }
-
-    return () => {
-      cleanup();
-    };
-  }, [jobId, tokens?.access_token, connect, cleanup]);
+    if (jobId && isAuthenticated) connect();
+    return () => { cleanup(); };
+  }, [jobId, isAuthenticated, connect, cleanup]);
 
   return {
-    /** Current WebSocket connection state */
     state,
-    /** Manually disconnect the WebSocket */
     disconnect,
-    /** Manually reconnect the WebSocket */
     reconnect: connect,
-    /** Whether the WebSocket is currently connected */
     isConnected: state === 'connected',
   };
 }
 
-/**
- * Hook for user-level notifications via WebSocket.
- *
- * @param options - Configuration options
- * @returns Connection state and control functions
- */
 export function useUserNotifications(
   options: {
     onNotification?: (notification: Record<string, unknown>) => void;
@@ -207,12 +202,12 @@ export function useUserNotifications(
 ) {
   const { onNotification, autoReconnect = true } = options;
 
-  const [state, setState] = useState<WebSocketState>('disconnected');
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const { tokens, isAuthenticated } = useAuthStore();
+  const connectionIdRef = useRef(0);
+  const { isAuthenticated } = useAuthStore();
+  const [state, setState] = useState<WebSocketState>('disconnected');
 
   const cleanup = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -230,69 +225,98 @@ export function useUserNotifications(
   }, []);
 
   const connect = useCallback(() => {
-    if (!isAuthenticated || !tokens?.access_token) {
-      return;
-    }
+    if (!isAuthenticated) return;
 
+    connectionIdRef.current += 1;
+    const connectionId = connectionIdRef.current;
     cleanup();
+
     setState('connecting');
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const apiHost = import.meta.env.VITE_API_URL?.replace(/^https?:\/\//, '') || 'localhost:8000';
-    const wsUrl = `${wsProtocol}//${apiHost}/ws/user?token=${encodeURIComponent(tokens.access_token)}`;
-
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setState('connected');
-
-      pingIntervalRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send('ping');
-        }
-      }, 25000);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'notification' && data.data) {
-          onNotification?.(data.data);
-        }
-      } catch (e) {
-        if (event.data !== 'pong') {
-          console.error('Failed to parse notification:', e);
-        }
+    void (async () => {
+      const accessToken = await supabaseAuth.getAccessToken();
+      if (connectionIdRef.current !== connectionId) return;
+      if (!accessToken) {
+        setState('disconnected');
+        return;
       }
-    };
 
-    ws.onerror = () => {
-      setState('error');
-    };
+      const wsBaseUrl = buildWebSocketBaseUrl();
+      const wsUrl = `${wsBaseUrl}/ws/user?token=${encodeURIComponent(accessToken)}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onclose = () => {
-      cleanup();
-      setState('disconnected');
+      ws.onopen = () => {
+        if (connectionIdRef.current !== connectionId) return;
+        setState('connected');
 
-      if (autoReconnect && isAuthenticated) {
-        reconnectTimeoutRef.current = setTimeout(connect, 3000);
-      }
-    };
-  }, [isAuthenticated, tokens?.access_token, onNotification, autoReconnect, cleanup]);
+        pingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+          }
+        }, PING_INTERVAL);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'notification' && data.data) {
+            onNotification?.(data.data);
+          }
+        } catch (e) {
+          if (event.data !== 'pong') {
+            console.error('Failed to parse notification:', e);
+          }
+        }
+      };
+
+      ws.onerror = () => {
+        if (connectionIdRef.current !== connectionId) return;
+        setState('error');
+      };
+
+      ws.onclose = () => {
+        if (connectionIdRef.current !== connectionId) return;
+
+        cleanup();
+        setState('disconnected');
+
+        if (autoReconnect && isAuthenticated) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            void (async () => {
+              const nextToken = await supabaseAuth.getAccessToken();
+              if (!nextToken) return;
+              setState('connecting');
+
+              const wsBaseUrl2 = buildWebSocketBaseUrl();
+              const wsUrl2 = `${wsBaseUrl2}/ws/user?token=${encodeURIComponent(nextToken)}`;
+              const ws2 = new WebSocket(wsUrl2);
+              wsRef.current = ws2;
+
+              ws2.onopen = ws.onopen;
+              ws2.onmessage = ws.onmessage;
+              ws2.onerror = ws.onerror;
+              ws2.onclose = ws.onclose;
+            })();
+          }, DEFAULT_RECONNECT_DELAY);
+        }
+      };
+    })();
+  }, [isAuthenticated, onNotification, autoReconnect, cleanup]);
 
   useEffect(() => {
-    if (isAuthenticated && tokens?.access_token) {
-      connect();
-    }
-
+    if (isAuthenticated) connect();
     return cleanup;
-  }, [isAuthenticated, tokens?.access_token, connect, cleanup]);
+  }, [isAuthenticated, connect, cleanup]);
 
   return {
     state,
     isConnected: state === 'connected',
     reconnect: connect,
-    disconnect: cleanup,
+    disconnect: () => {
+      connectionIdRef.current += 1;
+      cleanup();
+      setState('disconnected');
+    },
   };
 }

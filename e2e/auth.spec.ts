@@ -6,7 +6,7 @@ test.describe('Authentication', () => {
       await page.goto('/login');
 
       // Check form elements are visible
-      await expect(page.getByLabel(/email/i)).toBeVisible();
+      await expect(page.getByLabel(/phone/i)).toBeVisible();
       await expect(page.getByLabel(/password/i)).toBeVisible();
       await expect(page.getByRole('button', { name: /login|sign in/i })).toBeVisible();
     });
@@ -17,23 +17,19 @@ test.describe('Authentication', () => {
       // Submit empty form
       await page.getByRole('button', { name: /login|sign in/i }).click();
 
-      // Check for validation errors (HTML5 or custom)
-      const emailInput = page.getByLabel(/email/i);
-      await expect(emailInput).toHaveAttribute('required', '');
+      await expect(page.getByLabel(/phone/i)).toHaveAttribute('required');
+      await expect(page.getByLabel(/password/i)).toHaveAttribute('required');
     });
 
-    test('should show validation error for invalid email', async ({ page }) => {
+    test('should show validation error for invalid phone', async ({ page }) => {
       await page.goto('/login');
 
-      // Enter invalid email
-      await page.getByLabel(/email/i).fill('invalid-email');
-      await page.getByLabel(/password/i).fill('password123');
+      // Enter invalid phone
+      await page.getByLabel(/phone/i).fill('123');
+      await page.getByLabel(/password/i).fill('Password123');
       await page.getByRole('button', { name: /login|sign in/i }).click();
 
-      // Email input should be invalid
-      const emailInput = page.getByLabel(/email/i);
-      const isInvalid = await emailInput.evaluate((el) => !el.validity.valid);
-      expect(isInvalid).toBe(true);
+      await expect(page.getByText(/phone must be in e\.164 format/i)).toBeVisible();
     });
 
     test('should have link to register page', async ({ page }) => {
@@ -56,7 +52,8 @@ test.describe('Authentication', () => {
       await page.goto('/register');
 
       // Check form elements are visible
-      await expect(page.getByLabel(/name|full name/i)).toBeVisible();
+      await expect(page.getByLabel(/phone/i)).toBeVisible();
+      await expect(page.getByLabel(/full name/i)).toBeVisible();
       await expect(page.getByLabel(/email/i)).toBeVisible();
       await expect(page.getByLabel(/password/i).first()).toBeVisible();
       await expect(page.getByRole('button', { name: /sign up|register|create/i })).toBeVisible();
@@ -66,16 +63,16 @@ test.describe('Authentication', () => {
       await page.goto('/register');
 
       // Enter weak password
-      await page.getByLabel(/name|full name/i).fill('Test User');
-      await page.getByLabel(/email/i).fill('test@example.com');
+      await page.getByLabel(/phone/i).fill('9876543210');
+      await page.getByLabel(/full name/i).fill('Test User');
       await page.getByLabel(/password/i).first().fill('123');
+      await page.getByLabel(/confirm password/i).fill('123');
+      await page.getByRole('checkbox').check();
 
       // Submit form
       await page.getByRole('button', { name: /sign up|register|create/i }).click();
 
-      // Password should fail validation (minLength)
-      // This checks that form was not submitted (we're still on register page)
-      await expect(page).toHaveURL(/register/);
+      await expect(page.getByText(/password must/i).first()).toBeVisible();
     });
 
     test('should have link to login page', async ({ page }) => {

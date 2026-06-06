@@ -11,7 +11,7 @@ In a crowded virtual tour market dominated by established players like Kuula and
 | **AI Automation** | Limited None | None | None | ✅ Revolutionary |
 | **Tour Creation Time** | 30+ minutes | 45+ minutes | 20+ minutes | ✅ 5 minutes |
 | **Access Model** | Paid tiers | Paid tiers | Paid tiers | ✅ Completely Free |
-| **Platform Integration** | Basic | Advanced | Limited | ✅ Deep 360Ghar |
+| **Platform Integration** | Basic | Advanced | Limited | ✅ Deep 360 Ghar |
 | **Mobile Experience** | Good | Excellent | Fair | ✅ Superior |
 | **Customization** | Basic | Advanced | Excellent | ✅ Superior |
 | **Analytics** | Basic | Advanced | Basic | ✅ Advanced AI-driven |
@@ -92,7 +92,7 @@ Creating virtual tours today is a manual, time-intensive process:
 - **Current**: Very basic automation
 - **Our Advantage**: Professional-grade AI features
 
-## Differentiator 2: Seamless 360Ghar Integration
+## Differentiator 2: Seamless 360 Ghar Integration
 
 ### The Problem: Platform Silos
 Virtual tour platforms exist in isolation:
@@ -105,7 +105,7 @@ Virtual tour platforms exist in isolation:
 
 #### Shared Authentication System
 
-**Unified Authentication Flow**: The platform supports single sign-on with 360Ghar. Tokens are validated by the shared auth service and mapped to a platform user account, so users can move between products without repeated login while maintaining appropriate access controls.
+**Unified Authentication Flow**: The platform supports single sign-on with 360 Ghar. Tokens are validated by the shared auth service and mapped to a platform user account, so users can move between products without repeated login while maintaining appropriate access controls.
 
 **Features**:
 - **Single Sign-On**: Seamless authentication across platforms
@@ -114,7 +114,7 @@ Virtual tour platforms exist in isolation:
 
 #### Property Data Integration
 
-**Property Tour Synchronization**: The platform provides seamless property-to-tour data integration through a dedicated sync API. The PropertyTourSync interface tracks synchronization status for each property-tour pair, including the property ID, tour data, current sync status (synced, pending, or error), and timestamp of last synchronization. The synchronization process fetches tour data from 360 Tours, transforms it into the 360Ghar format, updates the property record with the tour information, and updates the sync status tracking. This ensures data consistency across both platforms with automatic bidirectional updates.
+**Property Tour Synchronization**: The platform provides seamless property-to-tour data integration through a dedicated sync API. The PropertyTourSync interface tracks synchronization status for each property-tour pair, including the property ID, tour data, current sync status (synced, pending, or error), and timestamp of last synchronization. The synchronization process fetches tour data from 360 Tours, transforms it into the 360 Ghar format, updates the property record with the tour information, and updates the sync status tracking. This ensures data consistency across both platforms with automatic bidirectional updates.
 
 **Features**:
 - **Automatic Sync**: Tours automatically linked to properties
@@ -142,7 +142,7 @@ Virtual tour platforms exist in isolation:
 
 #### For Photography Professionals
 - **Streamlined Workflow**: Upload once, publish everywhere
-- **Increased Revenue**: Access to 360Ghar's client base
+- **Increased Revenue**: Access to 360 Ghar's client base
 - **Better Client Experience**: Integrated platform ecosystem
 - **Reduced Friction**: No more switching between platforms
 
@@ -160,7 +160,7 @@ Unlike competitors who gate features behind paid tiers, 360 Tours provides compl
 | **Advanced Analytics** | Paid tier | ✅ Free |
 | **White-label** | Paid tier | ✅ Free |
 | **API Access** | Paid tier | ✅ Free |
-| **360Ghar Integration** | N/A | ✅ Free |
+| **360 Ghar Integration** | N/A | ✅ Free |
 
 ### Technical Excellence
 

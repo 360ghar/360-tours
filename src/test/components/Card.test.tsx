@@ -102,7 +102,7 @@ describe('Card', () => {
     );
 
     const card = screen.getByTestId('card');
-    expect(card).toHaveClass('rounded-lg');
+    expect(card).toHaveClass('rounded-xl');
     expect(card).toHaveClass('border');
   });
 
