@@ -305,6 +305,7 @@ export interface CursorPaginatedResponse<T> {
   next_cursor: string | null;
   has_more: boolean;
   limit: number;
+  total?: number;
 }
 
 // Auth Types

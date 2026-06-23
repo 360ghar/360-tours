@@ -10,7 +10,7 @@ export const API_TIMEOUT = Number(import.meta.env.VITE_API_TIMEOUT) || 30000;
 // Supabase Configuration
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_PUBLISHABLE_KEY =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
 
 // Feature Flags
 export const ENABLE_ANALYTICS = import.meta.env.VITE_ENABLE_ANALYTICS === 'true';
