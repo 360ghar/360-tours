@@ -44,7 +44,7 @@ export const DEFAULT_SCENE_METADATA = {
   initial_view: {
     yaw: 0,
     pitch: 0,
-    zoom: 50,
+    zoom: 0,
   },
   camera: {
     fov: 70,
@@ -57,7 +57,7 @@ export const DEFAULT_SCENE_METADATA = {
 export const VIEWER_DEFAULTS = {
   defaultPitch: 0,
   defaultYaw: 0,
-  defaultZoom: 50,
+  defaultZoom: 0,
   minFov: 30,
   maxFov: 90,
   moveSpeed: 1,

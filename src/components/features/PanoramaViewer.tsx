@@ -52,6 +52,16 @@ export function PanoramaViewer({
 }: PanoramaViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
+  // Tracks the panorama URL currently loaded into the viewer. The Viewer
+  // constructor already loads the initial panorama, so the scene-change effect
+  // must NOT re-issue setPanorama for that same URL on mount — doing so races the
+  // constructor's load and leaves Photo Sphere Viewer stuck on its loader.
+  const loadedPanoramaUrlRef = useRef<string | null>(null);
+  // Serialized panorama loading (see processSceneQueue): the latest desired scene,
+  // whether a load is currently running, and a stable self-ref for re-invocation.
+  const latestSceneRef = useRef(scene);
+  const inFlightRef = useRef(false);
+  const processQueueRef = useRef<(force?: boolean) => void>(() => {});
   const markersPluginRef = useRef<MarkersPlugin | null>(null);
   const gyroscopePluginRef = useRef<GyroscopePlugin | null>(null);
   const stereoPluginRef = useRef<StereoPlugin | null>(null);
@@ -65,6 +75,15 @@ export function PanoramaViewer({
   const [stereoEnabled, setStereoEnabled] = useState(false);
   const [vrError, setVrError] = useState<string | null>(null);
   const [isPanoramaLoading, setIsPanoramaLoading] = useState(true);
+  // Photo Sphere Viewer discards markers added before the panorama texture has
+  // loaded. We therefore only (re)apply markers once the viewer is ready, and
+  // flip this back to false whenever a new panorama starts loading so markers are
+  // re-applied for the new scene. Without this, markers vanish on load unless the
+  // parent happens to re-render (which re-runs the markers effect) by luck.
+  const [isViewerReady, setIsViewerReady] = useState(false);
+  // Set when a panorama fails to load so we can show a friendly retry UI instead
+  // of leaving the raw Photo Sphere Viewer "cannot be loaded" message.
+  const [panoramaError, setPanoramaError] = useState(false);
 
   // Persisted VR intent flags (separate from the live enabled state) so that
   // user preferences survive scene/tour reloads. iOS still requires a gesture
@@ -80,6 +99,12 @@ export function PanoramaViewer({
   const onPositionClickRef = useRef(onPositionClick);
   useEffect(() => {
     onPositionClickRef.current = onPositionClick;
+  });
+
+  // Track the latest scene so the serialized loader always resolves to the most
+  // recently requested room when an in-flight load settles.
+  useEffect(() => {
+    latestSceneRef.current = scene;
   });
 
   const autoRotateFrameRef = useRef<number | null>(null);
@@ -235,12 +260,29 @@ export function PanoramaViewer({
     });
 
     viewerRef.current = viewer;
+    // The constructor loads this panorama; record it so the scene-change effect
+    // skips a redundant (and race-inducing) setPanorama for the same URL, and mark
+    // the load in-flight so early scene switches are queued (not aborted) until
+    // 'ready' fires.
+    loadedPanoramaUrlRef.current = scene.image_url;
+    inFlightRef.current = true;
     // The Viewer constructor types every plugin as `AbstractPlugin<any>`, so the
     // specific plugin references need narrowing back to their concrete types.
     markersPluginRef.current = viewer.getPlugin(MarkersPlugin) as MarkersPlugin;
 
-    // Hide the loading spinner once the viewer finishes its first render.
-    viewer.addEventListener('ready', () => setIsPanoramaLoading(false));
+    // Hide the loading spinner once the viewer finishes its first render, and
+    // mark the viewer ready so markers can be applied (PSV drops markers added
+    // before this point).
+    viewer.addEventListener('ready', () => {
+      inFlightRef.current = false;
+      setIsPanoramaLoading(false);
+      setIsViewerReady(true);
+      // If the user navigated away from the initial scene while it was loading,
+      // load the latest one now.
+      if (latestSceneRef.current?.image_url !== loadedPanoramaUrlRef.current) {
+        processQueueRef.current(false);
+      }
+    });
 
     // Get VR plugins if available
     if (tourSettings?.enable_vr !== false) {
@@ -290,55 +332,104 @@ export function PanoramaViewer({
       setStereoEnabled(false);
       viewer.destroy();
       viewerRef.current = null;
+      loadedPanoramaUrlRef.current = null;
       markersPluginRef.current = null;
       gyroscopePluginRef.current = null;
       stereoPluginRef.current = null;
     };
-  }, [
-    scene.id,
-    scene.image_url,
-    scene.metadata?.camera?.min_fov,
-    scene.metadata?.camera?.max_fov,
-    scene.metadata?.initial_view,
-    isEditor,
-    stopAutoRotate,
-    // Note: callers must memoize tourSettings — a new object identity rebuilds the viewer.
-    tourSettings,
-    persistedGyro,
-    // onPositionClick is intentionally omitted; it is read via onPositionClickRef
-    // so changing the callback prop doesn't destroy/recreate the viewer.
-  ]);
+    // IMPORTANT: scene-specific values (scene.id / image_url / metadata) are
+    // intentionally NOT dependencies. The viewer is created ONCE and persists for
+    // the component's lifetime; scene changes are handled by the scene-change
+    // effect below via viewer.setPanorama() (PSV's cache-safe transition). Rebuilding
+    // the viewer on every scene change destroys it mid-load, which aborts the
+    // in-flight texture fetch and poisons three.js's cache for that URL — the cause
+    // of intermittent "The panorama cannot be loaded" errors. We only rebuild for
+    // structural changes (editor mode, tour settings, gyro preference).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditor, stopAutoRotate, tourSettings, persistedGyro]);
 
-  // Update panorama when scene changes
-  useEffect(() => {
-    if (viewerRef.current && scene.image_url) {
-      // Setting the loading flag before kicking off the async panorama swap is
-      // intentional: it gates the spinner overlay until the texture resolves.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+  // Swap to the latest desired scene via setPanorama — SERIALIZED. Only one
+  // setPanorama runs at a time; new requests during a load are coalesced (latest
+  // wins) and applied when the current load settles. This is deliberate: calling
+  // setPanorama while another is in flight makes PSV abort the in-flight image
+  // fetch, which surfaces as an unhandled "Failed to fetch" rejection (→ a global
+  // error toast). Serializing avoids aborts entirely. `force` cache-busts the URL
+  // for the Retry button.
+  const processSceneQueue = useCallback(
+    (force = false) => {
+      const viewer = viewerRef.current;
+      if (!viewer || inFlightRef.current) return; // re-checked when the current load settles
+      const target = latestSceneRef.current;
+      if (!target?.image_url) return;
+      if (!force && loadedPanoramaUrlRef.current === target.image_url) return;
+
+      const targetUrl = target.image_url;
+      inFlightRef.current = true;
       setIsPanoramaLoading(true);
+      // Markers are dropped during a swap; mark not-ready so they re-apply on resolve.
+      setIsViewerReady(false);
+      setPanoramaError(false);
       scheduleAutoRotate();
 
-      const initialView = scene.metadata?.initial_view ?? tourSettings?.initial_view;
+      // Apply per-scene field-of-view constraints (the viewer persists across scenes).
+      const camera = target.metadata?.camera;
+      if (typeof camera?.min_fov === 'number') viewer.setOption('minFov', camera.min_fov);
+      if (typeof camera?.max_fov === 'number') viewer.setOption('maxFov', camera.max_fov);
 
-      viewerRef.current
-        .setPanorama(scene.image_url, {
-          position: {
-            pitch: initialView?.pitch ?? 0,
-            yaw: initialView?.yaw ?? 0,
-          },
+      const initialView = target.metadata?.initial_view ?? tourSettings?.initial_view;
+      const url = force
+        ? `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}reload=${Date.now()}`
+        : targetUrl;
+
+      const settle = (ok: boolean) => {
+        inFlightRef.current = false;
+        setIsPanoramaLoading(false);
+        if (ok) {
+          loadedPanoramaUrlRef.current = targetUrl;
+          setIsViewerReady(true);
+          setPanoramaError(false);
+          // A newer scene was requested mid-load — load it now.
+          if (latestSceneRef.current?.image_url !== targetUrl) processQueueRef.current(false);
+        } else {
+          setPanoramaError(true);
+        }
+      };
+
+      viewer
+        .setPanorama(url, {
+          transition: true,
+          // The app renders its own branded loading overlay; suppress PSV's.
+          showLoader: false,
+          position: { pitch: initialView?.pitch ?? 0, yaw: initialView?.yaw ?? 0 },
           zoom:
             typeof initialView === 'object' && 'zoom' in initialView && typeof initialView.zoom === 'number'
               ? initialView.zoom
               : VIEWER_DEFAULTS.defaultZoom,
         })
-        .then(() => setIsPanoramaLoading(false))
-        .catch(() => setIsPanoramaLoading(false));
-    }
-  }, [scene.image_url, scene.metadata, scheduleAutoRotate, tourSettings?.initial_view]);
+        .then(() => settle(true))
+        .catch(() => settle(false));
+    },
+    [scheduleAutoRotate, tourSettings?.initial_view]
+  );
 
-  // Update markers when hotspots change
+  // Keep a stable ref to the latest processSceneQueue so the settle() callback can
+  // re-invoke it without stale closures.
   useEffect(() => {
-    if (!markersPluginRef.current) return;
+    processQueueRef.current = processSceneQueue;
+  }, [processSceneQueue]);
+
+  // Swap panorama when the scene changes (no-op while a load is in flight; the
+  // in-flight load picks up the latest scene when it settles).
+  useEffect(() => {
+    if (viewerRef.current && scene.image_url) {
+      processSceneQueue();
+    }
+  }, [scene.image_url, processSceneQueue]);
+
+  // Update markers when hotspots change. Gated on isViewerReady because PSV
+  // discards markers added before the panorama has loaded.
+  useEffect(() => {
+    if (!markersPluginRef.current || !isViewerReady) return;
 
     // Clear existing markers
     markersPluginRef.current.clearMarkers();
@@ -354,7 +445,9 @@ export function PanoramaViewer({
           yaw: hotspot.position.yaw,
           pitch: hotspot.position.pitch,
         }),
-        tooltip: hotspot.title || undefined,
+        // Navigation pucks carry their own room-name label, so suppress the PSV
+        // tooltip for them to avoid a duplicate; keep it for info/media markers.
+        tooltip: hotspot.type === 'navigation' ? undefined : hotspot.title || undefined,
         data: hotspot,
         // Enable dragging in editor mode
         draggable: isEditor,
@@ -362,26 +455,21 @@ export function PanoramaViewer({
 
       // Set marker appearance based on type
       switch (hotspot.type) {
-        case 'navigation':
+        case 'navigation': {
+          const label = (hotspot.title || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
           markerConfig.html = `
-            <div class="psv-marker-navigation" role="button" tabindex="0" aria-label="${hotspot.title || 'Hotspot'}" data-marker-id="${hotspot.id}" style="
-              width: ${hotspot.icon_size || 32}px;
-              height: ${hotspot.icon_size || 32}px;
-              background-color: ${hotspot.icon_color || '#FF5733'};
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              cursor: pointer;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              transition: transform 0.2s;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
+            <div class="psv-nav-marker" role="button" tabindex="0" aria-label="${label || 'Go to room'}" data-marker-id="${hotspot.id}">
+              <span class="psv-nav-pulse" aria-hidden="true"></span>
+              <span class="psv-nav-core" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+              </span>
+              ${label ? `<span class="psv-nav-label">${label}</span>` : ''}
             </div>
           `;
           break;
+        }
         case 'info':
           markerConfig.html = `
             <div class="psv-marker-info" role="button" tabindex="0" aria-label="${hotspot.title || 'Hotspot'}" data-marker-id="${hotspot.id}" style="
@@ -558,7 +646,7 @@ export function PanoramaViewer({
       }
       container?.removeEventListener('keydown', onMarkerKey);
     };
-  }, [hotspots, isEditor, onHotspotSelect, onHotspotClick, onSceneChange, onHotspotDrag]);
+  }, [hotspots, isViewerReady, isEditor, onHotspotSelect, onHotspotClick, onSceneChange, onHotspotDrag]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -697,9 +785,28 @@ export function PanoramaViewer({
 
   return (
     <div className={cn('relative h-full w-full', className)}>
-      {isPanoramaLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40">
+      {isPanoramaLoading && !panoramaError && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/50">
           <Spinner size="lg" />
+          <span className="text-sm font-medium text-white/80">Loading room…</span>
+        </div>
+      )}
+      {panoramaError && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6 text-center">
+          <div className="max-w-sm">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-primary-500)]/15 text-[var(--color-primary-400)]">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-white">This room couldn’t load</h2>
+            <p className="mt-1 text-sm text-white/60">The panorama failed to load. Check your connection and try again.</p>
+            <Button className="mt-4" onClick={() => processSceneQueue(true)}>
+              Retry
+            </Button>
+          </div>
         </div>
       )}
       <div

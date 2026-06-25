@@ -34,6 +34,7 @@ const ProfilePage = lazy(() => import('@/pages/settings/ProfilePage').then((m) =
 const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const PublicTourPage = lazy(() => import('@/pages/PublicTourPage').then((m) => ({ default: m.PublicTourPage })));
 const EmbedTourPage = lazy(() => import('@/pages/EmbedTourPage').then((m) => ({ default: m.EmbedTourPage })));
+const LocalTourPage = lazy(() => import('@/pages/LocalTourPage').then((m) => ({ default: m.LocalTourPage })));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
 
 function LazyPage({ children }: { children: React.ReactNode }) {
@@ -99,6 +100,12 @@ export const router = createBrowserRouter([
   {
     path: ROUTES.EMBED_TOUR,
     element: <LazyPage><EmbedTourPage /></LazyPage>,
+  },
+
+  // Local spatial-tour harness (DEV ONLY) — renders properties/<id>/tour.json
+  {
+    path: ROUTES.LOCAL_TOUR,
+    element: <LazyPage><LocalTourPage /></LazyPage>,
   },
 
   // 404 fallback

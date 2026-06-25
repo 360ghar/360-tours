@@ -17,6 +17,7 @@ export const ROUTES = {
   SETTINGS: '/settings',
   PUBLIC_TOUR: '/view/:id',
   EMBED_TOUR: '/embed/:id',
+  LOCAL_TOUR: '/local/:propertyId',
 } as const;
 
 // Navigation Items

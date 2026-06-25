@@ -377,6 +377,14 @@ body {
   border-radius: var(--radius-lg);
 }
 
+/* Suppress PSV's built-in panorama overlay (its raw "!" / "The panorama cannot be
+   loaded" message). The app provides its own branded loading spinner and a
+   friendly error+retry state in PanoramaViewer, so the native overlay would only
+   duplicate (and visually clash with) those. */
+.psv-overlay {
+  display: none !important;
+}
+
 .psv-navbar {
   background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent) !important;
 }
@@ -388,6 +396,91 @@ body {
 
 .psv-marker--custom:hover {
   transform: scale(1.1);
+}
+
+/* Navigation hotspot — Matterport-style floor puck.
+   A bright circular target with a forward chevron, a soft pulse ring, and a
+   room-name label that appears on hover/focus. White core + brand accent keeps it
+   legible over both bright and dark panoramas. */
+.psv-nav-marker {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.psv-nav-marker:hover,
+.psv-nav-marker:focus-visible {
+  transform: scale(1.14);
+  outline: none;
+}
+
+.psv-nav-pulse {
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  border: 2px solid var(--color-primary-400);
+  opacity: 0.7;
+  pointer-events: none;
+  animation: psv-nav-pulse 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.psv-nav-core {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--color-primary-600);
+  background: radial-gradient(circle at 50% 36%, #ffffff 0%, #ffffff 58%, #fff1ec 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), inset 0 0 0 2px var(--color-primary-500);
+}
+
+.psv-nav-core svg {
+  display: block;
+  transform: translateY(-1px);
+}
+
+.psv-nav-label {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(17, 17, 19, 0.9);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.psv-nav-marker:hover .psv-nav-label,
+.psv-nav-marker:focus-visible .psv-nav-label {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@keyframes psv-nav-pulse {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  70% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .psv-nav-pulse { animation: none; opacity: 0.5; }
+  .psv-nav-marker { transition: none; }
 }
 
 /* ============================================
