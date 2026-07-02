@@ -1,0 +1,181 @@
+{
+  "title": "Vatika City — 3BHK Builder Floor in Sector 49",
+  "generator": "spatial-ai-v1",
+  "initial_scene_id": "living_room",
+  "scenes": [
+    {
+      "id": "living_room",
+      "title": "Open-Plan Scandinavian Living Room",
+      "description": "A bright, family-sized living room anchored by a deep sage-green sectional sofa, a solid-wood coffee table and a soft wool rug. Light wood shelving, a wall-mounted TV and warm grey walls give it a relaxed Scandinavian feel, while the open layout flows straight into the dining area and out to a curtained balcony. The wooden entrance door with its shoe rack sits to one side, marking the home's threshold.",
+      "caption": "Sage sectional, open-plan family lounge",
+      "narration_script": "As you step in through the front door, you arrive in the heart of the home: a generous open-plan living room. The L-shaped sage sofa and wool rug make this the family's gathering spot, with the TV wall and bookshelves to your right. Notice how the space opens directly toward the dining table ahead and the balcony off to the side, so light moves freely through the whole floor. From here, let's continue into the dining area.",
+      "image_url": "equirectangular_images/living_room_panorama.webp",
+      "order_index": 1,
+      "metadata": {
+        "initial_view": { "yaw": -70, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "living_room->dining_room",
+          "type": "navigation",
+          "target_scene_id": "dining_room",
+          "title": "Family Dining Area",
+          "position": { "yaw": -64, "pitch": -14 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        }
+      ]
+    },
+    {
+      "id": "dining_room",
+      "title": "Light Wood Family Dining Area",
+      "description": "A warm dining space at the center of the home, with a large light-wood table for six under a glass pendant light and a slow ceiling fan. A matching sideboard with family photos lines one wall and a curtained window brings in soft daylight. This central hub connects outward to the living room, the modular kitchen, a bedroom, a full bathroom and the balcony.",
+      "caption": "Six-seat table, central family hub",
+      "narration_script": "Here in the dining area you are at the crossroads of the home. The six-seater table sits beneath a warm pendant light, with the sideboard and family photos along the wall. Look around and you will see every part of the floor from this one spot: the living room behind you, the kitchen with its steel fridge straight ahead, a bedroom and bathroom through the doors on your left, and the balcony beyond the window. Let's explore the kitchen next.",
+      "image_url": "equirectangular_images/master_bedroom_panorama.webp",
+      "order_index": 2,
+      "metadata": {
+        "initial_view": { "yaw": 4, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "dining_room->living_room",
+          "type": "navigation",
+          "target_scene_id": "living_room",
+          "title": "Open-Plan Scandinavian Living Room",
+          "position": { "yaw": -173, "pitch": -20 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        },
+        {
+          "id": "dining_room->bathroom",
+          "type": "navigation",
+          "target_scene_id": "bathroom",
+          "title": "Granite-Top Family Bathroom",
+          "position": { "yaw": -136, "pitch": -25 },
+          "order_index": 2,
+          "custom_data": { "auto_generated": true, "opening_type": "door" }
+        },
+        {
+          "id": "dining_room->master_bedroom",
+          "type": "navigation",
+          "target_scene_id": "master_bedroom",
+          "title": "Calm Master Bedroom",
+          "position": { "yaw": -87, "pitch": -28 },
+          "order_index": 3,
+          "custom_data": { "auto_generated": true, "opening_type": "door" }
+        },
+        {
+          "id": "dining_room->kitchen",
+          "type": "navigation",
+          "target_scene_id": "kitchen",
+          "title": "Modular U-Shaped Kitchen",
+          "position": { "yaw": 8, "pitch": -14 },
+          "order_index": 4,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        },
+        {
+          "id": "dining_room->balcony",
+          "type": "navigation",
+          "target_scene_id": "balcony",
+          "title": "Road-Facing Garden Balcony",
+          "position": { "yaw": 58, "pitch": -20 },
+          "order_index": 5,
+          "custom_data": { "auto_generated": true, "opening_type": "glass_sliding_door" }
+        }
+      ]
+    },
+    {
+      "id": "kitchen",
+      "title": "Modular U-Shaped Kitchen",
+      "description": "A practical U-shaped modular kitchen in light laminate with black granite counters and a stainless steel double-door refrigerator. A granite breakfast bar with metal stools doubles as casual seating, and a window over the sink brings in daylight above the gas hob and water purifier. Everyday family touches — a sippy cup, hanging bags, magnets on the fridge — give it a lived-in warmth.",
+      "caption": "Granite breakfast bar, steel appliances",
+      "narration_script": "Welcome to the kitchen, the busy engine of this family home. It's laid out in a U-shape with the steel fridge to one side, the gas hob and sink under the window, and a granite breakfast bar with stools where the kids perch. There's a water purifier, plenty of modular storage, and a passage on this side that leads back out to the dining area. When you're ready, head back to the dining table.",
+      "image_url": "equirectangular_images/bathroom_panorama.webp",
+      "order_index": 3,
+      "metadata": {
+        "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "kitchen->dining_room",
+          "type": "navigation",
+          "target_scene_id": "dining_room",
+          "title": "Light Wood Family Dining Area",
+          "position": { "yaw": -145, "pitch": -26 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        }
+      ]
+    },
+    {
+      "id": "master_bedroom",
+      "title": "Calm Master Bedroom",
+      "description": "A restful master bedroom with a king bed against a muted grey accent wall, flanked by bedside lamps and framed prints. Light engineered-wood flooring, a tall wooden wardrobe with mirror, a dresser and a compact study desk make it a comfortable, functional retreat. A curtained window opens to a juliet railing and city view, and an en-suite bathroom sits off to one side.",
+      "caption": "Grey accent wall, king bed retreat",
+      "narration_script": "Step into the master bedroom, a calm and private retreat. The king bed sits against a soft grey accent wall, with reading lamps on either side and a mirrored wardrobe for storage. There's a tidy study desk by the window, which looks out over the neighbourhood through linen curtains, and an en-suite bathroom in the corner. When you're done resting your eyes, the door leads back out to the dining area.",
+      "image_url": "equirectangular_images/dining_room_panorama.webp",
+      "order_index": 4,
+      "metadata": {
+        "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "master_bedroom->dining_room",
+          "type": "navigation",
+          "target_scene_id": "dining_room",
+          "title": "Light Wood Family Dining Area",
+          "position": { "yaw": -168, "pitch": -28 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "door" }
+        }
+      ]
+    },
+    {
+      "id": "bathroom",
+      "title": "Granite-Top Family Bathroom",
+      "description": "A well-finished full bathroom in warm beige stone-look tile, with a floating wood vanity topped in black granite, a large framed mirror, a wall-hung WC and a glass-enclosed rain shower lit by a small window. Brushed-nickel fittings and neatly hung towels keep it practical for everyday family use.",
+      "caption": "Glass shower, granite floating vanity",
+      "narration_script": "This is the family bathroom, finished in warm beige stone-look tile. You have a floating vanity with a black granite top and a big mirror on one side, a wall-hung toilet in the middle, and a glass-enclosed rain shower with its own little window for light. Everything is laid out for easy daily use. The door beside the vanity takes you back out to the dining area.",
+      "image_url": "equirectangular_images/kitchen_panorama.webp",
+      "order_index": 5,
+      "metadata": {
+        "initial_view": { "yaw": -170, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "bathroom->dining_room",
+          "type": "navigation",
+          "target_scene_id": "dining_room",
+          "title": "Light Wood Family Dining Area",
+          "position": { "yaw": -170, "pitch": -30 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "door" }
+        }
+      ]
+    },
+    {
+      "id": "balcony",
+      "title": "Road-Facing Garden Balcony",
+      "description": "A generous wraparound balcony with iron railings, potted greenery and a pair of cane chairs around a small glass table. String lights, a wind chime and motivational wood signs give it a cozy outdoor-room feel, while the open view stretches over Sector 49's low-rise residential streets. A glass sliding door connects it back to the dining area.",
+      "caption": "Cane chairs, plants, city skyline",
+      "narration_script": "Step out onto the balcony, the home's breath of fresh air. Cane chairs and a small glass table sit among potted plants, with string lights overhead and a wind chime by the wall. Look out over the railing for an open view across Sector 49's tree-lined residential streets and skyline. When you've taken in the air, the glass sliding door leads straight back into the dining area.",
+      "image_url": "equirectangular_images/balcony_panorama.webp",
+      "order_index": 6,
+      "metadata": {
+        "initial_view": { "yaw": 18, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "balcony->dining_room",
+          "type": "navigation",
+          "target_scene_id": "dining_room",
+          "title": "Light Wood Family Dining Area",
+          "position": { "yaw": 18, "pitch": -34 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "glass_sliding_door" }
+        }
+      ]
+    }
+  ]
+}

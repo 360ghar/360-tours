@@ -13,35 +13,70 @@ export function useTwoFingerSwipe(
 ) {
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
+  const lastX = useRef<number | null>(null);
+  const lastY = useRef<number | null>(null);
+  const onSwipeLeftRef = useRef(onSwipeLeft);
+  const onSwipeRightRef = useRef(onSwipeRight);
+
+  useEffect(() => {
+    onSwipeLeftRef.current = onSwipeLeft;
+    onSwipeRightRef.current = onSwipeRight;
+  }, [onSwipeLeft, onSwipeRight]);
 
   useEffect(() => {
     if (!enabled || !ref.current) return;
     const el = ref.current;
 
+    const getCenter = (touches: TouchList) => ({
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2,
+    });
+
+    const reset = () => {
+      startX.current = null;
+      startY.current = null;
+      lastX.current = null;
+      lastY.current = null;
+    };
+
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 2) return;
-      startX.current = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      startY.current = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const center = getCenter(e.touches);
+      startX.current = center.x;
+      startY.current = center.y;
+      lastX.current = center.x;
+      lastY.current = center.y;
     };
-    const onEnd = (e: TouchEvent) => {
+
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || startX.current === null) return;
+      const center = getCenter(e.touches);
+      lastX.current = center.x;
+      lastY.current = center.y;
+    };
+
+    const onEnd = () => {
       if (startX.current === null) return;
-      const endX = e.changedTouches[0]?.clientX ?? startX.current;
-      const endY = e.changedTouches[0]?.clientY ?? startY.current ?? 0;
+      const endX = lastX.current ?? startX.current;
+      const endY = lastY.current ?? startY.current ?? 0;
       const dx = endX - startX.current;
       const dy = endY - (startY.current ?? 0);
       if (Math.abs(dx) > minDistance && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        if (dx < 0) onSwipeLeft();
-        else onSwipeRight();
+        if (dx < 0) onSwipeLeftRef.current();
+        else onSwipeRightRef.current();
       }
-      startX.current = null;
-      startY.current = null;
+      reset();
     };
 
     el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: true });
     el.addEventListener('touchend', onEnd, { passive: true });
+    el.addEventListener('touchcancel', reset, { passive: true });
     return () => {
       el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
       el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', reset);
     };
-  }, [enabled, minDistance, onSwipeLeft, onSwipeRight, ref]);
+  }, [enabled, minDistance, ref]);
 }

@@ -34,6 +34,7 @@ export function HowItWorks() {
   return (
     <section
       ref={sectionRef}
+      id="how-it-works"
       className="landing-section bg-[var(--landing-bg-dark)] text-white relative overflow-hidden"
     >
       {/* Background gradient */}

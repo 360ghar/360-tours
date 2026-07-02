@@ -1,0 +1,181 @@
+{
+  "title": "Signature Global Rosalia — 2BHK Apartment in Sector 82",
+  "generator": "spatial-ai-v1",
+  "initial_scene_id": "entrance",
+  "scenes": [
+    {
+      "id": "entrance",
+      "title": "Welcoming Foyer with Open Living View",
+      "description": "The apartment opens into a bright foyer with a solid wood front door, a slim wooden shoe rack and a traditional rangoli on the light ceramic tile. From here the home reveals itself at a glance — the open-plan living room straight ahead, a bedroom through the archway on the right and the common bathroom just beside it.",
+      "caption": "Bright foyer, open-plan entry",
+      "narration_script": "As you step in, you are standing in the foyer of this 2BHK home. Notice the solid wood door on your left with the shoe rack and a hand-drawn rangoli underfoot. Ahead of you the space flows straight into the sunlit living room, while to your right an archway leads into the bedroom and the common bathroom sits right alongside. Let's move into the living room.",
+      "image_url": "equirectangular_images/entrance_panorama.webp",
+      "order_index": 0,
+      "metadata": {
+        "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "entrance->living_room",
+          "type": "navigation",
+          "target_scene_id": "living_room",
+          "title": "Sunlit Open-Plan Living Room",
+          "position": { "yaw": -2, "pitch": -34 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        },
+        {
+          "id": "entrance->master_bedroom",
+          "type": "navigation",
+          "target_scene_id": "master_bedroom",
+          "title": "Restful Master Bedroom",
+          "position": { "yaw": 120, "pitch": -30 },
+          "order_index": 2,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        }
+      ]
+    },
+    {
+      "id": "living_room",
+      "title": "Sunlit Open-Plan Living Room",
+      "description": "A relaxed Scandinavian living room anchored by a sage-green sofa, a wooden coffee table and a low TV console, all opening onto a park-facing balcony through a wide glass sliding door. The room flows seamlessly into the dining area and kitchen on one side, keeping the compact home feeling airy and connected.",
+      "caption": "Sage sofa, park-facing balcony",
+      "narration_script": "Here is the heart of the home — a light-filled open-plan living room. The sage-green sofa and wooden coffee table sit on a patterned rug facing the TV console, and the glass sliding door behind opens to a park-facing balcony. To one side the space continues into the dining table and kitchen, and the front door is back over your shoulder. From here you can step out to the balcony or carry on into the kitchen.",
+      "image_url": "equirectangular_images/living_room_panorama.webp",
+      "order_index": 1,
+      "metadata": {
+        "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "living_room->entrance",
+          "type": "navigation",
+          "target_scene_id": "entrance",
+          "title": "Welcoming Foyer with Open Living View",
+          "position": { "yaw": -150, "pitch": -30 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        },
+        {
+          "id": "living_room->kitchen",
+          "type": "navigation",
+          "target_scene_id": "kitchen",
+          "title": "Functional Open Kitchen with Dining",
+          "position": { "yaw": 44, "pitch": -26 },
+          "order_index": 2,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        },
+        {
+          "id": "living_room->balcony",
+          "type": "navigation",
+          "target_scene_id": "balcony",
+          "title": "Park-Facing Balcony Retreat",
+          "position": { "yaw": -2, "pitch": -22 },
+          "order_index": 3,
+          "custom_data": { "auto_generated": true, "opening_type": "glass_sliding_door" }
+        }
+      ]
+    },
+    {
+      "id": "kitchen",
+      "title": "Functional Open Kitchen with Dining",
+      "description": "A practical L-shaped kitchen with a dark granite countertop, sage-green modular cabinets, a steel sink and a gas hob, all open to the dining and living area for an easy, connected layout. A window above the counter brings in daylight, and a utility doorway leads off toward the service balcony and washing machine.",
+      "caption": "Granite counter, open to dining",
+      "narration_script": "This is the kitchen, laid out in an efficient L-shape with sage-green cabinets and a dark granite counter. There's a steel sink under the window, a gas hob to the side, and a tall fridge by the entry. Because it opens straight onto the dining table and living room, whoever's cooking stays part of the conversation. Let's head back into the living room.",
+      "image_url": "equirectangular_images/kitchen_panorama.webp",
+      "order_index": 2,
+      "metadata": {
+        "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "kitchen->living_room",
+          "type": "navigation",
+          "target_scene_id": "living_room",
+          "title": "Sunlit Open-Plan Living Room",
+          "position": { "yaw": -165, "pitch": -26 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "open_archway" }
+        }
+      ]
+    },
+    {
+      "id": "master_bedroom",
+      "title": "Restful Master Bedroom",
+      "description": "A calm bedroom with a soft sage-and-grey accent wall behind the upholstered bed, twin bedside lamps and a light wood floor. A dresser and a compact study desk with a chair make it work-from-home ready, while an attached bathroom opens off one side and a wide door leads back out to the living and dining area.",
+      "caption": "Sage accent wall, attached bath",
+      "narration_script": "Step into the master bedroom, a restful space with a sage and grey accent wall behind the bed and warm wood flooring underfoot. Twin lamps flank the bed, there's a dresser by the door and a small study desk in the corner for working from home. The attached bathroom is just off to the side, and the wide door takes you back to the living area. Let's look at the bathroom.",
+      "image_url": "equirectangular_images/master_bedroom_panorama.webp",
+      "order_index": 3,
+      "metadata": {
+        "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "master_bedroom->entrance",
+          "type": "navigation",
+          "target_scene_id": "entrance",
+          "title": "Welcoming Foyer with Open Living View",
+          "position": { "yaw": -107, "pitch": -28 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "door" }
+        },
+        {
+          "id": "master_bedroom->bathroom",
+          "type": "navigation",
+          "target_scene_id": "bathroom",
+          "title": "Tiled Bathroom with Walk-In Shower",
+          "position": { "yaw": -60, "pitch": -30 },
+          "order_index": 2,
+          "custom_data": { "auto_generated": true, "opening_type": "door" }
+        }
+      ]
+    },
+    {
+      "id": "bathroom",
+      "title": "Tiled Bathroom with Walk-In Shower",
+      "description": "A neat bathroom finished in warm beige tile with a mosaic feature strip in the curtained walk-in shower. It has a granite-topped vanity with a wall-mounted sink, a large mirror, a wall-hung WC and a towel rail, all kept clean and bright. Its door opens onto the short passage back to the bedroom.",
+      "caption": "Mosaic shower, granite vanity",
+      "narration_script": "This is the bathroom, finished in warm beige tile with a mosaic accent in the walk-in shower. There's a granite-topped vanity with a wall-mounted basin and a generous mirror, a wall-hung WC and a towel rail within easy reach. Through the door you can see the passage leading straight back to the bedroom. Let's return there.",
+      "image_url": "equirectangular_images/bathroom_panorama.webp",
+      "order_index": 4,
+      "metadata": {
+        "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "bathroom->master_bedroom",
+          "type": "navigation",
+          "target_scene_id": "master_bedroom",
+          "title": "Restful Master Bedroom",
+          "position": { "yaw": 150, "pitch": -30 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "door" }
+        }
+      ]
+    },
+    {
+      "id": "balcony",
+      "title": "Park-Facing Balcony Retreat",
+      "description": "A generous park-facing balcony set up as an outdoor sitting nook with two cushioned cane chairs and a small rattan table. A clothes-drying rack, leafy planters and a sweeping view over greenery and the New Gurgaon skyline make it a relaxed spot, with glass sliding doors leading straight back into the living room.",
+      "caption": "Cane chairs, skyline view",
+      "narration_script": "Out here on the park-facing balcony you get a real breath of air, with two cane chairs and a little table making a perfect morning-coffee corner. There's a drying rack and planters along the rail, and a wide view over the greenery and the New Gurgaon skyline. When you're ready, the glass sliding door takes you straight back into the living room.",
+      "image_url": "equirectangular_images/balcony_panorama.webp",
+      "order_index": 5,
+      "metadata": {
+        "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 }
+      },
+      "hotspots": [
+        {
+          "id": "balcony->living_room",
+          "type": "navigation",
+          "target_scene_id": "living_room",
+          "title": "Sunlit Open-Plan Living Room",
+          "position": { "yaw": 153, "pitch": -26 },
+          "order_index": 1,
+          "custom_data": { "auto_generated": true, "opening_type": "glass_sliding_door" }
+        }
+      ]
+    }
+  ]
+}

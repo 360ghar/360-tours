@@ -7,10 +7,8 @@ interface SkeletonProps {
 export function Skeleton({ className }: SkeletonProps) {
   return (
     <div
-      className={cn(
-        'animate-pulse rounded-md bg-[var(--color-surface-elevated)]',
-        className
-      )}
+      aria-hidden="true"
+      className={cn('animate-pulse rounded-md bg-[var(--color-surface-elevated)]', className)}
     />
   );
 }
@@ -27,7 +25,7 @@ export function DashboardSkeleton() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="rounded-lg border border-[var(--color-border)] p-4">
             <Skeleton className="h-4 w-24 mb-2" />
@@ -90,10 +88,7 @@ export function TourListSkeleton() {
       {/* Tour grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {[...Array(6)].map((_, i) => (
-          <div
-            key={i}
-            className="rounded-lg border border-[var(--color-border)] overflow-hidden"
-          >
+          <div key={i} className="rounded-lg border border-[var(--color-border)] overflow-hidden">
             <Skeleton className="h-48 w-full" />
             <div className="p-4 space-y-2">
               <Skeleton className="h-5 w-3/4" />
@@ -210,10 +205,7 @@ export function SettingsSkeleton() {
       <Skeleton className="h-8 w-32" />
 
       {[...Array(4)].map((_, i) => (
-        <div
-          key={i}
-          className="rounded-lg border border-[var(--color-border)] p-6 space-y-4"
-        >
+        <div key={i} className="rounded-lg border border-[var(--color-border)] p-6 space-y-4">
           <div className="flex items-center gap-2">
             <Skeleton className="h-5 w-5" />
             <Skeleton className="h-5 w-32" />
@@ -243,7 +235,7 @@ export function AnalyticsSkeleton() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="rounded-lg border border-[var(--color-border)] p-4">
             <Skeleton className="h-4 w-24 mb-2" />
@@ -262,10 +254,7 @@ export function AnalyticsSkeleton() {
       {/* Tables */}
       <div className="grid gap-4 lg:grid-cols-2">
         {[...Array(2)].map((_, i) => (
-          <div
-            key={i}
-            className="rounded-lg border border-[var(--color-border)] p-4"
-          >
+          <div key={i} className="rounded-lg border border-[var(--color-border)] p-4">
             <Skeleton className="h-5 w-32 mb-4" />
             <div className="space-y-2">
               {[...Array(5)].map((_, j) => (

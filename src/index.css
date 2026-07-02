@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* Design Tokens - 360 Viewer Theme */
 :root {
@@ -7,48 +7,48 @@
   --font-body: 'Satoshi', system-ui, sans-serif;
 
   /* Landing Page Specific Colors - Bold Editorial Palette */
-  --landing-bg: #FAFAFA;
-  --landing-bg-dark: #0A0A0B;
-  --landing-accent: #FF5733;
-  --landing-accent-hover: #E64A2E;
-  --landing-accent-subtle: #FFF0EC;
-  --landing-text-hero: #0A0A0B;
-  --landing-text-body: #3D3D3D;
-  --landing-text-muted: #6B6B6B;
+  --landing-bg: #fafafa;
+  --landing-bg-dark: #0a0a0b;
+  --landing-accent: #ff5733;
+  --landing-accent-hover: #e64a2e;
+  --landing-accent-subtle: #fff0ec;
+  --landing-text-hero: #0a0a0b;
+  --landing-text-body: #3d3d3d;
+  --landing-text-muted: #6b6b6b;
 
   /* Gradient for AI emphasis */
-  --landing-gradient-ai: linear-gradient(135deg, #FF5733 0%, #FF8A5C 50%, #FFC857 100%);
-  --landing-gradient-dark: linear-gradient(180deg, #0A0A0B 0%, #1A1A1F 100%);
+  --landing-gradient-ai: linear-gradient(135deg, #ff5733 0%, #ff8a5c 50%, #ffc857 100%);
+  --landing-gradient-dark: linear-gradient(180deg, #0a0a0b 0%, #1a1a1f 100%);
 
   /* Editorial spacing scale */
   --space-section: clamp(5rem, 10vw, 8rem);
   --space-block: clamp(2.5rem, 5vw, 4rem);
 
   /* Primary Brand Colors - Orange-Red (matching landing accent) */
-  --color-primary-50: #FFF5F2;
-  --color-primary-100: #FFE8E1;
-  --color-primary-200: #FFCFC2;
-  --color-primary-300: #FFAB94;
-  --color-primary-400: #FF8A5C;
-  --color-primary-500: #FF5733;
-  --color-primary-600: #E64A2E;
-  --color-primary-700: #CC3D25;
-  --color-primary-800: #A63320;
-  --color-primary-900: #872A1A;
-  --color-primary-950: #4A1610;
+  --color-primary-50: #fff5f2;
+  --color-primary-100: #ffe8e1;
+  --color-primary-200: #ffcfc2;
+  --color-primary-300: #ffab94;
+  --color-primary-400: #ff8a5c;
+  --color-primary-500: #ff5733;
+  --color-primary-600: #e64a2e;
+  --color-primary-700: #cc3d25;
+  --color-primary-800: #a63320;
+  --color-primary-900: #872a1a;
+  --color-primary-950: #4a1610;
 
   /* Secondary Colors - Golden/Amber (from landing gradient) */
-  --color-secondary-50: #FFFBEB;
-  --color-secondary-100: #FEF3C7;
-  --color-secondary-200: #FDE68A;
-  --color-secondary-300: #FCD34D;
-  --color-secondary-400: #FBBF24;
-  --color-secondary-500: #FFC857;
-  --color-secondary-600: #D97706;
-  --color-secondary-700: #B45309;
-  --color-secondary-800: #92400E;
-  --color-secondary-900: #78350F;
-  --color-secondary-950: #451A03;
+  --color-secondary-50: #fffbeb;
+  --color-secondary-100: #fef3c7;
+  --color-secondary-200: #fde68a;
+  --color-secondary-300: #fcd34d;
+  --color-secondary-400: #fbbf24;
+  --color-secondary-500: #ffc857;
+  --color-secondary-600: #d97706;
+  --color-secondary-700: #b45309;
+  --color-secondary-800: #92400e;
+  --color-secondary-900: #78350f;
+  --color-secondary-950: #451a03;
 
   /* Semantic Colors - Success (Emerald palette) */
   --color-success-50: #ecfdf5;
@@ -88,19 +88,19 @@
 
   /* Background & Surface */
   --color-background: #ffffff;
-  --color-surface: #F5F5F5;
+  --color-surface: #f5f5f5;
   --color-surface-elevated: #ffffff;
 
   /* Text Colors */
-  --color-text-primary: #0A0A0B;
-  --color-text-secondary: #3D3D3D;
-  --color-text-muted: #6B6B6B;
-  --color-text-disabled: #9A9A9A;
+  --color-text-primary: #0a0a0b;
+  --color-text-secondary: #3d3d3d;
+  --color-text-muted: #6b6b6b;
+  --color-text-disabled: #9a9a9a;
   --color-text-inverse: #ffffff;
 
   /* Border Colors */
-  --color-border: #E5E5E5;
-  --color-border-focus: #FF5733;
+  --color-border: #e5e5e5;
+  --color-border-focus: #ff5733;
   --color-border-error: #ef4444;
 
   /* Shadows */
@@ -137,23 +137,23 @@
 
 /* Dark Mode */
 .dark {
-  --color-background: #0A0A0B;
+  --color-background: #0a0a0b;
   --color-surface: #111111;
-  --color-surface-elevated: #1A1A1F;
+  --color-surface-elevated: #1a1a1f;
 
-  --color-text-primary: #FAFAFA;
-  --color-text-secondary: #B8B8B8;
-  --color-text-muted: #6B6B6B;
-  --color-text-disabled: #4A4A4A;
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #b8b8b8;
+  --color-text-muted: #6b6b6b;
+  --color-text-disabled: #4a4a4a;
 
-  --color-border: #2A2A2F;
+  --color-border: #2a2a2f;
 
   /* Primary color dark mode adjustments */
-  --color-primary-50: #1F1510;
-  --color-primary-100: #2D1A14;
-  --color-primary-200: #4A1610;
-  --color-primary-600: #FF8A5C;
-  --color-primary-800: #FFCFC2;
+  --color-primary-50: #1f1510;
+  --color-primary-100: #2d1a14;
+  --color-primary-200: #4a1610;
+  --color-primary-600: #ff8a5c;
+  --color-primary-800: #ffcfc2;
 
   /* Success - Dark mode (dark bg, light text for contrast) */
   --color-success-50: #064e3b;
@@ -192,11 +192,11 @@
   --color-info-800: #e5e5e5;
 
   /* Landing page dark mode */
-  --landing-bg: #0A0A0B;
-  --landing-text-hero: #FAFAFA;
-  --landing-text-body: #B8B8B8;
-  --landing-text-muted: #6B6B6B;
-  --landing-accent-subtle: #1F1510;
+  --landing-bg: #0a0a0b;
+  --landing-text-hero: #fafafa;
+  --landing-text-body: #b8b8b8;
+  --landing-text-muted: #6b6b6b;
+  --landing-accent-subtle: #1f1510;
 }
 
 /* Base Styles */
@@ -249,10 +249,7 @@ body {
 }
 
 .text-gradient {
-  background: var(--landing-gradient-ai);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--landing-accent);
 }
 
 /* 360 Viewer Specific Styles */
@@ -274,8 +271,12 @@ body {
 
 /* Animation Classes */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
@@ -301,13 +302,22 @@ body {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .animate-fade-in {
@@ -439,7 +449,9 @@ body {
   place-items: center;
   color: var(--color-primary-600);
   background: radial-gradient(circle at 50% 36%, #ffffff 0%, #ffffff 58%, #fff1ec 100%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), inset 0 0 0 2px var(--color-primary-500);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px var(--color-primary-500);
 }
 
 .psv-nav-core svg {
@@ -463,7 +475,9 @@ body {
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    opacity 180ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .psv-nav-marker:hover .psv-nav-label,
@@ -473,14 +487,28 @@ body {
 }
 
 @keyframes psv-nav-pulse {
-  0% { transform: scale(0.85); opacity: 0.7; }
-  70% { transform: scale(1.6); opacity: 0; }
-  100% { transform: scale(1.6); opacity: 0; }
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .psv-nav-pulse { animation: none; opacity: 0.5; }
-  .psv-nav-marker { transition: none; }
+  .psv-nav-pulse {
+    animation: none;
+    opacity: 0.5;
+  }
+  .psv-nav-marker {
+    transition: none;
+  }
 }
 
 /* ============================================
@@ -522,7 +550,8 @@ body {
 }
 
 @keyframes float {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0) rotate(-3deg);
   }
   50% {
@@ -549,7 +578,8 @@ body {
 }
 
 @keyframes pulseGlow {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(255, 87, 51, 0.4);
   }
   50% {
@@ -617,18 +647,42 @@ body {
 }
 
 /* Stagger delay utilities */
-.landing-delay-0 { animation-delay: 0ms; }
-.landing-delay-100 { animation-delay: 100ms; }
-.landing-delay-200 { animation-delay: 200ms; }
-.landing-delay-300 { animation-delay: 300ms; }
-.landing-delay-400 { animation-delay: 400ms; }
-.landing-delay-500 { animation-delay: 500ms; }
-.landing-delay-600 { animation-delay: 600ms; }
-.landing-delay-700 { animation-delay: 700ms; }
-.landing-delay-800 { animation-delay: 800ms; }
-.landing-delay-900 { animation-delay: 900ms; }
-.landing-delay-1000 { animation-delay: 1000ms; }
-.landing-delay-1200 { animation-delay: 1200ms; }
+.landing-delay-0 {
+  animation-delay: 0ms;
+}
+.landing-delay-100 {
+  animation-delay: 100ms;
+}
+.landing-delay-200 {
+  animation-delay: 200ms;
+}
+.landing-delay-300 {
+  animation-delay: 300ms;
+}
+.landing-delay-400 {
+  animation-delay: 400ms;
+}
+.landing-delay-500 {
+  animation-delay: 500ms;
+}
+.landing-delay-600 {
+  animation-delay: 600ms;
+}
+.landing-delay-700 {
+  animation-delay: 700ms;
+}
+.landing-delay-800 {
+  animation-delay: 800ms;
+}
+.landing-delay-900 {
+  animation-delay: 900ms;
+}
+.landing-delay-1000 {
+  animation-delay: 1000ms;
+}
+.landing-delay-1200 {
+  animation-delay: 1200ms;
+}
 
 /* Landing section base */
 .landing-section {
@@ -691,10 +745,7 @@ body {
 
 /* Landing gradient text */
 .landing-gradient-text {
-  background: var(--landing-gradient-ai);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--landing-accent);
 }
 
 /* CTA Button styles */
@@ -757,5 +808,13 @@ body {
     animation: none;
     opacity: 1;
     transform: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

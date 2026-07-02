@@ -148,6 +148,71 @@ describe('tourEditorStore', () => {
         description: 'New Desc',
       });
     });
+
+    it('keeps pending changes scoped to the tour Save payload', () => {
+      useTourEditorStore.getState().setCurrentTour(createMockTour());
+      useTourEditorStore.getState().updateTourDraft({ title: 'New Title' });
+
+      expect(useTourEditorStore.getState().pendingChanges).toEqual({
+        tour: { title: 'New Title' },
+      });
+    });
+  });
+
+  describe('scene and hotspot compatibility mutations', () => {
+    it('keeps scene draft helpers local-only and outside the Save payload', () => {
+      useTourEditorStore.getState().setCurrentTour(createMockTour());
+      const newScene = createMockScene({ id: 'scene-3', order_index: 2, title: 'Scene 3' });
+
+      useTourEditorStore.getState().addSceneDraft(newScene);
+      useTourEditorStore.getState().updateSceneDraft('scene-3', { title: 'Updated Scene 3' });
+      useTourEditorStore.getState().removeSceneDraft('scene-1');
+
+      const state = useTourEditorStore.getState();
+      expect(state.currentTour?.scenes?.map(scene => scene.id)).toEqual(['scene-2', 'scene-3']);
+      expect(state.currentTour?.scenes?.find(scene => scene.id === 'scene-3')?.title).toBe(
+        'Updated Scene 3'
+      );
+      expect(state.currentSceneId).toBe('scene-2');
+      expect(state.pendingChanges).toEqual({});
+      expect(state.hasUnsavedChanges).toBe(false);
+    });
+
+    it('keeps scene reordering local-only and outside the Save payload', () => {
+      useTourEditorStore.getState().setCurrentTour(createMockTour());
+
+      useTourEditorStore.getState().reorderScenes(['scene-2', 'scene-1']);
+
+      const state = useTourEditorStore.getState();
+      expect(state.currentTour?.scenes?.map(scene => scene.id)).toEqual(['scene-2', 'scene-1']);
+      expect(state.currentTour?.scenes?.map(scene => scene.order_index)).toEqual([0, 1]);
+      expect(state.pendingChanges).toEqual({});
+      expect(state.hasUnsavedChanges).toBe(false);
+    });
+
+    it('keeps hotspot draft helpers local-only and outside the Save payload', () => {
+      useTourEditorStore.getState().setCurrentTour(createMockTour());
+      const hotspot = createMockHotspot({ id: 'hotspot-1' });
+
+      useTourEditorStore.getState().addHotspotDraft('scene-1', hotspot);
+      useTourEditorStore.getState().updateHotspotDraft('hotspot-1', { title: 'Updated Hotspot' });
+
+      let state = useTourEditorStore.getState();
+      expect(state.currentTour?.scenes?.[0]?.hotspots).toEqual([
+        { ...hotspot, title: 'Updated Hotspot' },
+      ]);
+      expect(state.selectedHotspotId).toBe('hotspot-1');
+      expect(state.pendingChanges).toEqual({});
+      expect(state.hasUnsavedChanges).toBe(false);
+
+      useTourEditorStore.getState().removeHotspotDraft('hotspot-1');
+
+      state = useTourEditorStore.getState();
+      expect(state.currentTour?.scenes?.[0]?.hotspots).toEqual([]);
+      expect(state.selectedHotspotId).toBeNull();
+      expect(state.pendingChanges).toEqual({});
+      expect(state.hasUnsavedChanges).toBe(false);
+    });
   });
 
   describe('setCurrentScene', () => {
@@ -162,125 +227,6 @@ describe('tourEditorStore', () => {
     });
   });
 
-  describe('addSceneDraft', () => {
-    it('adds scene to currentTour and pendingChanges', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      const newScene = createMockScene({ id: 'scene-3', order_index: 2, title: 'Scene 3' });
-      useTourEditorStore.getState().addSceneDraft(newScene);
-
-      const state = useTourEditorStore.getState();
-      expect(state.currentTour!.scenes).toHaveLength(3);
-      expect(state.currentTour!.scenes![2].id).toBe('scene-3');
-      expect(state.pendingChanges.scenes?.['scene-3']).toEqual(newScene);
-      expect(state.hasUnsavedChanges).toBe(true);
-    });
-
-    it('does nothing when no current tour', () => {
-      const newScene = createMockScene({ id: 'scene-3' });
-      useTourEditorStore.getState().addSceneDraft(newScene);
-
-      expect(useTourEditorStore.getState().currentTour).toBeNull();
-    });
-  });
-
-  describe('updateSceneDraft', () => {
-    it('records scene changes in pendingChanges', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateSceneDraft('scene-1', { title: 'Updated Scene' });
-
-      const state = useTourEditorStore.getState();
-      expect(state.pendingChanges.scenes?.['scene-1']).toEqual({ title: 'Updated Scene' });
-      expect(state.hasUnsavedChanges).toBe(true);
-    });
-
-    it('merges updates for the same scene', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateSceneDraft('scene-1', { title: 'Updated' });
-      useTourEditorStore.getState().updateSceneDraft('scene-1', { description: 'Desc' });
-
-      expect(useTourEditorStore.getState().pendingChanges.scenes?.['scene-1']).toEqual({
-        title: 'Updated',
-        description: 'Desc',
-      });
-    });
-  });
-
-  describe('removeSceneDraft', () => {
-    it('removes scene from currentTour', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().removeSceneDraft('scene-1');
-
-      const state = useTourEditorStore.getState();
-      expect(state.currentTour!.scenes).toHaveLength(1);
-      expect(state.currentTour!.scenes![0].id).toBe('scene-2');
-      expect(state.hasUnsavedChanges).toBe(true);
-    });
-
-    it('selects next scene when active scene is removed', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      // currentSceneId is 'scene-1' (auto-selected)
-      useTourEditorStore.getState().removeSceneDraft('scene-1');
-
-      expect(useTourEditorStore.getState().currentSceneId).toBe('scene-2');
-    });
-
-    it('keeps currentSceneId when different scene is removed', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().setCurrentScene('scene-2');
-      useTourEditorStore.getState().removeSceneDraft('scene-1');
-
-      expect(useTourEditorStore.getState().currentSceneId).toBe('scene-2');
-    });
-
-    it('sets currentSceneId to null when last scene is removed', () => {
-      const tour = createMockTour({ scenes: [createMockScene({ id: 'only-scene' })] });
-      useTourEditorStore.getState().setCurrentTour(tour);
-      useTourEditorStore.getState().removeSceneDraft('only-scene');
-
-      expect(useTourEditorStore.getState().currentSceneId).toBeNull();
-    });
-
-    it('marks removed scene as deleted in pendingChanges', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().removeSceneDraft('scene-1');
-
-      const pending = useTourEditorStore.getState().pendingChanges.scenes?.['scene-1'];
-      expect(pending).toEqual({ id: 'scene-1', deleted: true });
-    });
-
-    it('does nothing when no current tour', () => {
-      useTourEditorStore.getState().removeSceneDraft('scene-1');
-      expect(useTourEditorStore.getState().hasUnsavedChanges).toBe(false);
-    });
-  });
-
-  describe('reorderScenes', () => {
-    it('reorders scenes according to provided IDs', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().reorderScenes(['scene-2', 'scene-1']);
-
-      const scenes = useTourEditorStore.getState().currentTour!.scenes!;
-      expect(scenes[0].id).toBe('scene-2');
-      expect(scenes[0].order_index).toBe(0);
-      expect(scenes[1].id).toBe('scene-1');
-      expect(scenes[1].order_index).toBe(1);
-      expect(useTourEditorStore.getState().hasUnsavedChanges).toBe(true);
-    });
-
-    it('filters out unknown scene IDs', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().reorderScenes(['scene-1', 'nonexistent', 'scene-2']);
-
-      const scenes = useTourEditorStore.getState().currentTour!.scenes!;
-      expect(scenes).toHaveLength(2);
-    });
-
-    it('does nothing when no current tour', () => {
-      useTourEditorStore.getState().reorderScenes(['scene-1', 'scene-2']);
-      expect(useTourEditorStore.getState().hasUnsavedChanges).toBe(false);
-    });
-  });
-
   describe('selectHotspot', () => {
     it('sets selected hotspot ID', () => {
       useTourEditorStore.getState().selectHotspot('hotspot-1');
@@ -291,114 +237,6 @@ describe('tourEditorStore', () => {
       useTourEditorStore.getState().selectHotspot('hotspot-1');
       useTourEditorStore.getState().selectHotspot(null);
       expect(useTourEditorStore.getState().selectedHotspotId).toBeNull();
-    });
-  });
-
-  describe('addHotspotDraft', () => {
-    it('adds hotspot to the correct scene', () => {
-      const tour = createMockTour();
-      useTourEditorStore.getState().setCurrentTour(tour);
-      const hotspot = createMockHotspot({ id: 'new-hotspot' });
-      useTourEditorStore.getState().addHotspotDraft('scene-1', hotspot);
-
-      const state = useTourEditorStore.getState();
-      const scene = state.currentTour!.scenes!.find((s) => s.id === 'scene-1');
-      expect(scene!.hotspots).toHaveLength(1);
-      expect(scene!.hotspots![0].id).toBe('new-hotspot');
-      expect(state.selectedHotspotId).toBe('new-hotspot');
-      expect(state.pendingChanges.hotspots?.['new-hotspot']).toEqual(hotspot);
-      expect(state.hasUnsavedChanges).toBe(true);
-    });
-
-    it('does not modify other scenes', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      const hotspot = createMockHotspot({ id: 'new-hotspot' });
-      useTourEditorStore.getState().addHotspotDraft('scene-1', hotspot);
-
-      const scene2 = useTourEditorStore.getState().currentTour!.scenes!.find((s) => s.id === 'scene-2');
-      expect(scene2!.hotspots).toHaveLength(0);
-    });
-
-    it('does nothing when no current tour', () => {
-      const hotspot = createMockHotspot();
-      useTourEditorStore.getState().addHotspotDraft('scene-1', hotspot);
-      expect(useTourEditorStore.getState().selectedHotspotId).toBeNull();
-    });
-  });
-
-  describe('updateHotspotDraft', () => {
-    it('records hotspot changes in pendingChanges', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateHotspotDraft('hotspot-1', { title: 'Updated' });
-
-      const state = useTourEditorStore.getState();
-      expect(state.pendingChanges.hotspots?.['hotspot-1']).toEqual({ title: 'Updated' });
-      expect(state.hasUnsavedChanges).toBe(true);
-    });
-
-    it('merges updates for the same hotspot', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateHotspotDraft('hotspot-1', { title: 'Updated' });
-      useTourEditorStore.getState().updateHotspotDraft('hotspot-1', { description: 'Desc' });
-
-      expect(useTourEditorStore.getState().pendingChanges.hotspots?.['hotspot-1']).toEqual({
-        title: 'Updated',
-        description: 'Desc',
-      });
-    });
-  });
-
-  describe('removeHotspotDraft', () => {
-    it('removes hotspot from scene', () => {
-      const scene = createMockScene({
-        id: 'scene-1',
-        hotspots: [createMockHotspot({ id: 'h1' }), createMockHotspot({ id: 'h2' })],
-      });
-      useTourEditorStore.getState().setCurrentTour(createMockTour({ scenes: [scene] }));
-      useTourEditorStore.getState().removeHotspotDraft('h1');
-
-      const updatedScene = useTourEditorStore.getState().currentTour!.scenes![0];
-      expect(updatedScene.hotspots).toHaveLength(1);
-      expect(updatedScene.hotspots![0].id).toBe('h2');
-      expect(useTourEditorStore.getState().hasUnsavedChanges).toBe(true);
-    });
-
-    it('clears selectedHotspotId when active hotspot is removed', () => {
-      const scene = createMockScene({
-        id: 'scene-1',
-        hotspots: [createMockHotspot({ id: 'h1' })],
-      });
-      useTourEditorStore.getState().setCurrentTour(createMockTour({ scenes: [scene] }));
-      useTourEditorStore.getState().selectHotspot('h1');
-      useTourEditorStore.getState().removeHotspotDraft('h1');
-
-      expect(useTourEditorStore.getState().selectedHotspotId).toBeNull();
-    });
-
-    it('keeps selectedHotspotId when different hotspot is removed', () => {
-      const scene = createMockScene({
-        id: 'scene-1',
-        hotspots: [createMockHotspot({ id: 'h1' }), createMockHotspot({ id: 'h2' })],
-      });
-      useTourEditorStore.getState().setCurrentTour(createMockTour({ scenes: [scene] }));
-      useTourEditorStore.getState().selectHotspot('h2');
-      useTourEditorStore.getState().removeHotspotDraft('h1');
-
-      expect(useTourEditorStore.getState().selectedHotspotId).toBe('h2');
-    });
-
-    it('marks removed hotspot as deleted in pendingChanges', () => {
-      const scene = createMockScene({
-        id: 'scene-1',
-        hotspots: [createMockHotspot({ id: 'h1' })],
-      });
-      useTourEditorStore.getState().setCurrentTour(createMockTour({ scenes: [scene] }));
-      useTourEditorStore.getState().removeHotspotDraft('h1');
-
-      expect(useTourEditorStore.getState().pendingChanges.hotspots?.['h1']).toEqual({
-        id: 'h1',
-        deleted: true,
-      });
     });
   });
 

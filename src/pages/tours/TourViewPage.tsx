@@ -67,15 +67,13 @@ export function TourViewPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
           <Link to={ROUTES.TOURS}>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" aria-label="Back to tours">
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
-                {tour.title}
-              </h1>
+              <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">{tour.title}</h1>
               <Badge variant={tour.status === 'published' ? 'success' : 'secondary'}>
                 {tour.status}
               </Badge>
@@ -116,6 +114,7 @@ export function TourViewPage() {
             variant="outline"
             onClick={() => setReelOpen(true)}
             disabled={!scenes || scenes.length === 0}
+            title={!scenes || scenes.length === 0 ? 'Add scenes before creating a reel' : undefined}
           >
             <Film className="h-4 w-4" />
             Create Reel
@@ -179,7 +178,7 @@ export function TourViewPage() {
         <div>
           <h2 className="mb-4 text-lg font-semibold">Scenes</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {sortedScenes.map((scene) => (
+            {sortedScenes.map(scene => (
               <Card key={scene.id} className="overflow-hidden">
                 <div className="aspect-video overflow-hidden bg-[var(--color-surface)]">
                   {scene.thumbnail_url ? (
@@ -234,9 +233,19 @@ export function TourViewPage() {
             <div>
               <p className="text-sm text-[var(--color-text-muted)]">Visibility</p>
               <Badge
-                variant={tour.visibility === 'public' ? 'success' : tour.visibility === 'unlisted' ? 'warning' : 'secondary'}
+                variant={
+                  tour.visibility === 'public'
+                    ? 'success'
+                    : tour.visibility === 'unlisted'
+                      ? 'warning'
+                      : 'secondary'
+                }
               >
-                {tour.visibility === 'public' ? 'Public' : tour.visibility === 'unlisted' ? 'Unlisted' : 'Private'}
+                {tour.visibility === 'public'
+                  ? 'Public'
+                  : tour.visibility === 'unlisted'
+                    ? 'Unlisted'
+                    : 'Private'}
               </Badge>
             </div>
             <div>

@@ -1,6 +1,15 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useRef, useState } from 'react';
-import { Copy, Check, Code2, Globe, Navigation, Settings2, Smartphone, Glasses } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  Code2,
+  Globe,
+  Navigation,
+  Settings2,
+  Smartphone,
+  Glasses,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -94,7 +103,7 @@ export function TourSettingsPanel({
   }, [tour]);
 
   useEffect(() => {
-    setEmbedOptions((prev) => ({
+    setEmbedOptions(prev => ({
       ...prev,
       startSceneId: settings.initial_scene_id || '',
       autoRotate: settings.auto_rotate,
@@ -104,10 +113,21 @@ export function TourSettingsPanel({
     }));
   }, [settings]);
 
+  useEffect(() => {
+    return () => {
+      clearTimeout(copiedEmbedTimerRef.current);
+      clearTimeout(copiedLinkTimerRef.current);
+    };
+  }, []);
+
+  const canSave = title.trim().length > 0 && !isLoading;
+
   const handleSave = () => {
+    if (!canSave) return;
+
     onSave({
-      title,
-      description: description || undefined,
+      title: title.trim(),
+      description: description.trim() || undefined,
       visibility,
       settings,
     });
@@ -134,12 +154,15 @@ export function TourSettingsPanel({
   };
 
   const updateSettings = (updates: Partial<TourSettings>) => {
-    setSettings((prev) => ({ ...prev, ...updates }));
+    setSettings(prev => ({ ...prev, ...updates }));
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent
+        className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        data-testid="settings-panel"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="h-5 w-5" />
@@ -151,7 +174,7 @@ export function TourSettingsPanel({
         </DialogHeader>
 
         <Tabs defaultValue="general" className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="w-full justify-start">
+          <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="general" className="gap-1.5">
               <Globe className="h-4 w-4" />
               General
@@ -172,18 +195,26 @@ export function TourSettingsPanel({
                 <Label htmlFor="title">Title</Label>
                 <Input
                   id="title"
+                  name="title"
+                  aria-invalid={!title.trim()}
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={e => setTitle(e.target.value)}
                   placeholder="Enter tour title"
                 />
+                {!title.trim() && (
+                  <p className="text-sm text-[var(--color-error-600)]">
+                    Enter a tour title before saving.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
+                  name="description"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={e => setDescription(e.target.value)}
                   placeholder="Enter tour description"
                   rows={3}
                 />
@@ -193,7 +224,7 @@ export function TourSettingsPanel({
                 <Label>Visibility</Label>
                 <RadioGroup
                   value={visibility}
-                  onValueChange={(value) => setVisibility(value as TourVisibility)}
+                  onValueChange={value => setVisibility(value as TourVisibility)}
                   className="space-y-3"
                 >
                   <div className="flex items-start space-x-3">
@@ -237,7 +268,7 @@ export function TourSettingsPanel({
                   <Label>Starting Scene</Label>
                   <Select
                     value={settings.initial_scene_id || FIRST_SCENE_VALUE}
-                    onValueChange={(value) =>
+                    onValueChange={value =>
                       updateSettings({
                         initial_scene_id: value === FIRST_SCENE_VALUE ? undefined : value,
                       })
@@ -248,7 +279,7 @@ export function TourSettingsPanel({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={FIRST_SCENE_VALUE}>First scene (default)</SelectItem>
-                      {scenes.map((scene) => (
+                      {scenes.map(scene => (
                         <SelectItem key={scene.id} value={scene.id}>
                           {scene.title || `Scene ${scene.order_index + 1}`}
                         </SelectItem>
@@ -270,7 +301,7 @@ export function TourSettingsPanel({
                 <Switch
                   id="auto-rotate"
                   checked={settings.auto_rotate}
-                  onCheckedChange={(checked) => updateSettings({ auto_rotate: checked })}
+                  onCheckedChange={checked => updateSettings({ auto_rotate: checked })}
                 />
               </div>
 
@@ -283,7 +314,7 @@ export function TourSettingsPanel({
                     max={5}
                     step={0.1}
                     showValue
-                    onValueChange={(value) => updateSettings({ auto_rotate_speed: value })}
+                    onValueChange={value => updateSettings({ auto_rotate_speed: value })}
                   />
                 </div>
               )}
@@ -298,7 +329,7 @@ export function TourSettingsPanel({
                 <Switch
                   id="navbar"
                   checked={settings.show_navbar}
-                  onCheckedChange={(checked) => updateSettings({ show_navbar: checked })}
+                  onCheckedChange={checked => updateSettings({ show_navbar: checked })}
                 />
               </div>
 
@@ -312,7 +343,7 @@ export function TourSettingsPanel({
                 <Switch
                   id="fullscreen"
                   checked={settings.enable_fullscreen}
-                  onCheckedChange={(checked) => updateSettings({ enable_fullscreen: checked })}
+                  onCheckedChange={checked => updateSettings({ enable_fullscreen: checked })}
                 />
               </div>
 
@@ -333,7 +364,7 @@ export function TourSettingsPanel({
                     <Switch
                       id="vr"
                       checked={settings.enable_vr}
-                      onCheckedChange={(checked) => updateSettings({ enable_vr: checked })}
+                      onCheckedChange={checked => updateSettings({ enable_vr: checked })}
                     />
                   </div>
 
@@ -350,7 +381,7 @@ export function TourSettingsPanel({
                     <Switch
                       id="gyroscope"
                       checked={settings.enable_gyroscope !== false}
-                      onCheckedChange={(checked) => updateSettings({ enable_gyroscope: checked })}
+                      onCheckedChange={checked => updateSettings({ enable_gyroscope: checked })}
                     />
                   </div>
 
@@ -366,7 +397,7 @@ export function TourSettingsPanel({
                         <Switch
                           id="gyro-auto"
                           checked={settings.gyroscope_auto_start === true}
-                          onCheckedChange={(checked) =>
+                          onCheckedChange={checked =>
                             updateSettings({ gyroscope_auto_start: checked })
                           }
                         />
@@ -382,7 +413,12 @@ export function TourSettingsPanel({
                 <Label>Share Link</Label>
                 <div className="flex gap-2">
                   <Input readOnly value={generateShareUrl(tour.id)} className="font-mono text-sm" />
-                  <Button variant="outline" size="icon" onClick={handleCopyLink}>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleCopyLink}
+                    aria-label={copiedLink ? 'Share link copied' : 'Copy share link'}
+                  >
                     {copiedLink ? (
                       <Check className="h-4 w-4 text-[var(--color-success-500)]" />
                     ) : (
@@ -398,8 +434,8 @@ export function TourSettingsPanel({
                   <Input
                     id="embed-width"
                     value={embedOptions.width}
-                    onChange={(e) =>
-                      setEmbedOptions((prev) => ({
+                    onChange={e =>
+                      setEmbedOptions(prev => ({
                         ...prev,
                         width: e.target.value,
                       }))
@@ -412,9 +448,10 @@ export function TourSettingsPanel({
                   <Input
                     id="embed-height"
                     type="number"
+                    min={200}
                     value={typeof embedOptions.height === 'number' ? embedOptions.height : 500}
-                    onChange={(e) =>
-                      setEmbedOptions((prev) => ({
+                    onChange={e =>
+                      setEmbedOptions(prev => ({
                         ...prev,
                         height: parseInt(e.target.value, 10) || 500,
                       }))
@@ -474,7 +511,7 @@ export function TourSettingsPanel({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} isLoading={isLoading}>
+          <Button onClick={handleSave} isLoading={isLoading} disabled={!canSave}>
             Save Changes
           </Button>
         </DialogFooter>

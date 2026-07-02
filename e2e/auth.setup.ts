@@ -5,7 +5,7 @@
  * Run with: npx playwright test --project=setup
  */
 import { test as setup, expect } from '@playwright/test';
-import { TEST_USER, STORAGE_STATE_PATH } from './fixtures/auth';
+import { TEST_USER, STORAGE_STATE_PATH, loginWithPhonePassword } from './fixtures/auth';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -27,17 +27,11 @@ setup('authenticate', async ({ page }) => {
     return;
   }
 
-  const phoneInput = page.locator('input[name="phone"], input[type="tel"]');
-  const passwordInput = page.locator('input[name="password"], input[type="password"]');
-  const submitButton = page.locator('button[type="submit"]');
-
-  await phoneInput.waitFor({ state: 'visible', timeout: 10000 });
-
-  await expect(phoneInput, 'Login form phone input should be visible').toBeVisible();
-
-  await phoneInput.fill(TEST_USER.phone);
-  await passwordInput.fill(TEST_USER.password);
-  await submitButton.click();
+  await expect(
+    page.getByLabel(/phone number/i),
+    'Login form phone input should be visible'
+  ).toBeVisible();
+  await loginWithPhonePassword(page);
 
   await page.waitForURL(/\/(dashboard|tours)/, { timeout: 15000 });
 

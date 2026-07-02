@@ -40,8 +40,11 @@ export function OfflineIndicator({ className }: OfflineIndicatorProps) {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
       className={cn(
-        'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-sm font-medium transition-all duration-300 animate-slide-in-up',
+        'fixed bottom-4 left-1/2 z-[var(--z-toast)] flex -translate-x-1/2 animate-slide-up items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-lg transition-all duration-300',
         isOnline
           ? 'bg-[var(--color-success-500)] text-white'
           : 'bg-[var(--color-error-500)] text-white',
@@ -50,12 +53,12 @@ export function OfflineIndicator({ className }: OfflineIndicatorProps) {
     >
       {isOnline ? (
         <>
-          <Wifi className="h-4 w-4" />
+          <Wifi className="h-4 w-4" aria-hidden="true" />
           Back online
         </>
       ) : (
         <>
-          <WifiOff className="h-4 w-4" />
+          <WifiOff className="h-4 w-4" aria-hidden="true" />
           You're offline
         </>
       )}

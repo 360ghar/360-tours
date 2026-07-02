@@ -44,76 +44,75 @@ const ACTION_CONFIG: Record<
   created: {
     icon: <Plus className="h-4 w-4" />,
     label: 'Created',
-    color: 'text-green-500',
+    color: 'text-[var(--color-success-600)]',
   },
   updated: {
     icon: <Edit3 className="h-4 w-4" />,
     label: 'Updated',
-    color: 'text-[#FF5733]',
+    color: 'text-[var(--color-primary-600)]',
   },
   deleted: {
     icon: <Trash2 className="h-4 w-4" />,
     label: 'Deleted',
-    color: 'text-red-500',
+    color: 'text-[var(--color-error-600)]',
   },
   commented: {
     icon: <MessageSquare className="h-4 w-4" />,
     label: 'Commented',
-    color: 'text-[#6B6B6B]',
+    color: 'text-[var(--color-text-secondary)]',
   },
   published: {
     icon: <Globe className="h-4 w-4" />,
     label: 'Published',
-    color: 'text-emerald-500',
+    color: 'text-[var(--color-success-600)]',
   },
   invited: {
     icon: <UserPlus className="h-4 w-4" />,
     label: 'Invited',
-    color: 'text-amber-500',
+    color: 'text-[var(--color-warning-600)]',
   },
   left: {
     icon: <LogOut className="h-4 w-4" />,
     label: 'Left',
-    color: 'text-gray-500',
+    color: 'text-[var(--color-text-secondary)]',
   },
 };
 
-const TARGET_CONFIG: Record<ActivityItem['target_type'], { icon: React.ReactNode; label: string }> = {
-  tour: {
-    icon: <Globe className="h-3 w-3" />,
-    label: 'Tour',
-  },
-  scene: {
-    icon: <Image className="h-3 w-3" />,
-    label: 'Scene',
-  },
-  hotspot: {
-    icon: <MapPin className="h-3 w-3" />,
-    label: 'Hotspot',
-  },
-  comment: {
-    icon: <MessageSquare className="h-3 w-3" />,
-    label: 'Comment',
-  },
-  collaborator: {
-    icon: <UserPlus className="h-3 w-3" />,
-    label: 'Collaborator',
-  },
-};
+const TARGET_CONFIG: Record<ActivityItem['target_type'], { icon: React.ReactNode; label: string }> =
+  {
+    tour: {
+      icon: <Globe className="h-3 w-3" />,
+      label: 'Tour',
+    },
+    scene: {
+      icon: <Image className="h-3 w-3" />,
+      label: 'Scene',
+    },
+    hotspot: {
+      icon: <MapPin className="h-3 w-3" />,
+      label: 'Hotspot',
+    },
+    comment: {
+      icon: <MessageSquare className="h-3 w-3" />,
+      label: 'Comment',
+    },
+    collaborator: {
+      icon: <UserPlus className="h-3 w-3" />,
+      label: 'Collaborator',
+    },
+  };
 
 export function ActivityFeed({ tourId, onRefresh, className }: ActivityFeedProps) {
-  const { activities, isLoadingActivities } = useCollaborationStore();
+  const { activities, isLoadingActivities, activitiesError } = useCollaborationStore();
   const [filter, setFilter] = useState<'all' | ActivityItem['action']>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Filter activities for this tour
-  const tourActivities = activities.filter((a) => a.tour_id === tourId);
+  const tourActivities = activities.filter(a => a.tour_id === tourId);
 
   // Apply action filter
   const filteredActivities =
-    filter === 'all'
-      ? tourActivities
-      : tourActivities.filter((a) => a.action === filter);
+    filter === 'all' ? tourActivities : tourActivities.filter(a => a.action === filter);
 
   // Group activities by date
   const groupedActivities = filteredActivities.reduce(
@@ -142,7 +141,7 @@ export function ActivityFeed({ tourId, onRefresh, className }: ActivityFeedProps
     if (!name) return '?';
     return name
       .split(' ')
-      .map((n) => n[0])
+      .map(n => n[0])
       .join('')
       .toUpperCase()
       .slice(0, 2);
@@ -207,11 +206,9 @@ export function ActivityFeed({ tourId, onRefresh, className }: ActivityFeedProps
 
         <div className="flex items-center gap-2">
           {/* Filter */}
-          <Select
-            value={filter}
-            onValueChange={(value) => setFilter(value as typeof filter)}
-          >
+          <Select value={filter} onValueChange={value => setFilter(value as typeof filter)}>
             <SelectTrigger className="w-32 h-8">
+              <span className="sr-only">Filter activity</span>
               <Filter className="h-3 w-3 mr-1" />
               <SelectValue />
             </SelectTrigger>
@@ -233,10 +230,9 @@ export function ActivityFeed({ tourId, onRefresh, className }: ActivityFeedProps
               size="icon-sm"
               onClick={handleRefresh}
               disabled={isRefreshing}
+              aria-label="Refresh activity"
             >
-              <RefreshCw
-                className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
-              />
+              <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
             </Button>
           )}
         </div>
@@ -248,12 +244,30 @@ export function ActivityFeed({ tourId, onRefresh, className }: ActivityFeedProps
           <p className="text-sm text-[var(--color-text-muted)] text-center py-8">
             Loading activity...
           </p>
+        ) : activitiesError ? (
+          <div className="px-4 py-8 text-center">
+            <p role="alert" className="text-sm text-[var(--color-error-600)]">
+              {activitiesError}
+            </p>
+            {onRefresh && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={handleRefresh}
+                isLoading={isRefreshing}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </Button>
+            )}
+          </div>
         ) : filteredActivities.length === 0 ? (
           <div className="text-center py-8">
             <Activity className="h-8 w-8 mx-auto mb-2 text-[var(--color-text-muted)]" />
             <p className="text-sm text-[var(--color-text-muted)]">
               {filter === 'all'
-                ? 'No activity yet'
+                ? 'No activity yet. Changes and collaboration updates will appear here.'
                 : `No ${filter} activity`}
             </p>
           </div>
@@ -270,16 +284,14 @@ export function ActivityFeed({ tourId, onRefresh, className }: ActivityFeedProps
 
                 {/* Activities for this date */}
                 <div className="space-y-1">
-                  {dayActivities.map((activity) => (
+                  {dayActivities.map(activity => (
                     <div
                       key={activity.id}
                       className="flex items-start gap-3 px-4 py-2 hover:bg-[var(--color-surface-elevated)] transition-colors"
                     >
                       {/* User avatar */}
                       <Avatar className="h-8 w-8">
-                        <AvatarImage
-                          src={activity.user?.profile_image_url || undefined}
-                        />
+                        <AvatarImage src={activity.user?.profile_image_url || undefined} />
                         <AvatarFallback className="text-xs">
                           {getInitials(activity.user?.full_name)}
                         </AvatarFallback>
@@ -298,10 +310,7 @@ export function ActivityFeed({ tourId, onRefresh, className }: ActivityFeedProps
                           {/* Action badge */}
                           <Badge
                             variant="outline"
-                            className={cn(
-                              'gap-1 text-xs',
-                              ACTION_CONFIG[activity.action]?.color
-                            )}
+                            className={cn('gap-1 text-xs', ACTION_CONFIG[activity.action]?.color)}
                           >
                             {ACTION_CONFIG[activity.action]?.icon}
                             {ACTION_CONFIG[activity.action]?.label}
@@ -353,8 +362,7 @@ export function ActivityFeed({ tourId, onRefresh, className }: ActivityFeedProps
           </span>
           {tourActivities.length > 0 && (
             <span>
-              Last activity:{' '}
-              {new Date(tourActivities[0]?.created_at).toLocaleString()}
+              Last activity: {parseServerTimestamp(tourActivities[0]?.created_at).toLocaleString()}
             </span>
           )}
         </div>

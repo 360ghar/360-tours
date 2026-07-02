@@ -30,6 +30,7 @@ import { useToast } from '@/hooks';
 import type { Scene } from '@/types';
 import type { DescriptionOptions } from '@/api';
 import { AIJobStatus } from './AIJobStatus';
+import { AiRetryError } from './AiRetryError';
 import { aiApi } from '@/api';
 import { copyToClipboard } from '@/utils/copyToClipboard';
 
@@ -50,7 +51,7 @@ export function DescriptionGenerator({
   onApply,
   isLoading = false,
 }: DescriptionGeneratorProps) {
-  const { error: toastError } = useToast();
+  const { error: toastError, success: toastSuccess } = useToast();
   const [jobId, setJobId] = useState<string | null>(null);
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string>>({});
@@ -61,14 +62,18 @@ export function DescriptionGenerator({
     include_features: true,
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleStartGeneration = async () => {
     setIsGenerating(true);
+    setError(null);
     try {
       const response = await aiApi.generateDescriptions(tourId, options);
       setJobId(response.job.id);
-    } catch (error) {
-      console.error('Failed to start description generation:', error);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to start generation';
+      setError(message);
+      console.error('Description generation failed:', e);
       setIsGenerating(false);
     }
   };
@@ -76,16 +81,29 @@ export function DescriptionGenerator({
   const handleJobComplete = (job: unknown, result: unknown) => {
     setIsGenerating(false);
     setJobId(null);
-    if (result && typeof result === 'object' && 'descriptions' in result) {
+    if (
+      result &&
+      typeof result === 'object' &&
+      'descriptions' in result &&
+      typeof (result as { descriptions: unknown }).descriptions === 'object' &&
+      (result as { descriptions: unknown }).descriptions !== null
+    ) {
       const descs = (result as { descriptions: Record<string, string> }).descriptions;
       setDescriptions(descs);
       setEditedDescriptions(descs);
+      setError(null);
+      return;
     }
+
+    const message = 'Description generation finished without returning descriptions.';
+    setError(message);
+    toastError(message, { title: 'Generation incomplete' });
   };
 
   const handleJobError = (job: unknown, errorMessage: string) => {
     setIsGenerating(false);
     setJobId(null);
+    setError(errorMessage || 'Failed to generate descriptions');
     toastError(errorMessage || 'Failed to generate descriptions', { title: 'Generation failed' });
   };
 
@@ -97,7 +115,14 @@ export function DescriptionGenerator({
   };
 
   const handleCopyDescription = async (description: string) => {
-    await copyToClipboard(description);
+    const copied = await copyToClipboard(description);
+    if (copied) {
+      toastSuccess('Description copied to clipboard');
+    } else {
+      toastError('Could not copy the description. Please copy it manually.', {
+        title: 'Copy failed',
+      });
+    }
   };
 
   const handleResetDescription = (sceneId: string) => {
@@ -235,8 +260,15 @@ export function DescriptionGenerator({
               </div>
 
               {/* Generate button */}
-              <div className="flex justify-center pt-4">
-                <Button onClick={handleStartGeneration} isLoading={isGenerating}>
+              <div className="flex flex-col items-center gap-3 pt-4">
+                {error && (
+                  <AiRetryError error={error} onRetry={handleStartGeneration} isLoading={isGenerating} />
+                )}
+                <Button
+                  onClick={handleStartGeneration}
+                  isLoading={isGenerating}
+                  disabled={scenes.length === 0}
+                >
                   <Sparkles className="h-4 w-4" />
                   Generate Descriptions for {scenes.length} Scene{scenes.length !== 1 ? 's' : ''}
                 </Button>

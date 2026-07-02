@@ -67,20 +67,26 @@ export function useLocalStorage<T>(
   // Sync across tabs
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === key && event.newValue !== null) {
-        try {
-          const next = deserializer(event.newValue);
-          storedValueRef.current = next;
-          setStoredValue(next);
-        } catch {
-          // Ignore parse errors
-        }
+      if (event.key !== key) return;
+
+      if (event.newValue === null) {
+        storedValueRef.current = initialValue;
+        setStoredValue(initialValue);
+        return;
+      }
+
+      try {
+        const next = deserializer(event.newValue);
+        storedValueRef.current = next;
+        setStoredValue(next);
+      } catch {
+        // Ignore parse errors
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [key, deserializer]);
+  }, [key, deserializer, initialValue]);
 
   return [storedValue, setValue, removeValue];
 }

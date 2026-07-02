@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import {
   Sparkles,
@@ -29,6 +29,12 @@ import { cn } from '@/utils';
 import { useToast } from '@/hooks';
 import { AIJobStatus } from './AIJobStatus';
 import { aiApi } from '@/api';
+import {
+  SCENE_UPLOAD_ACCEPT,
+  SCENE_UPLOAD_MAX_FILE_COUNT,
+  SCENE_UPLOAD_MAX_SIZE_MB,
+  validateSceneUploadFile,
+} from '@/lib/sceneUpload';
 import type { Tour, Scene } from '@/types';
 
 interface AITourWizardProps {
@@ -60,22 +66,73 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   const [jobId, setJobId] = useState<string | null>(null);
   const [result, setResult] = useState<{ tour?: Tour; scenes?: Scene[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const imagesRef = useRef<UploadedImage[]>([]);
+
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  useEffect(() => {
+    return () => {
+      imagesRef.current.forEach((img) => URL.revokeObjectURL(img.preview));
+    };
+  }, []);
 
   // Handle image drop
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newImages = acceptedFiles.map((file) => ({
+    const validatedFiles = acceptedFiles.map((file) => ({
+      file,
+      validation: validateSceneUploadFile(file),
+    }));
+    const invalidFiles = validatedFiles.filter((item) => !item.validation.valid);
+    const validFiles = validatedFiles
+      .filter((item) => item.validation.valid)
+      .map((item) => item.file);
+
+    // Enforce total file count (including already-selected images)
+    const projectedCount = images.length + validFiles.length;
+    const allowedNewFiles =
+      projectedCount > SCENE_UPLOAD_MAX_FILE_COUNT
+        ? validFiles.slice(0, Math.max(0, SCENE_UPLOAD_MAX_FILE_COUNT - images.length))
+        : validFiles;
+
+    // Combine ALL rejection reasons into one message. The previous version
+    // called setError twice in sequence, so the count-cap error silently
+    // overwrote the oversized-rejection error and the user had no idea why
+    // their files were dropped.
+    const errors: string[] = [];
+    if (invalidFiles.length > 0) {
+      const messages = Array.from(
+        new Set(invalidFiles.map((item) => item.validation.error || 'Invalid file'))
+      );
+      errors.push(
+        `${invalidFiles.length} file${invalidFiles.length !== 1 ? 's' : ''} ${invalidFiles.length !== 1 ? 'were' : 'was'} removed. ${messages.join(' ')}`
+      );
+    }
+    if (projectedCount > SCENE_UPLOAD_MAX_FILE_COUNT) {
+      errors.push(
+        `Maximum ${SCENE_UPLOAD_MAX_FILE_COUNT} files allowed. Only ${allowedNewFiles.length} of ${validFiles.length} file${validFiles.length !== 1 ? 's' : ''} were added.`
+      );
+    }
+    if (errors.length > 0) {
+      setError(errors.join(' '));
+    } else {
+      setError(null);
+    }
+
+    if (allowedNewFiles.length === 0) return;
+
+    const newImages = allowedNewFiles.map((file) => ({
       id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
       file,
       preview: URL.createObjectURL(file),
     }));
     setImages((prev) => [...prev, ...newImages]);
-  }, []);
+  }, [images.length]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'image/*': ['.jpg', '.jpeg', '.png', '.webp'],
-    },
+    accept: SCENE_UPLOAD_ACCEPT,
     multiple: true,
   });
 
@@ -144,9 +201,22 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     setJobId(null);
     if (jobResult && typeof jobResult === 'object') {
       const data = jobResult as { tour?: Tour; scenes?: Scene[] };
+      if (!data.tour || !Array.isArray(data.scenes)) {
+        const message = 'Tour generation finished, but the generated tour data was not returned.';
+        setError(message);
+        setStep('options');
+        toastError(message, { title: 'Tour generation incomplete' });
+        return;
+      }
       setResult(data);
       setStep('review');
+      return;
     }
+
+    const message = 'Tour generation finished without usable results.';
+    setError(message);
+    setStep('options');
+    toastError(message, { title: 'Tour generation incomplete' });
   };
 
   const handleJobError = (job: unknown, errorMessage: string) => {
@@ -202,8 +272,17 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     return steps.indexOf(step) + 1;
   };
 
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      onOpenChange(true);
+      return;
+    }
+
+    handleClose();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -264,9 +343,17 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   {isDragActive ? 'Drop your images here' : 'Drag & drop 360° images'}
                 </p>
                 <p className="text-sm text-[var(--color-text-muted)] mt-1">
-                  or click to select files (JPG, PNG, WebP)
+                  or click to select files (JPG, PNG, WebP). Max {SCENE_UPLOAD_MAX_SIZE_MB}MB per
+                  file, up to {SCENE_UPLOAD_MAX_FILE_COUNT} files.
                 </p>
               </div>
+
+              {error && (
+                <div className="p-3 rounded-md bg-[var(--color-error-50)] text-[var(--color-error-600)] text-sm flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
 
               {images.length > 0 && (
                 <div>
@@ -274,7 +361,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                     {images.length} image{images.length !== 1 ? 's' : ''} selected
                   </Label>
                   <ScrollArea className="h-[200px]">
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {images.map((image) => (
                         <div key={image.id} className="relative group">
                           <img
@@ -283,10 +370,12 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                             className="w-full h-20 object-cover rounded"
                           />
                           <button
+                            type="button"
                             onClick={() => removeImage(image.id)}
-                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute top-1 right-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                            aria-label={`Remove ${image.file.name}`}
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-4 w-4" />
                           </button>
                         </div>
                       ))}
@@ -362,6 +451,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   </p>
                 </div>
                 <Switch
+                  id="ai-auto-detect-rooms"
+                  aria-label="Auto-detect room types"
                   checked={options.auto_detect_rooms}
                   onCheckedChange={(checked) =>
                     setOptions((prev) => ({ ...prev, auto_detect_rooms: checked }))
@@ -377,6 +468,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   </p>
                 </div>
                 <Switch
+                  id="ai-auto-place-hotspots"
+                  aria-label="Auto-place hotspots"
                   checked={options.auto_place_hotspots}
                   onCheckedChange={(checked) =>
                     setOptions((prev) => ({ ...prev, auto_place_hotspots: checked }))
@@ -392,6 +485,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   </p>
                 </div>
                 <Switch
+                  id="ai-generate-descriptions"
+                  aria-label="Generate descriptions"
                   checked={options.auto_generate_descriptions}
                   onCheckedChange={(checked) =>
                     setOptions((prev) => ({ ...prev, auto_generate_descriptions: checked }))

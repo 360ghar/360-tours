@@ -18,6 +18,13 @@ import { BulkUploader } from '@/components/features/BulkUploader';
 const createImageFile = (name: string) =>
   new File(['fake-image-bytes'], name, { type: 'image/jpeg' });
 
+const createOversizedImageFile = (name: string) =>
+  ({
+    name,
+    type: 'image/jpeg',
+    size: 50 * 1024 * 1024 + 1,
+  }) as File;
+
 describe('BulkUploader preview URL cleanup', () => {
   const originalCreateObjectURL = URL.createObjectURL;
   const originalRevokeObjectURL = URL.revokeObjectURL;
@@ -39,9 +46,7 @@ describe('BulkUploader preview URL cleanup', () => {
   });
 
   it('revokes every created preview object URL on unmount', async () => {
-    const { unmount } = render(
-      <BulkUploader tourId="tour-1" open onOpenChange={vi.fn()} />
-    );
+    const { unmount } = render(<BulkUploader tourId="tour-1" open onOpenChange={vi.fn()} />);
 
     // The dialog renders a hidden multi-file input (portaled to document.body).
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
@@ -57,7 +62,7 @@ describe('BulkUploader preview URL cleanup', () => {
     });
 
     expect(createObjectURLSpy).toHaveBeenCalledTimes(2);
-    const createdUrls = createObjectURLSpy.mock.results.map((r) => r.value as string);
+    const createdUrls = createObjectURLSpy.mock.results.map(r => r.value as string);
     expect(createdUrls).toEqual(['blob:mock-preview-1', 'blob:mock-preview-2']);
 
     unmount();
@@ -67,5 +72,21 @@ describe('BulkUploader preview URL cleanup', () => {
     for (const url of createdUrls) {
       expect(revokeObjectURLSpy).toHaveBeenCalledWith(url);
     }
+  });
+
+  it('does not offer retry for validation failures', async () => {
+    render(<BulkUploader tourId="tour-1" open onOpenChange={vi.fn()} />);
+
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+
+    fireEvent.change(fileInput!, { target: { files: [createOversizedImageFile('huge.jpg')] } });
+
+    await waitFor(() => {
+      expect(screen.getByText('1 file selected')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/File size exceeds/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry failed/i })).not.toBeInTheDocument();
   });
 });

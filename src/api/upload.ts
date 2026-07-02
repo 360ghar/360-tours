@@ -19,9 +19,6 @@ export const uploadApi = {
     }
 
     const response = await apiClient.post<FileUploadResponse>('/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
       onUploadProgress: progressEvent => {
         if (options.onProgress && progressEvent.total) {
           const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -51,9 +48,6 @@ export const uploadApi = {
       '/upload/batch',
       formData,
       {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
         onUploadProgress: progressEvent => {
           if (options.onProgress && progressEvent.total) {
             const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -70,6 +64,7 @@ export const uploadApi = {
     limit?: number;
     folder?: string;
     mime_type?: string;
+    search?: string;
   }): Promise<CursorPaginatedResponse<MediaFile>> {
     const response = await apiClient.get<CursorPaginatedResponse<MediaFile>>('/upload/media', {
       params,
@@ -99,6 +94,14 @@ export const uploadApi = {
         }
       })
     );
+    if (failed.length > 0) {
+      const err = new Error(
+        `Failed to delete ${failed.length} file(s): ${failed.map((f) => f.id).join(', ')}`
+      ) as Error & { deleted: string[]; failed: typeof failed };
+      err.deleted = deleted;
+      err.failed = failed;
+      throw err;
+    }
     return { deleted, failed };
   },
 };

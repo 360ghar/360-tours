@@ -34,8 +34,17 @@ export const phoneIdentifierSchema = z.object({
   identifier: phoneSchema,
 });
 
-// Password step (channel-agnostic — identifier captured in a prior step).
+// Set-password step (channel-agnostic — identifier captured in a prior step).
+// Enforces the same strength rules as registration (passwordSchema) so the
+// mandatory set-password step cannot accept a weak password.
 export const passwordStepSchema = z.object({
+  password: passwordSchema,
+});
+
+// Login password step: only require non-empty. Existing accounts may have
+// passwords that predate the strength rules — validating strength here would
+// lock those users out before the request is ever sent.
+export const loginPasswordSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 

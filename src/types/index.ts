@@ -182,16 +182,79 @@ export type SceneUpdateInput = Partial<SceneCreateInput>;
 // Hotspot Types
 export type HotspotType = 'navigation' | 'info' | 'audio' | 'video' | 'link' | 'custom';
 
+export interface HotspotContentBase {
+  kind?: string;
+  [key: string]: unknown;
+}
+
+export interface NavigationHotspotContent extends HotspotContentBase {
+  label?: string;
+  scene_id?: string;
+  target_scene_id?: string;
+}
+
+export interface InfoHotspotContent extends HotspotContentBase {
+  html?: string;
+  text?: string;
+  image_url?: string;
+}
+
+export interface AudioHotspotContent extends HotspotContentBase {
+  audio_url?: string;
+  autoplay?: boolean;
+}
+
+export interface VideoHotspotContent extends HotspotContentBase {
+  video_url?: string;
+  youtube_id?: string;
+  vimeo_id?: string;
+  autoplay?: boolean;
+  poster?: string;
+  poster_url?: string;
+}
+
+export type LinkHotspotTarget = '_blank' | '_self';
+
+export interface LinkHotspotContent extends HotspotContentBase {
+  url?: string;
+  link_url?: string;
+  target?: LinkHotspotTarget;
+  link_new_tab?: boolean;
+  label?: string;
+}
+
+export interface CustomHotspotContent extends HotspotContentBase {
+  html?: string;
+  custom_html?: string;
+  component?: string;
+}
+
+export interface HotspotContentByType {
+  navigation: NavigationHotspotContent;
+  info: InfoHotspotContent;
+  audio: AudioHotspotContent;
+  video: VideoHotspotContent;
+  link: LinkHotspotContent;
+  custom: CustomHotspotContent;
+}
+
+export type HotspotContentFor<TType extends HotspotType> = HotspotContentByType[TType];
+export type HotspotContent = HotspotContentByType[HotspotType];
+
+export interface HotspotCustomData {
+  [key: string]: unknown;
+}
+
 export interface HotspotPosition {
   yaw: number;
   pitch: number;
   radius?: number;
 }
 
-export interface Hotspot {
+export interface Hotspot<TType extends HotspotType = HotspotType> {
   id: string;
   scene_id: string;
-  type: HotspotType;
+  type: TType;
   position: HotspotPosition;
   target_scene_id: string | null;
   title: string | null;
@@ -200,16 +263,16 @@ export interface Hotspot {
   icon_name: string | null;
   icon_color: string | null;
   icon_size: number | null;
-  content: Record<string, unknown> | null;
-  custom_data: Record<string, unknown>;
+  content: HotspotContentFor<TType> | null;
+  custom_data: HotspotCustomData;
   order_index: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export interface HotspotCreateInput {
-  type: HotspotType;
+export interface HotspotCreateInput<TType extends HotspotType = HotspotType> {
+  type: TType;
   position: HotspotPosition;
   target_scene_id?: string | null;
   title?: string | null;
@@ -218,11 +281,12 @@ export interface HotspotCreateInput {
   icon_name?: string | null;
   icon_color?: string | null;
   icon_size?: number;
-  content?: Record<string, unknown> | null;
-  custom_data?: Record<string, unknown>;
+  content?: HotspotContentFor<TType> | null;
+  custom_data?: HotspotCustomData;
 }
 
-export interface HotspotUpdateInput extends Partial<HotspotCreateInput> {
+export interface HotspotUpdateInput<TType extends HotspotType = HotspotType>
+  extends Partial<HotspotCreateInput<TType>> {
   is_active?: boolean;
 }
 
@@ -391,6 +455,27 @@ export type AIJobType =
   | 'optimization';
 export type AIJobStatus = 'queued' | 'pending' | 'processing' | 'completed' | 'failed' | 'canceled';
 
+export interface AIProcessingInputData {
+  tour_id?: string;
+  scene_id?: string;
+  scene_ids?: string[];
+  image_count?: number;
+  scene_count?: number;
+  [key: string]: unknown;
+}
+
+export interface AIProcessingOutputData {
+  scenes?: Scene[];
+  descriptions?: { [sceneId: string]: string };
+  video_url?: string;
+  thumbnail_url?: string;
+  duration_seconds?: number;
+  scene_count?: number;
+  analysis?: unknown;
+  hotspots?: unknown;
+  [key: string]: unknown;
+}
+
 export interface AIProcessingJob {
   id: string;
   tour_id: string;
@@ -398,8 +483,8 @@ export interface AIProcessingJob {
   job_type: AIJobType;
   status: AIJobStatus;
   progress: number;
-  input_data: Record<string, unknown>;
-  output_data: Record<string, unknown>;
+  input_data: AIProcessingInputData | null;
+  output_data: AIProcessingOutputData | null;
   error_message: string | null;
   estimated_duration: number | null;
   actual_duration: number | null;

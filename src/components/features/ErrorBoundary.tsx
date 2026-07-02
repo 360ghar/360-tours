@@ -38,7 +38,8 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleGoHome = (): void => {
-    window.location.href = '/';
+    window.history.pushState({}, '', '/');
+    window.location.reload();
   };
 
   public render(): ReactNode {

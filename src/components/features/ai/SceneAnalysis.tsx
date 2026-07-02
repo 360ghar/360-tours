@@ -33,6 +33,7 @@ import { useToast } from '@/hooks';
 import type { Scene } from '@/types';
 import type { SceneAnalysisResult } from '@/api';
 import { AIJobStatus } from './AIJobStatus';
+import { AiRetryError } from './AiRetryError';
 import { aiApi } from '@/api';
 
 interface SceneAnalysisProps {
@@ -91,14 +92,20 @@ export function SceneAnalysis({
   const [applyTitles, setApplyTitles] = useState(true);
   const [applyDescriptions, setApplyDescriptions] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
+    setError(null);
+    setHasAnalyzed(false);
     try {
       const response = await aiApi.analyzeScenes(tourId);
       setJobId(response.job.id);
-    } catch (error) {
-      console.error('Failed to start analysis:', error);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to start analysis';
+      setError(message);
+      console.error('Scene analysis failed:', e);
       setIsAnalyzing(false);
     }
   };
@@ -106,17 +113,30 @@ export function SceneAnalysis({
   const handleJobComplete = (job: unknown, result: unknown) => {
     setIsAnalyzing(false);
     setJobId(null);
-    if (result && typeof result === 'object' && 'analysis' in result) {
+    if (
+      result &&
+      typeof result === 'object' &&
+      'analysis' in result &&
+      Array.isArray((result as { analysis: unknown }).analysis)
+    ) {
       const analysis = (result as { analysis: SceneAnalysisResult[] }).analysis;
       setAnalysisResults(analysis);
       // Select all scenes by default
-      setSelectedScenes(new Set(analysis.map((a) => a.scene_id)));
+      setSelectedScenes(new Set(analysis.map(a => a.scene_id)));
+      setHasAnalyzed(true);
+      setError(null);
+      return;
     }
+
+    const message = 'Scene analysis finished without returning analysis results.';
+    setError(message);
+    toastError(message, { title: 'Analysis incomplete' });
   };
 
   const handleJobError = (job: unknown, errorMessage: string) => {
     setIsAnalyzing(false);
     setJobId(null);
+    setError(errorMessage || 'Scene analysis failed');
     toastError(errorMessage || 'Scene analysis failed', { title: 'Analysis failed' });
   };
 
@@ -131,7 +151,7 @@ export function SceneAnalysis({
   };
 
   const handleSelectAll = () => {
-    setSelectedScenes(new Set(analysisResults.map((a) => a.scene_id)));
+    setSelectedScenes(new Set(analysisResults.map(a => a.scene_id)));
   };
 
   const handleDeselectAll = () => {
@@ -140,8 +160,8 @@ export function SceneAnalysis({
 
   const handleApply = () => {
     const updates = analysisResults
-      .filter((a) => selectedScenes.has(a.scene_id))
-      .map((a) => ({
+      .filter(a => selectedScenes.has(a.scene_id))
+      .map(a => ({
         scene_id: a.scene_id,
         title: applyTitles ? a.suggested_title : undefined,
         description: applyDescriptions ? a.suggested_description : undefined,
@@ -151,7 +171,7 @@ export function SceneAnalysis({
     onOpenChange(false);
   };
 
-  const getScene = (sceneId: string) => scenes.find((s) => s.id === sceneId);
+  const getScene = (sceneId: string) => scenes.find(s => s.id === sceneId);
 
   const getQualityColor = (score: number) => {
     if (score >= 80) return 'text-[var(--color-success-500)]';
@@ -180,7 +200,7 @@ export function SceneAnalysis({
 
         <div className="flex-1 overflow-hidden">
           {/* No analysis yet - show start button */}
-          {!jobId && analysisResults.length === 0 && (
+          {!jobId && analysisResults.length === 0 && !hasAnalyzed && (
             <div className="flex flex-col items-center justify-center py-12">
               <div className="w-16 h-16 rounded-full bg-[var(--color-primary-50)] flex items-center justify-center mb-4">
                 <Sparkles className="h-8 w-8 text-[var(--color-primary-500)]" />
@@ -190,9 +210,28 @@ export function SceneAnalysis({
                 Our AI will analyze {scenes.length} scene{scenes.length !== 1 ? 's' : ''} to detect
                 room types, suggest titles and descriptions, and assess image quality.
               </p>
+              {error && (
+                <AiRetryError error={error} onRetry={handleStartAnalysis} isLoading={isAnalyzing} />
+              )}
               <Button onClick={handleStartAnalysis} isLoading={isAnalyzing}>
                 <Sparkles className="h-4 w-4" />
                 Start Analysis
+              </Button>
+            </div>
+          )}
+
+          {!jobId && analysisResults.length === 0 && hasAnalyzed && (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="w-16 h-16 rounded-full bg-[var(--color-surface-elevated)] flex items-center justify-center mb-4">
+                <Sparkles className="h-8 w-8 text-[var(--color-text-muted)]" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">No analysis results returned</h3>
+              <p className="text-sm text-[var(--color-text-muted)] max-w-md mb-6">
+                The AI job completed, but there were no scene updates to apply.
+              </p>
+              <Button variant="outline" onClick={handleStartAnalysis} isLoading={isAnalyzing}>
+                <RefreshCw className="h-4 w-4" />
+                Re-analyze
               </Button>
             </div>
           )}
@@ -221,14 +260,14 @@ export function SceneAnalysis({
                   <label className="flex items-center gap-2 cursor-pointer">
                     <Checkbox
                       checked={applyTitles}
-                      onCheckedChange={(checked) => setApplyTitles(checked === true)}
+                      onCheckedChange={checked => setApplyTitles(checked === true)}
                     />
                     <span className="text-sm">Apply Titles</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <Checkbox
                       checked={applyDescriptions}
-                      onCheckedChange={(checked) => setApplyDescriptions(checked === true)}
+                      onCheckedChange={checked => setApplyDescriptions(checked === true)}
                     />
                     <span className="text-sm">Apply Descriptions</span>
                   </label>
@@ -245,7 +284,7 @@ export function SceneAnalysis({
 
               <ScrollArea className="h-[400px] pr-4">
                 <div className="space-y-3">
-                  {analysisResults.map((result) => {
+                  {analysisResults.map(result => {
                     const scene = getScene(result.scene_id);
                     const isSelected = selectedScenes.has(result.scene_id);
 
@@ -300,7 +339,20 @@ export function SceneAnalysis({
                                     ? 'bg-[var(--color-primary-500)] border-[var(--color-primary-500)]'
                                     : 'border-[var(--color-border)]'
                                 )}
-                                onClick={(e) => e.stopPropagation()}
+                                role="checkbox"
+                                aria-label={`Select ${scene?.title || result.suggested_title || 'scene analysis result'}`}
+                                aria-checked={isSelected}
+                                tabIndex={0}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  handleToggleScene(result.scene_id);
+                                }}
+                                onKeyDown={e => {
+                                  if (e.key !== 'Enter' && e.key !== ' ') return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleToggleScene(result.scene_id);
+                                }}
                               >
                                 {isSelected && <Check className="h-3 w-3 text-white" />}
                               </div>
@@ -308,20 +360,26 @@ export function SceneAnalysis({
 
                             {/* Quality score and features */}
                             <div className="flex items-center gap-4 mt-2">
-                              <span className={cn('text-sm font-medium', getQualityColor(result.quality_score))}>
+                              <span
+                                className={cn(
+                                  'text-sm font-medium',
+                                  getQualityColor(result.quality_score)
+                                )}
+                              >
                                 Quality: {result.quality_score}%
                               </span>
 
                               {result.quality_issues && result.quality_issues.length > 0 && (
                                 <div className="flex items-center gap-1 text-xs text-[var(--color-warning-500)]">
                                   <AlertTriangle className="h-3 w-3" />
-                                  {result.quality_issues.length} issue{result.quality_issues.length !== 1 ? 's' : ''}
+                                  {result.quality_issues.length} issue
+                                  {result.quality_issues.length !== 1 ? 's' : ''}
                                 </div>
                               )}
 
                               {result.features_detected.length > 0 && (
                                 <div className="flex gap-1 flex-wrap">
-                                  {result.features_detected.slice(0, 3).map((feature) => (
+                                  {result.features_detected.slice(0, 3).map(feature => (
                                     <Badge key={feature} variant="outline" className="text-xs">
                                       {feature}
                                     </Badge>

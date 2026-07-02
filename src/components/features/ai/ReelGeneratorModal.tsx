@@ -8,7 +8,6 @@ import {
   Download,
   Film,
   RefreshCw,
-  X,
 } from 'lucide-react';
 import {
   Dialog,
@@ -21,14 +20,13 @@ import {
   Checkbox,
   ScrollArea,
   Slider,
-  Progress,
 } from '@/components/ui';
 import { VideoPlayer } from '@/components/features/VideoPlayer';
-import { useAIJobWebSocket } from '@/hooks';
 import { copyToClipboard } from '@/utils';
 import { aiApi } from '@/api';
 import type { ReelResult } from '@/api';
-import type { Scene } from '@/types';
+import type { AIProcessingJob, Scene } from '@/types';
+import { AIJobStatus } from './AIJobStatus';
 
 interface ReelGeneratorModalProps {
   open: boolean;
@@ -50,6 +48,16 @@ function buildDownloadUrl(videoUrl: string) {
   return videoUrl.replace('/upload/', '/upload/fl_attachment/');
 }
 
+function isReelResult(value: unknown): value is ReelResult {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<ReelResult>;
+  return (
+    typeof candidate.video_url === 'string' &&
+    typeof candidate.duration_seconds === 'number' &&
+    typeof candidate.scene_count === 'number'
+  );
+}
+
 export function ReelGeneratorModal({
   open,
   onOpenChange,
@@ -62,7 +70,6 @@ export function ReelGeneratorModal({
   const [sceneDuration, setSceneDuration] = useState(DEFAULT_SCENE_DURATION);
   const [isStarting, setIsStarting] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ReelResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -79,7 +86,6 @@ export function ReelGeneratorModal({
     setSceneDuration(DEFAULT_SCENE_DURATION);
     setIsStarting(false);
     setJobId(null);
-    setProgress(0);
     setResult(null);
     setErrorMessage(null);
     setCopied(false);
@@ -105,24 +111,6 @@ export function ReelGeneratorModal({
     }
     onOpenChange(nextOpen);
   };
-
-  useAIJobWebSocket(step === 'generating' ? jobId : null, {
-    onUpdate: (update) => {
-      if (update.data) {
-        setProgress(update.data.progress);
-      }
-    },
-    onComplete: (jobResult) => {
-      setResult(jobResult as unknown as ReelResult);
-      setJobId(null);
-      setStep('done');
-    },
-    onError: (message) => {
-      setErrorMessage(message || 'Reel generation failed');
-      setJobId(null);
-      setStep('error');
-    },
-  });
 
   const handleToggleScene = (sceneId: string) => {
     setSelectedSceneIds((prev) => {
@@ -159,28 +147,40 @@ export function ReelGeneratorModal({
         scene_duration: sceneDuration,
       });
       setJobId(response.job.id);
-      setProgress(response.job.progress ?? 0);
       setStep('generating');
     } catch (error) {
       console.error('Failed to start reel generation:', error);
-      setErrorMessage('Failed to start reel generation. Please try again.');
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'Failed to start reel generation. Please try again.'
+      );
       setStep('error');
     } finally {
       setIsStarting(false);
     }
   };
 
-  const handleCancel = async () => {
-    if (jobId) {
-      try {
-        await aiApi.cancelJob(jobId);
-      } catch (error) {
-        console.error('Failed to cancel reel job:', error);
-      }
+  const handleJobComplete = (job: AIProcessingJob, jobResult: unknown) => {
+    const resultCandidate = isReelResult(jobResult) ? jobResult : job.output_data;
+
+    if (isReelResult(resultCandidate)) {
+      setResult(resultCandidate);
+      setJobId(null);
+      setErrorMessage(null);
+      setStep('done');
+      return;
     }
+
     setJobId(null);
-    setProgress(0);
-    setStep('configure');
+    setErrorMessage('Reel generation finished, but the video result was not returned.');
+    setStep('error');
+  };
+
+  const handleJobError = (job: AIProcessingJob | null, message: string) => {
+    setErrorMessage(message || 'Reel generation failed');
+    setJobId(null);
+    setStep('error');
   };
 
   const handleCopyLink = async () => {
@@ -195,7 +195,6 @@ export function ReelGeneratorModal({
 
   const handleCreateAnother = () => {
     setJobId(null);
-    setProgress(0);
     setResult(null);
     setErrorMessage(null);
     setCopied(false);
@@ -206,7 +205,6 @@ export function ReelGeneratorModal({
 
   const selectedCount = selectedSceneIds.size;
   const estimatedDuration = Math.round(selectedCount * sceneDuration);
-  const statusCopy = progress >= 90 ? 'Uploading…' : 'Rendering scenes…';
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -290,6 +288,7 @@ export function ReelGeneratorModal({
                   min={MIN_SCENE_DURATION}
                   max={MAX_SCENE_DURATION}
                   step={1}
+                  aria-label="Seconds per scene"
                 />
               </div>
 
@@ -301,21 +300,22 @@ export function ReelGeneratorModal({
 
           {/* Generating */}
           {step === 'generating' && (
-            <div className="flex flex-col items-center justify-center gap-4 py-12 px-4">
-              <div className="w-16 h-16 rounded-full bg-[var(--color-primary-50)] flex items-center justify-center">
-                <Film className="h-8 w-8 text-[var(--color-primary-500)] animate-pulse" />
-              </div>
-              <div className="w-full max-w-sm space-y-2">
-                <Progress value={progress} />
-                <div className="flex items-center justify-between text-sm text-[var(--color-text-muted)]">
-                  <span>{statusCopy}</span>
-                  <span>{progress}%</span>
-                </div>
-              </div>
-              <Button variant="outline" size="sm" onClick={handleCancel}>
-                <X className="h-4 w-4" />
-                Cancel
-              </Button>
+            <div className="py-8 px-4">
+              {jobId ? (
+                <AIJobStatus
+                  jobId={jobId}
+                  onComplete={handleJobComplete}
+                  onError={handleJobError}
+                  onCancel={() => {
+                    setJobId(null);
+                    setStep('configure');
+                  }}
+                />
+              ) : (
+                <p className="text-center text-sm text-[var(--color-text-muted)]">
+                  Starting reel generation...
+                </p>
+              )}
             </div>
           )}
 

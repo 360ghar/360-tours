@@ -109,6 +109,7 @@ export {
 
 // Feedback Components
 export { Toaster } from './Toaster';
+export { ConfirmDialog } from './ConfirmDialog';
 export { Alert, AlertTitle, AlertDescription } from './Alert';
 
 // Date Components

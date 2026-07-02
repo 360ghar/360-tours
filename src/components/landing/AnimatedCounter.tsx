@@ -21,6 +21,7 @@ export function AnimatedCounter({
 }: AnimatedCounterProps) {
   const [count, setCount] = useState(0);
   const hasAnimatedRef = useRef(false);
+  const rafIdRef = useRef<number>(0);
 
   useEffect(() => {
     if (!isInView || hasAnimatedRef.current) return;
@@ -39,12 +40,18 @@ export function AnimatedCounter({
 
       setCount(currentValue);
 
+      // Track the latest frame id so cleanup cancels the in-flight recursive
+      // frame, not just the first one.
       if (progress < 1) {
-        requestAnimationFrame(animate);
+        rafIdRef.current = requestAnimationFrame(animate);
       }
     };
 
-    requestAnimationFrame(animate);
+    rafIdRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(rafIdRef.current);
+    };
   }, [isInView, end, duration]);
 
   return (

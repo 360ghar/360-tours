@@ -65,7 +65,7 @@ import {
 } from '@/components/ui';
 import { toursApi } from '@/api';
 import { QUERY_KEYS, ROUTES } from '@/constants';
-import { useTourEditorStore, useCollaborationStore } from '@/stores';
+import { useTourEditorStore, useCollaborationStore, confirm } from '@/stores';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { ScenePanel } from '@/components/features/ScenePanel';
 import { HotspotPanel } from '@/components/features/HotspotPanel';
@@ -95,6 +95,7 @@ export function TourEditPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac');
 
   // Local state
   const [showSettings, setShowSettings] = useState(false);
@@ -107,16 +108,21 @@ export function TourEditPage() {
   const [showHotspotSuggestions, setShowHotspotSuggestions] = useState(false);
   const [showReelGenerator, setShowReelGenerator] = useState(false);
   const [isPlacingHotspot, setIsPlacingHotspot] = useState(false);
-  const [placementPosition, setPlacementPosition] = useState<{ yaw: number; pitch: number } | null>(null);
+  const [placementPosition, setPlacementPosition] = useState<{ yaw: number; pitch: number } | null>(
+    null
+  );
   const [showHotspotEditor, setShowHotspotEditor] = useState(false);
   const [showActivityFeed, setShowActivityFeed] = useState(false);
   const [showCollaborators, setShowCollaborators] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<'scenes' | 'hotspots' | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'editor' | 'viewer'>('viewer');
   const [isInviting, setIsInviting] = useState(false);
 
   const {
     collaborators,
+    isLoadingCollaborators,
+    collaboratorsError,
     fetchActivities,
     fetchCollaborators,
     inviteCollaborator,
@@ -138,7 +144,10 @@ export function TourEditPage() {
     redo,
     reset,
   } = useTourEditorStore();
-  const currentScene = currentTour?.scenes?.find((s) => s.id === currentSceneId);
+  const currentScene = currentTour?.scenes?.find(s => s.id === currentSceneId);
+  const sceneCount = currentTour?.scenes?.length ?? 0;
+  const inviteEmailTrimmed = inviteEmail.trim();
+  const isInviteEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmailTrimmed);
 
   // Block navigation if there are unsaved changes
   const blocker = useBlocker(
@@ -237,7 +246,7 @@ export function TourEditPage() {
       // 'H' to toggle hotspot placement mode
       if (e.key === 'h' || e.key === 'H') {
         if (currentSceneId) {
-          setIsPlacingHotspot((prev) => !prev);
+          setIsPlacingHotspot(prev => !prev);
         }
       }
     };
@@ -278,7 +287,7 @@ export function TourEditPage() {
   // Duplicate tour mutation
   const duplicateMutation = useMutation({
     mutationFn: () => toursApi.duplicateTour(id!),
-    onSuccess: (duplicatedTour) => {
+    onSuccess: duplicatedTour => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
       toast('success', 'A copy of your tour has been created.', { title: 'Tour duplicated' });
       navigate(`${ROUTES.TOURS}/${duplicatedTour.id}/edit`);
@@ -323,7 +332,9 @@ export function TourEditPage() {
         })
         .catch(() => {
           // Leave hasUnsavedChanges true so the user can retry.
-          toast('error', 'Something went wrong. Please try again.', { title: 'Failed to save settings' });
+          toast('error', 'Something went wrong. Please try again.', {
+            title: 'Failed to save settings',
+          });
         });
     },
     [currentTour, id, queryClient, updateTourDraft, markAsSaved, toast]
@@ -335,13 +346,16 @@ export function TourEditPage() {
   }, [id]);
 
   // Handle position click for hotspot placement
-  const handlePositionClick = useCallback((position: { yaw: number; pitch: number }) => {
-    if (isPlacingHotspot && currentSceneId) {
-      setPlacementPosition(position);
-      setShowHotspotEditor(true);
-      setIsPlacingHotspot(false);
-    }
-  }, [isPlacingHotspot, currentSceneId]);
+  const handlePositionClick = useCallback(
+    (position: { yaw: number; pitch: number }) => {
+      if (isPlacingHotspot && currentSceneId) {
+        setPlacementPosition(position);
+        setShowHotspotEditor(true);
+        setIsPlacingHotspot(false);
+      }
+    },
+    [isPlacingHotspot, currentSceneId]
+  );
 
   // Handle hotspot editor close
   const handleHotspotEditorClose = useCallback((open: boolean) => {
@@ -352,16 +366,19 @@ export function TourEditPage() {
   }, []);
 
   // Handle hotspot drag-to-reposition
-  const handleHotspotDrag = useCallback(async (hotspotId: string, position: { yaw: number; pitch: number }) => {
-    try {
-      await toursApi.updateHotspotPosition(hotspotId, position);
-      // Refresh scenes to update hotspot position in UI
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-      toast('success', 'Position updated successfully.', { title: 'Hotspot moved' });
-    } catch {
-      toast('error', 'Could not update hotspot position.', { title: 'Failed to move hotspot' });
-    }
-  }, [id, queryClient, toast]);
+  const handleHotspotDrag = useCallback(
+    async (hotspotId: string, position: { yaw: number; pitch: number }) => {
+      try {
+        await toursApi.updateHotspotPosition(hotspotId, position);
+        // Refresh scenes to update hotspot position in UI
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+        toast('success', 'Position updated successfully.', { title: 'Hotspot moved' });
+      } catch {
+        toast('error', 'Could not update hotspot position.', { title: 'Failed to move hotspot' });
+      }
+    },
+    [id, queryClient, toast]
+  );
 
   const saveTourSettings = useCallback(
     async (settings: Tour['settings'], successTitle: string, successMessage: string) => {
@@ -388,24 +405,37 @@ export function TourEditPage() {
         },
       };
 
-      saveTourSettings(settings, 'Branding saved', 'Branding has been applied to this tour.').catch(() => {
-        toast('error', 'Could not save branding. Please try again.', { title: 'Failed to save branding' });
-      });
+      saveTourSettings(settings, 'Branding saved', 'Branding has been applied to this tour.').catch(
+        () => {
+          toast('error', 'Could not save branding. Please try again.', {
+            title: 'Failed to save branding',
+          });
+        }
+      );
     },
     [currentTour?.settings, saveTourSettings, toast]
   );
 
   const handleFloorPlansSave = useCallback(
-    (floorPlans: FloorPlan[]) => {
+    async (floorPlans: FloorPlan[]) => {
       const settings = {
         ...DEFAULT_TOUR_SETTINGS,
         ...(currentTour?.settings ?? {}),
         floor_plans: floorPlans,
       };
 
-      saveTourSettings(settings, 'Floor plans saved', 'Floor plan navigation has been updated.').catch(() => {
-        toast('error', 'Could not save floor plans. Please try again.', { title: 'Failed to save floor plans' });
-      });
+      try {
+        await saveTourSettings(
+          settings,
+          'Floor plans saved',
+          'Floor plan navigation has been updated.'
+        );
+      } catch (error) {
+        toast('error', 'Could not save floor plans. Please try again.', {
+          title: 'Failed to save floor plans',
+        });
+        throw error;
+      }
     },
     [currentTour?.settings, saveTourSettings, toast]
   );
@@ -413,7 +443,7 @@ export function TourEditPage() {
   const handleApplySceneAnalysis = useCallback(
     (updates: Array<{ scene_id: string; title?: string; description?: string }>) => {
       Promise.all(
-        updates.map((update) =>
+        updates.map(update =>
           toursApi.updateScene(update.scene_id, {
             title: update.title,
             description: update.description,
@@ -427,7 +457,9 @@ export function TourEditPage() {
           });
         })
         .catch(() => {
-          toast('error', 'Could not apply AI scene suggestions.', { title: 'Failed to update scenes' });
+          toast('error', 'Could not apply AI scene suggestions.', {
+            title: 'Failed to update scenes',
+          });
         });
     },
     [id, queryClient, toast]
@@ -437,18 +469,22 @@ export function TourEditPage() {
     (descriptions: Record<string, string>) => {
       const entries = Object.entries(descriptions);
       Promise.all(
-        entries.map(([sceneId, description]) =>
-          toursApi.updateScene(sceneId, { description })
-        )
+        entries.map(([sceneId, description]) => toursApi.updateScene(sceneId, { description }))
       )
         .then(() => {
           queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-          toast('success', `${entries.length} description${entries.length === 1 ? '' : 's'} applied.`, {
-            title: 'Descriptions updated',
-          });
+          toast(
+            'success',
+            `${entries.length} description${entries.length === 1 ? '' : 's'} applied.`,
+            {
+              title: 'Descriptions updated',
+            }
+          );
         })
         .catch(() => {
-          toast('error', 'Could not apply AI descriptions.', { title: 'Failed to update descriptions' });
+          toast('error', 'Could not apply AI descriptions.', {
+            title: 'Failed to update descriptions',
+          });
         });
     },
     [id, queryClient, toast]
@@ -459,7 +495,7 @@ export function TourEditPage() {
       if (!currentScene) return;
 
       Promise.all(
-        suggestions.map((suggestion) => {
+        suggestions.map(suggestion => {
           const payload: HotspotCreateInput = {
             type: suggestion.type,
             position: suggestion.position,
@@ -479,24 +515,38 @@ export function TourEditPage() {
       )
         .then(() => {
           queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-          toast('success', `${suggestions.length} hotspot${suggestions.length === 1 ? '' : 's'} added.`, {
-            title: 'AI hotspots applied',
-          });
+          toast(
+            'success',
+            `${suggestions.length} hotspot${suggestions.length === 1 ? '' : 's'} added.`,
+            {
+              title: 'AI hotspots applied',
+            }
+          );
         })
         .catch(() => {
-          toast('error', 'Could not add AI hotspot suggestions.', { title: 'Failed to add hotspots' });
+          toast('error', 'Could not add AI hotspot suggestions.', {
+            title: 'Failed to add hotspots',
+          });
         });
     },
     [currentScene, id, queryClient, toast]
   );
 
-  // Initialize tour in store
+  // Reset the editor only when leaving this editor instance or switching tour IDs.
   useEffect(() => {
-    if (tour && scenes) {
-      setCurrentTour({ ...tour, scenes });
-    }
     return () => reset();
-  }, [tour, scenes, setCurrentTour, reset]);
+  }, [id, reset]);
+
+  // Initialize tour in store — but only when the store doesn't already hold
+  // this tour, so that query refetches don't clobber local optimistic edits.
+  useEffect(() => {
+    if (tour && scenes && tour.id === id) {
+      const currentTour = useTourEditorStore.getState().currentTour;
+      if (!currentTour || currentTour.id !== tour.id) {
+        setCurrentTour({ ...tour, scenes });
+      }
+    }
+  }, [id, tour, scenes, setCurrentTour]);
 
   // Recover from a stale scene selection (e.g. the selected scene was deleted).
   // Initial auto-selection is handled by setCurrentTour in the store, and a null
@@ -505,10 +555,16 @@ export function TourEditPage() {
   useEffect(() => {
     const sceneList = currentTour?.scenes;
     if (!sceneList || !currentSceneId) return;
-    if (!sceneList.some((s) => s.id === currentSceneId)) {
+    if (!sceneList.some(s => s.id === currentSceneId)) {
       setCurrentScene(sceneList[0]?.id ?? null);
     }
   }, [currentTour?.scenes, currentSceneId, setCurrentScene]);
+
+  const publishDisabledReason = hasUnsavedChanges
+    ? 'Save changes before publishing.'
+    : sceneCount === 0
+      ? 'Add at least one scene before publishing.'
+      : null;
 
   if (isLoading) {
     return <PageLoader message="Loading tour..." />;
@@ -518,11 +574,7 @@ export function TourEditPage() {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <h2 className="text-xl font-semibold">Tour not found</h2>
-        <Button
-          variant="outline"
-          className="mt-4"
-          onClick={() => navigate(ROUTES.TOURS)}
-        >
+        <Button variant="outline" className="mt-4" onClick={() => navigate(ROUTES.TOURS)}>
           Back to Tours
         </Button>
       </div>
@@ -533,43 +585,43 @@ export function TourEditPage() {
     <TooltipProvider>
       <div className="flex h-[calc(100vh-4rem)] flex-col">
         {/* Editor Header */}
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3">
-          <div className="flex items-center gap-4">
+        <div
+          className="flex flex-col gap-3 border-b border-[var(--color-border)] bg-[var(--color-background)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="toolbar"
+        >
+          <div className="flex min-w-0 items-center gap-4">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => navigate(ROUTES.TOURS)}
+                  aria-label="Back to tours"
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Back to Tours</TooltipContent>
             </Tooltip>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="font-semibold text-[var(--color-text-primary)]">
+                <h1 className="truncate font-semibold text-[var(--color-text-primary)]">
                   {currentTour?.title || tour.title}
                 </h1>
-                <Badge
-                  variant={currentTour?.status === 'published' ? 'success' : 'secondary'}
-                >
+                <Badge variant={currentTour?.status === 'published' ? 'success' : 'secondary'}>
                   {currentTour?.status || tour.status}
                 </Badge>
-                {hasUnsavedChanges && (
-                  <Badge variant="warning">Unsaved changes</Badge>
-                )}
+                {hasUnsavedChanges && <Badge variant="warning">Unsaved changes</Badge>}
               </div>
               <p className="text-sm text-[var(--color-text-muted)]">
                 {currentTour?.scenes?.length || 0} scenes
                 <span className="mx-2">•</span>
-                <span className="text-xs">Ctrl+S to save</span>
+                <span className="text-xs">{isMac ? '⌘S' : 'Ctrl+S'} to save</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -587,10 +639,13 @@ export function TourEditPage() {
               <TooltipContent>View activity feed</TooltipContent>
             </Tooltip>
 
-            <Popover open={showCollaborators} onOpenChange={(open) => {
-              setShowCollaborators(open);
-              if (open) fetchCollaborators(id!);
-            }}>
+            <Popover
+              open={showCollaborators}
+              onOpenChange={open => {
+                setShowCollaborators(open);
+                if (open) fetchCollaborators(id!);
+              }}
+            >
               <PopoverTrigger asChild>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -606,30 +661,68 @@ export function TourEditPage() {
                 <div className="p-4 space-y-3">
                   <h4 className="font-semibold text-sm">Collaborators</h4>
                   <div className="space-y-2">
-                    {collaborators.length === 0 ? (
+                    {isLoadingCollaborators ? (
+                      <p className="text-sm text-[var(--color-text-muted)]">
+                        Loading collaborators...
+                      </p>
+                    ) : collaboratorsError ? (
+                      <div className="space-y-2">
+                        <p role="alert" className="text-sm text-[var(--color-error-600)]">
+                          {collaboratorsError}
+                        </p>
+                        <Button variant="outline" size="sm" onClick={() => fetchCollaborators(id!)}>
+                          Retry
+                        </Button>
+                      </div>
+                    ) : collaborators.length === 0 ? (
                       <p className="text-sm text-[var(--color-text-muted)]">No collaborators yet</p>
                     ) : (
-                      collaborators.map((c) => (
+                      collaborators.map(c => (
                         <div key={c.id} className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <Avatar className="h-7 w-7">
                               <AvatarImage src={c.user?.profile_image_url || undefined} />
                               <AvatarFallback className="text-xs">
-                                {c.user?.full_name?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?'}
+                                {c.user?.full_name
+                                  ?.split(' ')
+                                  .map(n => n[0])
+                                  .join('')
+                                  .toUpperCase()
+                                  .slice(0, 2) || '?'}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="text-sm font-medium truncate">{c.user?.full_name || c.user?.email || 'Unknown'}</p>
-                              <p className="text-xs text-[var(--color-text-muted)] capitalize">{c.role}</p>
+                              <p className="text-sm font-medium truncate">
+                                {c.user?.full_name || c.user?.email || 'Unknown'}
+                              </p>
+                              <p className="text-xs text-[var(--color-text-muted)] capitalize">
+                                {c.role}
+                              </p>
                             </div>
                           </div>
                           {c.role !== 'owner' && (
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              aria-label={`Remove ${c.user?.email || c.user?.full_name || 'collaborator'}`}
                               onClick={async () => {
-                                await removeCollaborator(id!, c.user_id);
-                                toast('success', 'Collaborator removed.', { title: 'Removed' });
+                                if (
+                                  !(await confirm({
+                                    title: 'Remove collaborator',
+                                    message: `Remove ${c.user?.email || 'this collaborator'} from the tour?`,
+                                    confirmLabel: 'Remove',
+                                    destructive: true,
+                                  }))
+                                )
+                                  return;
+                                try {
+                                  await removeCollaborator(id!, c.user_id);
+                                  toast('success', 'Collaborator removed.', { title: 'Removed' });
+                                } catch {
+                                  toast('error', 'Could not remove collaborator.', {
+                                    title: 'Remove failed',
+                                  });
+                                }
                               }}
                             >
                               <Trash2 className="h-3 w-3 text-[var(--color-text-muted)]" />
@@ -647,10 +740,14 @@ export function TourEditPage() {
                         placeholder="Email address"
                         type="email"
                         value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
+                        onChange={e => setInviteEmail(e.target.value)}
                         className="h-8 text-sm"
+                        aria-invalid={inviteEmailTrimmed.length > 0 && !isInviteEmailValid}
                       />
-                      <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as 'editor' | 'viewer')}>
+                      <Select
+                        value={inviteRole}
+                        onValueChange={v => setInviteRole(v as 'editor' | 'viewer')}
+                      >
                         <SelectTrigger className="w-24 h-8 text-sm">
                           <SelectValue />
                         </SelectTrigger>
@@ -663,17 +760,22 @@ export function TourEditPage() {
                     <Button
                       size="sm"
                       className="w-full"
-                      disabled={!inviteEmail || isInviting}
+                      disabled={!isInviteEmailValid || isInviting}
                       isLoading={isInviting}
                       onClick={async () => {
+                        if (!isInviteEmailValid) return;
                         setIsInviting(true);
                         try {
-                          await inviteCollaborator(id!, inviteEmail, inviteRole);
-                          toast('success', `Invited ${inviteEmail}.`, { title: 'Invitation sent' });
+                          await inviteCollaborator(id!, inviteEmailTrimmed, inviteRole);
+                          toast('success', `Invited ${inviteEmailTrimmed}.`, {
+                            title: 'Invitation sent',
+                          });
                           setInviteEmail('');
                           setInviteRole('viewer');
                         } catch {
-                          toast('error', 'Could not send invitation.', { title: 'Failed to invite' });
+                          toast('error', 'Could not send invitation.', {
+                            title: 'Failed to invite',
+                          });
                         } finally {
                           setIsInviting(false);
                         }
@@ -681,6 +783,11 @@ export function TourEditPage() {
                     >
                       Send Invitation
                     </Button>
+                    {inviteEmailTrimmed.length > 0 && !isInviteEmailValid && (
+                      <p className="text-xs text-[var(--color-error-600)]">
+                        Enter a valid email address.
+                      </p>
+                    )}
                   </div>
                 </div>
               </PopoverContent>
@@ -688,11 +795,7 @@ export function TourEditPage() {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowBulkUploader(true)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setShowBulkUploader(true)}>
                   <Upload className="h-4 w-4" />
                   Upload
                 </Button>
@@ -712,11 +815,7 @@ export function TourEditPage() {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowSettings(true)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
                   <Settings className="h-4 w-4" />
                   Settings
                 </Button>
@@ -728,27 +827,42 @@ export function TourEditPage() {
               size="sm"
               isLoading={updateMutation.isPending}
               onClick={() => updateMutation.mutate()}
-              disabled={!hasUnsavedChanges}
+              disabled={!hasUnsavedChanges || updateMutation.isPending}
+              data-testid="save-button"
             >
               <Save className="h-4 w-4" />
               Save
             </Button>
 
             {currentTour?.status !== 'published' ? (
-              <Button
-                variant="success"
-                size="sm"
-                isLoading={publishMutation.isPending}
-                onClick={() => publishMutation.mutate()}
-              >
-                Publish
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex" tabIndex={publishDisabledReason ? 0 : undefined}>
+                    <Button
+                      variant="success"
+                      size="sm"
+                      isLoading={publishMutation.isPending}
+                      onClick={() => publishMutation.mutate()}
+                      disabled={
+                        !!publishDisabledReason ||
+                        publishMutation.isPending ||
+                        updateMutation.isPending
+                      }
+                      data-testid="publish-button"
+                    >
+                      Publish
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{publishDisabledReason || 'Publish tour'}</TooltipContent>
+              </Tooltip>
             ) : (
               <Button
                 variant="outline"
                 size="sm"
                 isLoading={unpublishMutation.isPending}
                 onClick={() => unpublishMutation.mutate()}
+                disabled={unpublishMutation.isPending || updateMutation.isPending}
               >
                 Unpublish
               </Button>
@@ -757,7 +871,7 @@ export function TourEditPage() {
             {/* More Actions Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
+                <Button variant="ghost" size="icon-sm" aria-label="More tour actions">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -806,9 +920,7 @@ export function TourEditPage() {
                   <Copy className="h-4 w-4" />
                   Duplicate Tour
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => navigate(`${ROUTES.TOURS}/${id}/analytics`)}
-                >
+                <DropdownMenuItem onClick={() => navigate(`${ROUTES.TOURS}/${id}/analytics`)}>
                   <Archive className="h-4 w-4" />
                   View Analytics
                 </DropdownMenuItem>
@@ -828,7 +940,7 @@ export function TourEditPage() {
         {/* Editor Content */}
         <div className="flex flex-1 overflow-hidden">
           {/* Scene Panel */}
-          {showScenePanel && (
+          {!isMobile && showScenePanel && (
             <ScenePanel
               tourId={id!}
               scenes={currentTour?.scenes || []}
@@ -909,10 +1021,32 @@ export function TourEditPage() {
                 </div>
               </div>
             )}
+
+            {isMobile && (
+              <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-1 shadow-lg">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setMobilePanel('scenes')}
+                  aria-label="Open scenes panel"
+                >
+                  Scenes
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setMobilePanel('hotspots')}
+                  disabled={!currentScene}
+                  aria-label="Open hotspots panel"
+                >
+                  Hotspots
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Hotspot Panel */}
-          {showHotspotPanel && currentScene && (
+          {!isMobile && showHotspotPanel && currentScene && (
             <HotspotPanel
               sceneId={currentScene.id}
               hotspots={currentScene.hotspots || []}
@@ -920,6 +1054,66 @@ export function TourEditPage() {
             />
           )}
         </div>
+
+        {/* Mobile editor panels */}
+        {isMobile && (
+          <>
+            <Sheet
+              open={mobilePanel === 'scenes'}
+              onOpenChange={open => setMobilePanel(open ? 'scenes' : null)}
+            >
+              <SheetContent
+                side="left"
+                className="w-[min(20rem,100vw)] p-0"
+                showCloseButton={false}
+              >
+                <SheetHeader className="sr-only">
+                  <SheetTitle>Scenes</SheetTitle>
+                  <SheetDescription>
+                    Select, upload, delete, and reorder tour scenes.
+                  </SheetDescription>
+                </SheetHeader>
+                <ScenePanel
+                  tourId={id!}
+                  scenes={currentTour?.scenes || []}
+                  currentSceneId={currentSceneId}
+                  onSceneSelect={sceneId => {
+                    setCurrentScene(sceneId);
+                    setMobilePanel(null);
+                  }}
+                  className="h-full w-full border-r-0"
+                  allowCollapse={false}
+                  onClose={() => setMobilePanel(null)}
+                />
+              </SheetContent>
+            </Sheet>
+
+            {currentScene && (
+              <Sheet
+                open={mobilePanel === 'hotspots'}
+                onOpenChange={open => setMobilePanel(open ? 'hotspots' : null)}
+              >
+                <SheetContent
+                  side="right"
+                  className="w-[min(22rem,100vw)] p-0"
+                  showCloseButton={false}
+                >
+                  <SheetHeader className="sr-only">
+                    <SheetTitle>Hotspots</SheetTitle>
+                    <SheetDescription>Create, select, edit, and delete hotspots.</SheetDescription>
+                  </SheetHeader>
+                  <HotspotPanel
+                    sceneId={currentScene.id}
+                    hotspots={currentScene.hotspots || []}
+                    scenes={currentTour?.scenes || []}
+                    className="h-full w-full border-l-0"
+                    onClose={() => setMobilePanel(null)}
+                  />
+                </SheetContent>
+              </Sheet>
+            )}
+          </>
+        )}
 
         {/* Tour Settings Panel */}
         {currentTour && (
@@ -933,11 +1127,7 @@ export function TourEditPage() {
         )}
 
         {/* Bulk Uploader */}
-        <BulkUploader
-          tourId={id!}
-          open={showBulkUploader}
-          onOpenChange={setShowBulkUploader}
-        />
+        <BulkUploader tourId={id!} open={showBulkUploader} onOpenChange={setShowBulkUploader} />
 
         <BrandingPanel
           open={showBranding}
@@ -1024,28 +1214,28 @@ export function TourEditPage() {
         {/* Delete Confirmation Dialog */}
         <AlertDialog
           open={showDeleteDialog}
-          onOpenChange={(open) => {
+          onOpenChange={open => {
             if (deleteMutation.isPending && !open) return;
             setShowDeleteDialog(open);
           }}
         >
           <AlertDialogContent
-            onEscapeKeyDown={(e) => {
+            onEscapeKeyDown={e => {
               if (deleteMutation.isPending) e.preventDefault();
             }}
           >
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Tour</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{currentTour?.title || tour.title}"?
-                This action cannot be undone. All scenes, hotspots, and analytics
-                data will be permanently deleted.
+                Are you sure you want to delete "{currentTour?.title || tour.title}"? This action
+                cannot be undone. All scenes, hotspots, and analytics data will be permanently
+                deleted.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={(e) => {
+                onClick={e => {
                   e.preventDefault();
                   deleteMutation.mutate();
                 }}
@@ -1069,12 +1259,8 @@ export function TourEditPage() {
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => blocker.reset()}>
-                  Stay
-                </AlertDialogCancel>
-                <AlertDialogAction onClick={() => blocker.proceed()}>
-                  Leave
-                </AlertDialogAction>
+                <AlertDialogCancel onClick={() => blocker.reset()}>Stay</AlertDialogCancel>
+                <AlertDialogAction onClick={() => blocker.proceed()}>Leave</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

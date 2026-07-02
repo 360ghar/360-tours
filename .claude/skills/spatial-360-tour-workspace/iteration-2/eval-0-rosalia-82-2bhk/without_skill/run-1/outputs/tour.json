@@ -1,0 +1,92 @@
+{
+  "tour": {
+    "id": "signature-global-rosalia-sector-82-2bhk",
+    "title": "Signature Global Rosalia — 2BHK Apartment, Sector 82",
+    "description": "A bright, move-in-ready 2BHK rental on the 9th floor of Signature Global Rosalia in Sector 82, New Gurgaon. The 925 sq ft home opens from a compact foyer into a light, Scandinavian-styled open living-dining-kitchen space, leads out to a park-facing balcony, and includes a calm master bedroom with attached bathroom. Freshly painted, Vastu-compliant and just minutes from the Dwarka Expressway.",
+    "address": "Signature Global Rosalia, Sector 82, New Gurgaon, Gurugram, Haryana 122004",
+    "default_scene": "entrance",
+    "hotspot_convention": {
+      "yaw": "horizontal angle in degrees, -180..180, 0 = center of the equirectangular image",
+      "pitch": "vertical angle in degrees, -90..90, 0 = horizon, negative = toward the floor",
+      "type": "navigation hotspots carry a 'target' scene id; placed near the floor of the relevant doorway"
+    },
+    "scenes": [
+      {
+        "id": "entrance",
+        "title": "Entrance Foyer",
+        "image": "equirectangular_images/entrance_panorama.webp",
+        "caption": "Welcoming foyer with shoe rack and the open living area beyond.",
+        "description": "The flat opens onto a neat foyer at door B-904, with a wooden shoe rack, key hooks, a small console with a potted plant, and a traditional rangoli motif on the tile. From here the home unfolds straight ahead into the open living and dining space, with doorways to the master bedroom and a bathroom on either side.",
+        "narration": "Welcome to your home at Signature Global Rosalia. Step in past the shoe rack and key hooks of this tidy foyer — slip your shoes off on the rangoli, and the whole apartment opens up in front of you. Straight ahead lies the airy living and dining area; to your right, the master bedroom and a bathroom are just a few steps away.",
+        "hotspots": [
+          { "type": "navigation", "target": "living_room", "label": "Living & Dining", "yaw": -29, "pitch": -28 },
+          { "type": "navigation", "target": "bathroom", "label": "Bathroom", "yaw": 43, "pitch": -22 },
+          { "type": "navigation", "target": "master_bedroom", "label": "Master Bedroom", "yaw": 130, "pitch": -22 }
+        ]
+      },
+      {
+        "id": "living_room",
+        "title": "Living & Dining Room",
+        "image": "equirectangular_images/living_room_panorama.webp",
+        "caption": "Open living-dining with a park-facing balcony and an open kitchen.",
+        "description": "The heart of the home: a sunlit open-plan living and dining room in soft Scandinavian tones, with a sage sofa and armchair, a light wood TV unit and coffee table, and a woven rug. Sliding glass doors lead to the park-facing balcony, while the dining table sits beside an open kitchen. Doorways branch off to a bathroom, the master bedroom, and back to the entrance.",
+        "narration": "This is the heart of the home — a generous, sunlit living and dining space finished in calm Scandinavian tones. Sink into the sage sofa with your morning coffee, glance out through the sliding doors to the park-facing balcony, or gather friends at the dining table beside the open kitchen. Everything you need is a few steps away.",
+        "hotspots": [
+          { "type": "navigation", "target": "entrance", "label": "Entrance", "yaw": -155, "pitch": -26 },
+          { "type": "navigation", "target": "balcony", "label": "Balcony", "yaw": -18, "pitch": -14 },
+          { "type": "navigation", "target": "kitchen", "label": "Kitchen", "yaw": 18, "pitch": -20 },
+          { "type": "navigation", "target": "bathroom", "label": "Bathroom", "yaw": 79, "pitch": -22 },
+          { "type": "navigation", "target": "master_bedroom", "label": "Master Bedroom", "yaw": 130, "pitch": -22 }
+        ]
+      },
+      {
+        "id": "kitchen",
+        "title": "Kitchen",
+        "image": "equirectangular_images/kitchen_panorama.webp",
+        "caption": "Functional L-shaped kitchen with granite counters and a utility balcony.",
+        "description": "A practical, well-lit L-shaped kitchen with sage modular cabinets, granite countertops, a steel sink under a window, gas hob with chimney, and a tall fridge. An RO purifier and ample storage keep it move-in ready. It opens to the dining area on one side and to a utility/drying balcony with a washing machine on the other.",
+        "narration": "The kitchen is compact but thoughtfully laid out — an L of sage cabinets wrapped around granite counters, with a sink set under a bright window and a gas hob ready for cooking. There's a fridge, an RO water purifier, and plenty of storage. Step through to the utility balcony for the washing machine and drying space, or back into the dining area.",
+        "hotspots": [
+          { "type": "navigation", "target": "living_room", "label": "Living & Dining", "yaw": -144, "pitch": -20 }
+        ]
+      },
+      {
+        "id": "master_bedroom",
+        "title": "Master Bedroom",
+        "image": "equirectangular_images/master_bedroom_panorama.webp",
+        "caption": "Restful master bedroom with attached bathroom and a study corner.",
+        "description": "A calm, generously sized master bedroom with a pale grey accent wall, a queen bed dressed in sage and white linen, warm wood flooring, bedside lamps, a wardrobe, and a low chest of drawers. A compact desk with a chair makes a tidy work-from-home corner, a window brings in daylight, and an attached bathroom sits just off the bedroom. A doorway leads back to the living-dining area.",
+        "narration": "Retreat into the master bedroom — a restful space with a soft grey feature wall, a comfortable queen bed, and warm wood floors underfoot. There's a wardrobe, a chest of drawers, and a neat desk in the corner for working from home. The attached bathroom is right beside the bed, and the living area is just through the doorway.",
+        "hotspots": [
+          { "type": "navigation", "target": "living_room", "label": "Living & Dining", "yaw": -108, "pitch": -18 },
+          { "type": "navigation", "target": "entrance", "label": "Entrance", "yaw": -95, "pitch": -18 },
+          { "type": "navigation", "target": "bathroom", "label": "Attached Bathroom", "yaw": -61, "pitch": -16 }
+        ]
+      },
+      {
+        "id": "bathroom",
+        "title": "Bathroom",
+        "image": "equirectangular_images/bathroom_panorama.webp",
+        "caption": "Clean tiled bathroom with vanity, shower area and wall-hung WC.",
+        "description": "A freshly cleaned bathroom with large-format beige tiles, a granite-top wooden vanity with under-mounted basin and mirror, a wall-hung WC with health faucet, and a curtained shower zone with a mosaic accent strip and overhead rain shower. Practical chrome fittings throughout. Doorways connect it to the master bedroom and the living area.",
+        "narration": "The bathroom is clean and practical, finished in warm beige tile. There's a wood vanity with a granite top and a wide mirror, a wall-hung toilet with a health faucet, and a curtained shower corner with a feature mosaic strip and a rain shower overhead. From here you can step back to the bedroom or out toward the living area.",
+        "hotspots": [
+          { "type": "navigation", "target": "living_room", "label": "Living Area", "yaw": -162, "pitch": -20 },
+          { "type": "navigation", "target": "entrance", "label": "Entrance", "yaw": -130, "pitch": -22 },
+          { "type": "navigation", "target": "master_bedroom", "label": "Master Bedroom", "yaw": 173, "pitch": -18 }
+        ]
+      },
+      {
+        "id": "balcony",
+        "title": "Park-Facing Balcony",
+        "image": "equirectangular_images/balcony_panorama.webp",
+        "caption": "Breezy park-facing balcony with seating and an open green view.",
+        "description": "A wide, park-facing balcony on the 9th floor with two cane lounge chairs, a small table, and potted plants — a perfect spot for morning coffee over an open green-and-city view toward the Dwarka Expressway corridor. A drying rack and a few everyday touches keep it lived-in. Sliding glass doors lead straight back into the living room.",
+        "narration": "Step out onto the park-facing balcony — the best seat in the house. Drop into a cane chair with a cup of coffee and take in the open green view and the New Gurgaon skyline beyond. There's room for plants and a drying rack too. When you're ready, the living room is just through the sliding doors.",
+        "hotspots": [
+          { "type": "navigation", "target": "living_room", "label": "Living Room", "yaw": 155, "pitch": -16 }
+        ]
+      }
+    ]
+  }
+}

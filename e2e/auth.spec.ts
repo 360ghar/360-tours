@@ -2,84 +2,106 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Authentication', () => {
   test.describe('Login', () => {
-    test('should display login form', async ({ page }) => {
+    test('shows the identifier-first login form', async ({ page }) => {
       await page.goto('/login');
 
-      // Check form elements are visible
-      await expect(page.getByLabel(/phone/i)).toBeVisible();
-      await expect(page.getByLabel(/password/i)).toBeVisible();
-      await expect(page.getByRole('button', { name: /login|sign in/i })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible();
+      await expect(page.getByRole('tab', { name: /phone/i })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      await expect(page.getByRole('tab', { name: /email/i })).toBeVisible();
+      await expect(page.getByLabel(/phone number/i)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeVisible();
+      await expect(page.getByLabel(/^password$/i)).toHaveCount(0);
     });
 
-    test('should show validation errors for empty form', async ({ page }) => {
+    test('switches between phone and email identifiers', async ({ page }) => {
       await page.goto('/login');
 
-      // Submit empty form
-      await page.getByRole('button', { name: /login|sign in/i }).click();
+      await page.getByRole('tab', { name: /email/i }).click();
 
-      await expect(page.getByLabel(/phone/i)).toHaveAttribute('required');
-      await expect(page.getByLabel(/password/i)).toHaveAttribute('required');
+      await expect(page.getByRole('tab', { name: /email/i })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      await expect(page.getByLabel(/email address/i)).toBeVisible();
+      await expect(page.getByLabel(/phone number/i)).toHaveCount(0);
+
+      await page.getByRole('tab', { name: /phone/i }).click();
+      await expect(page.getByLabel(/phone number/i)).toBeVisible();
     });
 
-    test('should show validation error for invalid phone', async ({ page }) => {
+    test('keeps identifier fields required before backend auth branching', async ({ page }) => {
       await page.goto('/login');
 
-      // Enter invalid phone
-      await page.getByLabel(/phone/i).fill('123');
-      await page.getByLabel(/password/i).fill('Password123');
-      await page.getByRole('button', { name: /login|sign in/i }).click();
+      await expect(page.getByLabel(/phone number/i)).toHaveAttribute('required');
+
+      await page.getByRole('tab', { name: /email/i }).click();
+      await expect(page.getByLabel(/email address/i)).toHaveAttribute('required');
+    });
+
+    test('shows validation for invalid phone identifiers', async ({ page }) => {
+      await page.goto('/login');
+
+      await page.getByLabel(/phone number/i).fill('123');
+      await page.getByRole('button', { name: 'Continue', exact: true }).click();
 
       await expect(page.getByText(/phone must be in e\.164 format/i)).toBeVisible();
     });
 
-    test('should have link to register page', async ({ page }) => {
+    test('has a link to registration', async ({ page }) => {
       await page.goto('/login');
 
-      const registerLink = page.getByRole('link', { name: /sign up|register|create account/i });
-      await expect(registerLink).toBeVisible();
-    });
-
-    test('should have forgot password link', async ({ page }) => {
-      await page.goto('/login');
-
-      const forgotLink = page.getByRole('link', { name: /forgot|reset/i });
-      await expect(forgotLink).toBeVisible();
+      await expect(
+        page.getByRole('link', { name: /create account|sign up|register/i })
+      ).toBeVisible();
     });
   });
 
   test.describe('Register', () => {
-    test('should display register form', async ({ page }) => {
+    test('shows the identifier-first registration form', async ({ page }) => {
       await page.goto('/register');
 
-      // Check form elements are visible
-      await expect(page.getByLabel(/phone/i)).toBeVisible();
+      await expect(page.getByRole('heading', { name: /create your account/i })).toBeVisible();
       await expect(page.getByLabel(/full name/i)).toBeVisible();
-      await expect(page.getByLabel(/email/i)).toBeVisible();
-      await expect(page.getByLabel(/password/i).first()).toBeVisible();
-      await expect(page.getByRole('button', { name: /sign up|register|create/i })).toBeVisible();
+      await expect(page.getByLabel(/phone number/i)).toBeVisible();
+      await expect(page.getByRole('checkbox')).toBeVisible();
+      await expect(page.getByRole('link', { name: /terms of service/i })).toBeVisible();
+      await expect(page.getByRole('link', { name: /privacy policy/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /send verification code/i })).toBeVisible();
+      await expect(page.getByLabel(/^password$/i)).toHaveCount(0);
     });
 
-    test('should show validation for password requirements', async ({ page }) => {
+    test('switches registration to email identifier mode', async ({ page }) => {
       await page.goto('/register');
 
-      // Enter weak password
-      await page.getByLabel(/phone/i).fill('9876543210');
+      await page.getByRole('tab', { name: /^email$/i }).click();
+
+      await expect(page.getByRole('tab', { name: /^email$/i })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      await expect(page.getByLabel(/email address/i)).toBeVisible();
+      await expect(page.getByLabel(/phone number/i)).toHaveCount(0);
+    });
+
+    test('requires terms acceptance before sending a verification code', async ({ page }) => {
+      await page.goto('/register');
+
       await page.getByLabel(/full name/i).fill('Test User');
-      await page.getByLabel(/password/i).first().fill('123');
-      await page.getByLabel(/confirm password/i).fill('123');
-      await page.getByRole('checkbox').check();
+      await page.getByLabel(/phone number/i).fill('+919876543210');
+      await page.getByRole('button', { name: /send verification code/i }).click();
 
-      // Submit form
-      await page.getByRole('button', { name: /sign up|register|create/i }).click();
-
-      await expect(page.getByText(/password must/i).first()).toBeVisible();
+      await expect(
+        page.getByText(/you must accept the terms of service and privacy policy/i)
+      ).toBeVisible();
     });
 
-    test('should have link to login page', async ({ page }) => {
+    test('has a link back to login', async ({ page }) => {
       await page.goto('/register');
 
-      const loginLink = page.getByRole('link', { name: /login|sign in|already have/i });
-      await expect(loginLink).toBeVisible();
+      await expect(page.getByRole('link', { name: /login|sign in|already have/i })).toBeVisible();
     });
   });
 });

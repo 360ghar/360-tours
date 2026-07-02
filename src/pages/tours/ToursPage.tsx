@@ -17,16 +17,9 @@ import {
   Archive,
   ArchiveRestore,
 } from 'lucide-react';
-import {
-  Card,
-  CardContent,
-  Button,
-  Input,
-  Badge,
-  Skeleton,
-  SkeletonCard,
-} from '@/components/ui';
+import { Card, CardContent, Button, Input, Badge, Skeleton, SkeletonCard } from '@/components/ui';
 import { toursApi } from '@/api';
+import { useUIStore, confirm } from '@/stores';
 import { ROUTES, QUERY_KEYS, TOUR_STATUS_OPTIONS } from '@/constants';
 import { formatCompactNumber, formatRelativeTime } from '@/utils/format';
 import { useDebounce } from '@/hooks';
@@ -38,6 +31,7 @@ type ViewMode = 'grid' | 'list';
 export function ToursPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const addToast = useUIStore(s => s.addToast);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -47,7 +41,7 @@ export function ToursPage() {
   const debouncedSearch = useDebounce(searchQuery, 300);
 
   // Fetch tours (cursor pagination)
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: [QUERY_KEYS.TOURS, { cursor, search: debouncedSearch, status: statusFilter }],
     queryFn: () =>
       toursApi.getTours({
@@ -62,7 +56,6 @@ export function ToursPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCursor(null);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCursorHistory([]);
   }, [debouncedSearch, statusFilter]);
 
@@ -72,6 +65,9 @@ export function ToursPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
     },
+    onError: (error: Error) => {
+      addToast({ type: 'error', message: error.message || 'Action failed' });
+    },
   });
 
   // Duplicate tour mutation
@@ -79,6 +75,9 @@ export function ToursPage() {
     mutationFn: (id: string) => toursApi.duplicateTour(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
+    },
+    onError: (error: Error) => {
+      addToast({ type: 'error', message: error.message || 'Action failed' });
     },
   });
 
@@ -89,38 +88,67 @@ export function ToursPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
     },
+    onError: (error: Error) => {
+      addToast({ type: 'error', message: error.message || 'Action failed' });
+    },
   });
 
   const tours = data?.items || [];
+  const total = data?.total;
   const hasMore = data?.has_more ?? false;
   const canGoBack = cursorHistory.length > 0;
+  const hasActiveFilters = searchQuery.trim().length > 0 || statusFilter !== 'all';
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+  };
 
   const handleNext = () => {
     if (!data?.next_cursor) return;
-    setCursorHistory((h) => [...h, cursor ?? '']);
+    setCursorHistory(h => [...h, cursor ?? '']);
     setCursor(data.next_cursor);
   };
 
   const handlePrev = () => {
     if (cursorHistory.length === 0) return;
     const prev = cursorHistory[cursorHistory.length - 1];
-    setCursorHistory((h) => h.slice(0, -1));
+    setCursorHistory(h => h.slice(0, -1));
     setCursor(prev || null);
   };
 
   const handleDelete = async (tour: Tour) => {
-    if (confirm(`Are you sure you want to delete "${tour.title}"?`)) {
-      await deleteMutation.mutateAsync(tour.id);
+    if (
+      await confirm({
+        title: 'Delete tour',
+        message: `Are you sure you want to delete "${tour.title}"?`,
+        confirmLabel: 'Delete',
+        destructive: true,
+      })
+    ) {
+      try {
+        await deleteMutation.mutateAsync(tour.id);
+      } catch {
+        // Error toast is handled by the mutation.
+      }
     }
   };
 
   const handleDuplicate = async (tour: Tour) => {
-    await duplicateMutation.mutateAsync(tour.id);
+    try {
+      await duplicateMutation.mutateAsync(tour.id);
+    } catch {
+      // Error toast is handled by the mutation.
+    }
   };
 
   const handleArchive = async (tour: Tour) => {
     const archive = tour.status !== 'archived';
-    await archiveMutation.mutateAsync({ id: tour.id, archive });
+    try {
+      await archiveMutation.mutateAsync({ id: tour.id, archive });
+    } catch {
+      // Error toast is handled by the mutation.
+    }
   };
 
   return (
@@ -143,14 +171,15 @@ export function ToursPage() {
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 gap-4">
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
           {/* Search */}
           <div className="relative flex-1 sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <Input
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search tours..."
+              aria-label="Search tours"
               className="pl-10"
             />
           </div>
@@ -158,11 +187,12 @@ export function ToursPage() {
           {/* Status Filter */}
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={e => setStatusFilter(e.target.value)}
+            aria-label="Filter tours by status"
             className="h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-500)]"
           >
             <option value="all">All Status</option>
-            {TOUR_STATUS_OPTIONS.map((option) => (
+            {TOUR_STATUS_OPTIONS.map(option => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -173,6 +203,9 @@ export function ToursPage() {
         {/* View Mode Toggle */}
         <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] p-1">
           <button
+            type="button"
+            aria-label="Show tours as grid"
+            aria-pressed={viewMode === 'grid'}
             onClick={() => setViewMode('grid')}
             className={cn(
               'rounded-md p-2 transition-colors',
@@ -184,6 +217,9 @@ export function ToursPage() {
             <Grid3X3 className="h-4 w-4" />
           </button>
           <button
+            type="button"
+            aria-label="Show tours as list"
+            aria-pressed={viewMode === 'list'}
             onClick={() => setViewMode('list')}
             className={cn(
               'rounded-md p-2 transition-colors',
@@ -199,32 +235,53 @@ export function ToursPage() {
 
       {/* Tours Grid/List */}
       {isLoading ? (
-        <div className={cn(
-          viewMode === 'grid'
-            ? 'grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-            : 'space-y-4'
-        )}>
-          {[...Array(8)].map((_, i) => (
+        <div
+          className={cn(
+            viewMode === 'grid'
+              ? 'grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+              : 'space-y-4'
+          )}
+        >
+          {[...Array(12)].map((_, i) =>
             viewMode === 'grid' ? (
               <SkeletonCard key={i} />
             ) : (
               <Skeleton key={i} className="h-20 w-full" />
             )
-          ))}
+          )}
         </div>
+      ) : isError ? (
+        <Card className="py-16">
+          <CardContent className="text-center">
+            <Images className="mx-auto h-16 w-16 text-[var(--color-text-muted)]" />
+            <h3 className="mt-4 text-lg font-semibold text-[var(--color-text-primary)]">
+              Tours could not load
+            </h3>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[var(--color-text-muted)]">
+              {error instanceof Error ? error.message : 'Refresh the list and try again.'}
+            </p>
+            <Button type="button" variant="outline" className="mt-6" onClick={() => void refetch()}>
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
       ) : tours.length === 0 ? (
         <Card className="py-16">
           <CardContent className="text-center">
             <Images className="mx-auto h-16 w-16 text-[var(--color-text-muted)]" />
             <h3 className="mt-4 text-lg font-semibold text-[var(--color-text-primary)]">
-              No tours found
+              {hasActiveFilters ? 'No tours match these filters' : 'No tours yet'}
             </h3>
             <p className="mt-2 text-[var(--color-text-muted)]">
-              {searchQuery
-                ? 'Try adjusting your search or filters'
+              {hasActiveFilters
+                ? 'Clear the search or status filter to see more tours.'
                 : 'Create your first virtual tour to get started'}
             </p>
-            {!searchQuery && (
+            {hasActiveFilters ? (
+              <Button type="button" variant="outline" className="mt-6" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : (
               <Link to={ROUTES.TOUR_CREATE}>
                 <Button className="mt-6">
                   <Plus className="h-4 w-4" />
@@ -236,7 +293,7 @@ export function ToursPage() {
         </Card>
       ) : viewMode === 'grid' ? (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {tours.map((tour) => (
+          {tours.map(tour => (
             <TourCard
               key={tour.id}
               tour={tour}
@@ -249,7 +306,7 @@ export function ToursPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {tours.map((tour) => (
+          {tours.map(tour => (
             <TourListItem
               key={tour.id}
               tour={tour}
@@ -264,21 +321,15 @@ export function ToursPage() {
 
       {/* Pagination (cursor-based Prev / Next) */}
       {(canGoBack || hasMore) && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!canGoBack}
-            onClick={handlePrev}
-          >
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button variant="outline" size="sm" disabled={!canGoBack} onClick={handlePrev}>
             Previous
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!hasMore}
-            onClick={handleNext}
-          >
+          <span className="px-3 text-sm text-[var(--color-text-muted)]">
+            Showing {tours.length}
+            {typeof total === 'number' ? ` of ${total}` : ''} tours
+          </span>
+          <Button variant="outline" size="sm" disabled={!hasMore} onClick={handleNext}>
             Next
           </Button>
         </div>
@@ -300,8 +351,8 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
   const [showMenu, setShowMenu] = useState(false);
 
   return (
-    <Card className="group overflow-hidden transition-shadow hover:shadow-md">
-      <div className="relative aspect-video overflow-hidden bg-[var(--color-surface)]">
+    <Card className="group transition-shadow hover:shadow-md">
+      <div className="relative aspect-video overflow-hidden rounded-t-lg bg-[var(--color-surface)]">
         {tour.thumbnail_url ? (
           <img
             src={tour.thumbnail_url}
@@ -315,7 +366,15 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
           </div>
         )}
         <div className="absolute right-2 top-2">
-          <Badge variant={tour.status === 'published' ? 'success' : tour.status === 'archived' ? 'warning' : 'secondary'}>
+          <Badge
+            variant={
+              tour.status === 'published'
+                ? 'success'
+                : tour.status === 'archived'
+                  ? 'warning'
+                  : 'secondary'
+            }
+          >
             {tour.status}
           </Badge>
         </div>
@@ -345,18 +404,17 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label={`Open actions for ${tour.title}`}
               onClick={() => setShowMenu(!showMenu)}
             >
               <MoreVertical className="h-4 w-4" />
             </Button>
             {showMenu && (
               <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowMenu(false)}
-                />
+                <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
                 <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-1 shadow-lg">
                   <button
+                    type="button"
                     onClick={() => {
                       setShowMenu(false);
                       onEdit();
@@ -367,6 +425,7 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
                     Edit
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowMenu(false);
                       onDuplicate();
@@ -388,6 +447,7 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
                     </a>
                   )}
                   <button
+                    type="button"
                     onClick={() => {
                       setShowMenu(false);
                       onArchive();
@@ -408,6 +468,7 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
                   </button>
                   <hr className="my-1 border-[var(--color-border)]" />
                   <button
+                    type="button"
                     onClick={() => {
                       setShowMenu(false);
                       onDelete();
@@ -431,8 +492,8 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
 function TourListItem({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardProps) {
   return (
     <Card className="transition-shadow hover:shadow-md">
-      <CardContent className="flex items-center gap-4 p-4">
-        <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded-lg bg-[var(--color-surface)]">
+      <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+        <div className="h-36 w-full flex-shrink-0 overflow-hidden rounded-lg bg-[var(--color-surface)] sm:h-16 sm:w-24">
           {tour.thumbnail_url ? (
             <img
               src={tour.thumbnail_url}
@@ -451,7 +512,15 @@ function TourListItem({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCa
             <h3 className="truncate font-semibold text-[var(--color-text-primary)]">
               {tour.title}
             </h3>
-            <Badge variant={tour.status === 'published' ? 'success' : tour.status === 'archived' ? 'warning' : 'secondary'}>
+            <Badge
+              variant={
+                tour.status === 'published'
+                  ? 'success'
+                  : tour.status === 'archived'
+                    ? 'warning'
+                    : 'secondary'
+              }
+            >
               {tour.status}
             </Badge>
           </div>
@@ -470,18 +539,38 @@ function TourListItem({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCa
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
           <Button variant="outline" size="sm" onClick={onEdit}>
             <Pencil className="h-4 w-4" />
             Edit
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={onDuplicate}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Duplicate ${tour.title}`}
+            onClick={onDuplicate}
+          >
             <Copy className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={onArchive} title={tour.status === 'archived' ? 'Unarchive' : 'Archive'}>
-            {tour.status === 'archived' ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`${tour.status === 'archived' ? 'Unarchive' : 'Archive'} ${tour.title}`}
+            title={tour.status === 'archived' ? 'Unarchive' : 'Archive'}
+            onClick={onArchive}
+          >
+            {tour.status === 'archived' ? (
+              <ArchiveRestore className="h-4 w-4" />
+            ) : (
+              <Archive className="h-4 w-4" />
+            )}
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={onDelete}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Delete ${tour.title}`}
+            onClick={onDelete}
+          >
             <Trash2 className="h-4 w-4 text-[var(--color-error-600)]" />
           </Button>
         </div>

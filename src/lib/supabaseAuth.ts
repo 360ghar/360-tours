@@ -18,16 +18,17 @@ if (!IS_TEST_MODE && (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY)) {
   );
 }
 
-const supabase = SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storageKey: STORAGE_KEYS.AUTH_TOKENS,
-      },
-    })
-  : null;
+const supabase =
+  SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storageKey: STORAGE_KEYS.AUTH_TOKENS,
+        },
+      })
+    : null;
 
 let cachedSession: SupabaseSession | null = null;
 
@@ -109,20 +110,27 @@ export const supabaseAuth = {
       password: payload.password,
     });
     if (error || !data.session) {
-      throw new Error(error?.message || 'Login failed. Please check your credentials and try again.');
+      throw new Error(
+        error?.message || 'Login failed. Please check your credentials and try again.'
+      );
     }
     cachedSession = normalizeSession(data.session);
     return cachedSession!;
   },
 
-  async signInWithEmailPassword(payload: { email: string; password: string }): Promise<SupabaseSession> {
+  async signInWithEmailPassword(payload: {
+    email: string;
+    password: string;
+  }): Promise<SupabaseSession> {
     const client = requireClient();
     const { data, error } = await client.auth.signInWithPassword({
       email: payload.email,
       password: payload.password,
     });
     if (error || !data.session) {
-      throw new Error(error?.message || 'Login failed. Please check your credentials and try again.');
+      throw new Error(
+        error?.message || 'Login failed. Please check your credentials and try again.'
+      );
     }
     cachedSession = normalizeSession(data.session);
     return cachedSession!;
@@ -152,11 +160,15 @@ export const supabaseAuth = {
     cachedSession = null;
   },
 
-  async requestOtp(payload: { phone: string; shouldCreateUser?: boolean }): Promise<void> {
+  async requestOtp(payload: {
+    phone: string;
+    shouldCreateUser?: boolean;
+    data?: Record<string, unknown>;
+  }): Promise<void> {
     const client = requireClient();
     const { error } = await client.auth.signInWithOtp({
       phone: payload.phone,
-      options: { shouldCreateUser: payload.shouldCreateUser ?? true },
+      options: { shouldCreateUser: payload.shouldCreateUser ?? true, data: payload.data },
     });
     if (error) {
       throw new Error(error.message);
@@ -167,11 +179,15 @@ export const supabaseAuth = {
    * Send a 6-digit email OTP (channel: 'email'). Used by the verified/unverified
    * login state-machine and email-first signup.
    */
-  async requestEmailOtp(payload: { email: string; shouldCreateUser?: boolean }): Promise<void> {
+  async requestEmailOtp(payload: {
+    email: string;
+    shouldCreateUser?: boolean;
+    data?: Record<string, unknown>;
+  }): Promise<void> {
     const client = requireClient();
     const { error } = await client.auth.signInWithOtp({
       email: payload.email,
-      options: { shouldCreateUser: payload.shouldCreateUser ?? true },
+      options: { shouldCreateUser: payload.shouldCreateUser ?? true, data: payload.data },
     });
     if (error) {
       throw new Error(error.message);

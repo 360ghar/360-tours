@@ -5,12 +5,20 @@ import { supabaseAuth } from '@/lib/supabaseAuth';
 
 // Generate a session ID for analytics tracking
 function getSessionId(): string {
-  let sessionId = sessionStorage.getItem('tour_session_id');
-  if (!sessionId) {
-    sessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    sessionStorage.setItem('tour_session_id', sessionId);
+  const fallbackSessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  try {
+    let sessionId = sessionStorage.getItem('tour_session_id');
+    if (!sessionId) {
+      sessionId = fallbackSessionId;
+      sessionStorage.setItem('tour_session_id', sessionId);
+    }
+    return sessionId;
+  } catch {
+    // Storage can be blocked in private/embedded contexts; tracking must not
+    // prevent the tour from loading.
+    return fallbackSessionId;
   }
-  return sessionId;
 }
 
 interface UsePublicTourTrackingOptions {
@@ -108,6 +116,8 @@ export function usePublicTourTracking({
             headers,
             body: JSON.stringify(payload),
             keepalive: true,
+          }).catch(() => {
+            // Ignore analytics failures during unload.
           });
         } else if (navigator.sendBeacon) {
           // Legacy fallback: no Authorization header possible.
@@ -122,10 +132,10 @@ export function usePublicTourTracking({
 
   // Track scene views
   useEffect(() => {
-    if (currentSceneId) {
+    if (tourLoaded && tourId && currentSceneId) {
       trackEvent('scene_view', currentSceneId);
     }
-  }, [currentSceneId, trackEvent]);
+  }, [currentSceneId, tourId, tourLoaded, trackEvent]);
 
   return {
     trackEvent,

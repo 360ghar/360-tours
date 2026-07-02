@@ -10,6 +10,7 @@ import {
   ArrowRight,
   Download,
   TrendingUp,
+  AlertCircle,
 } from 'lucide-react';
 import {
   Card,
@@ -22,7 +23,7 @@ import {
 } from '@/components/ui';
 import { toursApi } from '@/api';
 import { ROUTES, QUERY_KEYS } from '@/constants';
-import { formatCompactNumber } from '@/utils/format';
+import { formatCompactNumber, formatDuration } from '@/utils/format';
 import { downloadAnalyticsCSV } from '@/utils/analytics';
 import type { Tour, TourAnalytics } from '@/types';
 import {
@@ -40,19 +41,37 @@ import {
   Line,
 } from 'recharts';
 
-const DEVICE_COLORS = ['var(--color-primary-500)', 'var(--color-success-500)', 'var(--color-warning-500)', 'var(--color-info-500)'];
+const DEVICE_COLORS = [
+  'var(--color-primary-500)',
+  'var(--color-success-500)',
+  'var(--color-warning-500)',
+  'var(--color-info-500)',
+];
 
 export function AnalyticsPage() {
   const [selectedTourId, setSelectedTourId] = useState<string | null>(null);
 
   // Fetch all tours to list them
-  const { data: toursData, isLoading: isLoadingTours } = useQuery({
+  const {
+    data: toursData,
+    isLoading: isLoadingTours,
+    isError: isToursError,
+    error: toursError,
+    refetch: refetchTours,
+    isFetching: isFetchingTours,
+  } = useQuery({
     queryKey: [QUERY_KEYS.TOURS, 'analytics', { limit: 50, status: 'published' }],
     queryFn: () => toursApi.getTours({ limit: 50, status: 'published' }),
   });
 
   // Fetch dashboard stats for overview
-  const { data: stats, isLoading: isLoadingStats } = useQuery({
+  const {
+    data: stats,
+    isLoading: isLoadingStats,
+    isError: isStatsError,
+    refetch: refetchStats,
+    isFetching: isFetchingStats,
+  } = useQuery({
     queryKey: [QUERY_KEYS.DASHBOARD_STATS],
     queryFn: () => toursApi.getDashboardStats(),
   });
@@ -60,13 +79,20 @@ export function AnalyticsPage() {
   const tours = useMemo(() => toursData?.items || [], [toursData]);
 
   // Fetch analytics for the selected tour
-  const { data: selectedAnalytics, isLoading: isLoadingAnalytics } = useQuery({
+  const {
+    data: selectedAnalytics,
+    isLoading: isLoadingAnalytics,
+    isError: isAnalyticsError,
+    error: analyticsError,
+    refetch: refetchAnalytics,
+    isFetching: isFetchingAnalytics,
+  } = useQuery({
     queryKey: [QUERY_KEYS.ANALYTICS, selectedTourId],
     queryFn: () => toursApi.getTourAnalytics(selectedTourId!),
     enabled: !!selectedTourId,
   });
 
-  const selectedTour = tours.find((t) => t.id === selectedTourId);
+  const selectedTour = tours.find(t => t.id === selectedTourId);
 
   // Auto-select first tour if none selected
   useEffect(() => {
@@ -114,12 +140,60 @@ export function AnalyticsPage() {
         />
       </div>
 
+      {isStatsError && (
+        <Card>
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 text-[var(--color-error-500)]" />
+              <div>
+                <p className="font-medium text-[var(--color-text-primary)]">
+                  Overview metrics could not be loaded
+                </p>
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  Tour-specific analytics can still be reviewed below.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void refetchStats()}
+              disabled={isFetchingStats}
+            >
+              Retry overview
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tour Selector + Analytics */}
       {isLoadingTours ? (
         <div className="space-y-4">
           <Skeleton className="h-10 w-64" />
           <Skeleton className="h-[300px] w-full" />
         </div>
+      ) : isToursError ? (
+        <Card className="py-16">
+          <CardContent className="text-center">
+            <AlertCircle className="mx-auto h-16 w-16 text-[var(--color-error-500)]" />
+            <h3 className="mt-4 text-lg font-semibold text-[var(--color-text-primary)]">
+              Published tours could not be loaded
+            </h3>
+            <p className="mx-auto mt-2 max-w-md text-[var(--color-text-muted)]">
+              {toursError instanceof Error
+                ? toursError.message
+                : 'Check your connection and try loading analytics again.'}
+            </p>
+            <Button
+              variant="outline"
+              className="mt-6"
+              onClick={() => void refetchTours()}
+              disabled={isFetchingTours}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       ) : tours.length === 0 ? (
         <Card className="py-16">
           <CardContent className="text-center">
@@ -142,12 +216,16 @@ export function AnalyticsPage() {
         <>
           {/* Tour Selector */}
           <div className="flex items-center gap-4">
+            <label htmlFor="analytics-tour-select" className="sr-only">
+              Select tour for analytics
+            </label>
             <select
+              id="analytics-tour-select"
               value={selectedTourId || ''}
-              onChange={(e) => setSelectedTourId(e.target.value)}
+              onChange={e => setSelectedTourId(e.target.value)}
               className="h-10 min-w-[250px] rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-500)]"
             >
-              {tours.map((tour) => (
+              {tours.map(tour => (
                 <option key={tour.id} value={tour.id}>
                   {tour.title} ({formatCompactNumber(tour.view_count)} views)
                 </option>
@@ -179,6 +257,32 @@ export function AnalyticsPage() {
               <Skeleton className="h-[300px]" />
               <Skeleton className="h-[300px]" />
             </div>
+          ) : !isLoadingAnalytics && isAnalyticsError ? (
+            <Card>
+              <CardContent className="flex flex-col gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 h-5 w-5 text-[var(--color-error-500)]" />
+                  <div>
+                    <p className="font-medium text-[var(--color-text-primary)]">
+                      Analytics could not be loaded
+                    </p>
+                    <p className="text-sm text-[var(--color-text-muted)]">
+                      {analyticsError instanceof Error
+                        ? analyticsError.message
+                        : "Try again to refresh this tour's metrics."}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refetchAnalytics()}
+                  disabled={isFetchingAnalytics}
+                >
+                  Retry analytics
+                </Button>
+              </CardContent>
+            </Card>
           ) : selectedAnalytics ? (
             <TourAnalyticsDetail analytics={selectedAnalytics} tour={selectedTour!} />
           ) : null}
@@ -187,26 +291,39 @@ export function AnalyticsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Tour Performance Comparison</CardTitle>
-              <CardDescription>
-                Compare metrics across all your published tours
-              </CardDescription>
+              <CardDescription>Compare metrics across all your published tours</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[var(--color-border)]">
-                      <th className="pb-3 text-left font-medium text-[var(--color-text-muted)]">Tour</th>
-                      <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]">Views</th>
-                      <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]">Likes</th>
-                      <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]">Shares</th>
-                      <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]">Scenes</th>
+                      <th className="pb-3 text-left font-medium text-[var(--color-text-muted)]">
+                        Tour
+                      </th>
+                      <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]">
+                        Views
+                      </th>
+                      <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]">
+                        Likes
+                      </th>
+                      <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]">
+                        Shares
+                      </th>
+                      <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]">
+                        Scenes
+                      </th>
                       <th className="pb-3 text-right font-medium text-[var(--color-text-muted)]"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {tours.map((tour) => (
-                      <TourRow key={tour.id} tour={tour} isSelected={tour.id === selectedTourId} onSelect={() => setSelectedTourId(tour.id)} />
+                    {tours.map(tour => (
+                      <TourRow
+                        key={tour.id}
+                        tour={tour}
+                        isSelected={tour.id === selectedTourId}
+                        onSelect={() => setSelectedTourId(tour.id)}
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -226,18 +343,52 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
         { name: 'Mobile', value: analytics.device_breakdown.mobile || 0 },
         { name: 'Tablet', value: analytics.device_breakdown.tablet || 0 },
         { name: 'VR', value: analytics.device_breakdown.vr || 0 },
-      ].filter((d) => d.value > 0)
+      ].filter(d => d.value > 0)
     : [];
+
+  // Build a map of scene IDs to titles for the scene views chart
+  const sceneTitles = new Map((tour.scenes || []).map(s => [s.id, s.title || 'Untitled']));
+  const hasChartData =
+    (analytics.daily_views?.length ?? 0) > 0 ||
+    deviceData.length > 0 ||
+    Object.keys(analytics.scene_views || {}).length > 0 ||
+    Object.keys(analytics.country_breakdown || {}).length > 0;
 
   return (
     <div className="space-y-6">
       {/* Key Metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard icon={Eye} label="Total Views" value={formatCompactNumber(analytics.total_views)} />
-        <MetricCard icon={Eye} label="Unique Views" value={formatCompactNumber(analytics.unique_views)} />
+        <MetricCard
+          icon={Eye}
+          label="Total Views"
+          value={formatCompactNumber(analytics.total_views)}
+        />
+        <MetricCard
+          icon={Eye}
+          label="Unique Views"
+          value={formatCompactNumber(analytics.unique_views)}
+        />
         <MetricCard icon={Heart} label="Likes" value={formatCompactNumber(analytics.total_likes)} />
-        <MetricCard icon={Clock} label="Avg Duration" value={`${Math.round(analytics.avg_session_duration)}s`} />
+        <MetricCard
+          icon={Clock}
+          label="Avg Duration"
+          value={formatDuration(analytics.avg_session_duration)}
+        />
       </div>
+
+      {!hasChartData && (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <BarChart3 className="mx-auto h-10 w-10 text-[var(--color-text-muted)]" />
+            <h3 className="mt-3 font-semibold text-[var(--color-text-primary)]">
+              No activity recorded yet
+            </h3>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              Analytics will populate after visitors open, share, or interact with this tour.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Daily Views Chart */}
@@ -251,8 +402,19 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={analytics.daily_views}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                    <XAxis dataKey="date" stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                    <XAxis
+                      dataKey="date"
+                      stroke="var(--color-text-muted)"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      stroke="var(--color-text-muted)"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: 'var(--color-surface-elevated)',
@@ -261,7 +423,13 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
                         fontSize: '12px',
                       }}
                     />
-                    <Line type="monotone" dataKey="views" stroke="var(--color-primary-600)" strokeWidth={2} dot={false} />
+                    <Line
+                      type="monotone"
+                      dataKey="views"
+                      stroke="var(--color-primary-600)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -287,7 +455,9 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
                       outerRadius={90}
                       paddingAngle={4}
                       dataKey="value"
-                      label={({ name, percent }) => `${name ?? 'Unknown'} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                      label={({ name, percent }) =>
+                        `${name ?? 'Unknown'} ${((percent ?? 0) * 100).toFixed(0)}%`
+                      }
                     >
                       {deviceData.map((_, index) => (
                         <Cell key={index} fill={DEVICE_COLORS[index % DEVICE_COLORS.length]} />
@@ -310,10 +480,26 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
             <CardContent>
               <div className="h-[250px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={Object.entries(analytics.scene_views).map(([id, views]) => ({ scene: id.slice(0, 8), views }))}>
+                  <BarChart
+                    data={Object.entries(analytics.scene_views).map(([id, views], index) => ({
+                      scene: sceneTitles.get(id) || `Scene ${index + 1}`,
+                      views,
+                    }))}
+                  >
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                    <XAxis dataKey="scene" stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                    <XAxis
+                      dataKey="scene"
+                      stroke="var(--color-text-muted)"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      stroke="var(--color-text-muted)"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: 'var(--color-surface-elevated)',
@@ -345,7 +531,9 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
                     const maxViews = Math.max(...Object.values(analytics.country_breakdown));
                     return (
                       <div key={country} className="flex items-center gap-3">
-                        <span className="w-24 truncate text-sm text-[var(--color-text-primary)]">{country}</span>
+                        <span className="w-24 truncate text-sm text-[var(--color-text-primary)]">
+                          {country}
+                        </span>
                         <div className="flex-1">
                           <div className="h-2 rounded-full bg-[var(--color-surface)]">
                             <div
@@ -354,7 +542,9 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
                             />
                           </div>
                         </div>
-                        <span className="w-12 text-right text-sm text-[var(--color-text-muted)]">{formatCompactNumber(views)}</span>
+                        <span className="w-12 text-right text-sm text-[var(--color-text-muted)]">
+                          {formatCompactNumber(views)}
+                        </span>
                       </div>
                     );
                   })}
@@ -367,7 +557,17 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
   );
 }
 
-function OverviewCard({ title, value, icon: Icon, isLoading }: { title: string; value: string | number; icon: React.ComponentType<{ className?: string }>; isLoading?: boolean }) {
+function OverviewCard({
+  title,
+  value,
+  icon: Icon,
+  isLoading,
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+  isLoading?: boolean;
+}) {
   return (
     <Card>
       <CardContent className="flex items-center gap-4 p-6">
@@ -376,14 +576,26 @@ function OverviewCard({ title, value, icon: Icon, isLoading }: { title: string; 
         </div>
         <div>
           <p className="text-sm text-[var(--color-text-muted)]">{title}</p>
-          {isLoading ? <Skeleton className="mt-1 h-7 w-16" /> : <p className="text-2xl font-bold text-[var(--color-text-primary)]">{value}</p>}
+          {isLoading ? (
+            <Skeleton className="mt-1 h-7 w-16" />
+          ) : (
+            <p className="text-2xl font-bold text-[var(--color-text-primary)]">{value}</p>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function MetricCard({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-4">
       <Icon className="h-5 w-5 text-[var(--color-primary-600)]" />
@@ -395,35 +607,67 @@ function MetricCard({ icon: Icon, label, value }: { icon: React.ComponentType<{ 
   );
 }
 
-function TourRow({ tour, isSelected, onSelect }: { tour: Tour; isSelected: boolean; onSelect: () => void }) {
+function TourRow({
+  tour,
+  isSelected,
+  onSelect,
+}: {
+  tour: Tour;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
   return (
     <tr
       className={`cursor-pointer border-b border-[var(--color-border)] transition-colors hover:bg-[var(--color-surface)] ${isSelected ? 'bg-[var(--color-primary-50)]' : ''}`}
       onClick={onSelect}
+      onKeyDown={event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      tabIndex={0}
+      role="button"
+      aria-pressed={isSelected}
     >
       <td className="py-3 pr-4">
         <div className="flex items-center gap-3">
           <div className="h-8 w-12 flex-shrink-0 overflow-hidden rounded bg-[var(--color-surface)]">
             {tour.thumbnail_url ? (
-              <img src={tour.thumbnail_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+              <img
+                src={tour.thumbnail_url}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-[var(--color-surface-elevated)]">
                 <BarChart3 className="h-4 w-4 text-[var(--color-text-muted)]" />
               </div>
             )}
           </div>
-          <span className="truncate font-medium text-[var(--color-text-primary)]">{tour.title}</span>
+          <span className="truncate font-medium text-[var(--color-text-primary)]">
+            {tour.title}
+          </span>
         </div>
       </td>
-      <td className="py-3 text-right text-[var(--color-text-secondary)]">{formatCompactNumber(tour.view_count)}</td>
-      <td className="py-3 text-right text-[var(--color-text-secondary)]">{formatCompactNumber(tour.like_count)}</td>
-      <td className="py-3 text-right text-[var(--color-text-secondary)]">{formatCompactNumber(tour.share_count)}</td>
-      <td className="py-3 text-right text-[var(--color-text-secondary)]">{tour.scene_count || 0}</td>
+      <td className="py-3 text-right text-[var(--color-text-secondary)]">
+        {formatCompactNumber(tour.view_count)}
+      </td>
+      <td className="py-3 text-right text-[var(--color-text-secondary)]">
+        {formatCompactNumber(tour.like_count)}
+      </td>
+      <td className="py-3 text-right text-[var(--color-text-secondary)]">
+        {formatCompactNumber(tour.share_count)}
+      </td>
+      <td className="py-3 text-right text-[var(--color-text-secondary)]">
+        {tour.scene_count || 0}
+      </td>
       <td className="py-3 text-right">
         <Link
           to={`/tours/${tour.id}/analytics`}
           className="text-xs font-medium text-[var(--color-primary-600)] hover:underline"
-          onClick={(e) => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
         >
           Details
         </Link>

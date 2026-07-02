@@ -102,12 +102,27 @@ export const HOTSPOT_ICON_CATEGORIES = {
 
 export const HOTSPOT_ICON_BY_NAME: Partial<Record<string, LucideIcon>> = Object.values(
   HOTSPOT_ICON_CATEGORIES
-).reduce((acc, category) => {
-  category.icons.forEach(({ name, icon }) => {
-    acc[name] = icon;
-  });
-  return acc;
-}, {} as Partial<Record<string, LucideIcon>>);
+).reduce(
+  (acc, category) => {
+    category.icons.forEach(({ name, icon }) => {
+      acc[name] = icon;
+    });
+    return acc;
+  },
+  {} as Partial<Record<string, LucideIcon>>
+);
 
 export const DEFAULT_HOTSPOT_ICON: LucideIcon = Info;
 
+export function getHotspotIconForeground(iconColor: string | null | undefined): string {
+  if (!iconColor || !/^#[0-9A-Fa-f]{6}$/.test(iconColor)) {
+    return '#ffffff';
+  }
+
+  const red = parseInt(iconColor.slice(1, 3), 16);
+  const green = parseInt(iconColor.slice(3, 5), 16);
+  const blue = parseInt(iconColor.slice(5, 7), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+
+  return luminance > 0.68 ? '#0A0A0B' : '#ffffff';
+}

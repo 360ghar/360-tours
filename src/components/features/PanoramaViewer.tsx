@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Viewer } from '@photo-sphere-viewer/core';
-import { MarkersPlugin, events as MarkersEvents, type MarkerConfig } from '@photo-sphere-viewer/markers-plugin';
+import { Viewer, type ViewerConfig } from '@photo-sphere-viewer/core';
+import {
+  MarkersPlugin,
+  events as MarkersEvents,
+  type MarkerConfig,
+} from '@photo-sphere-viewer/markers-plugin';
 import { GyroscopePlugin } from '@photo-sphere-viewer/gyroscope-plugin';
 import { StereoPlugin } from '@photo-sphere-viewer/stereo-plugin';
 import '@photo-sphere-viewer/core/index.css';
@@ -34,6 +38,27 @@ interface VRSupport {
   stereo: boolean;
   webxr: boolean;
 }
+
+// Escape user-controlled hotspot titles before interpolating them into HTML
+// attribute strings (aria-label, etc.). Prevents attribute/context-breakout
+// injection from malicious or malformed hotspot titles.
+const escapeHtml = (str: string) =>
+  str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+// hotspot.icon_color is editor-controlled and gets interpolated into a style
+// attribute — only allow a valid CSS hex/rgb(a) color, else fall back. Prevents
+// attribute-breakout XSS (e.g. `" onmouseover="...`).
+const safeColor = (color: string | null | undefined, fallback: string) =>
+  color && /^(#[0-9A-Fa-f]{3,8}|rgba?\([\d.,\s%]+\))$/.test(color.trim()) ? color.trim() : fallback;
+
+// icon_size is interpolated into a px length — coerce to a sane integer.
+const safeSize = (size: number | null | undefined, fallback = 32) =>
+  Number.isFinite(size) ? Math.min(Math.max(Math.round(size as number), 8), 256) : fallback;
 
 export function PanoramaViewer({
   scene,
@@ -75,6 +100,7 @@ export function PanoramaViewer({
   const [stereoEnabled, setStereoEnabled] = useState(false);
   const [vrError, setVrError] = useState<string | null>(null);
   const [isPanoramaLoading, setIsPanoramaLoading] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   // Photo Sphere Viewer discards markers added before the panorama texture has
   // loaded. We therefore only (re)apply markers once the viewer is ready, and
   // flip this back to false whenever a new panorama starts loading so markers are
@@ -92,14 +118,28 @@ export function PanoramaViewer({
   const [persistedGyro, setPersistedGyro] = useLocalStorage<boolean>('360g:vr:gyroscope', false);
   const [, setPersistedStereo] = useLocalStorage<boolean>('360g:vr:stereo', false);
 
-
-
   // Keep the latest onPositionClick in a ref so changing the callback prop
   // doesn't force a full viewer destroy/rebuild (black flash, lost camera position).
   const onPositionClickRef = useRef(onPositionClick);
   useEffect(() => {
     onPositionClickRef.current = onPositionClick;
   });
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    updatePreference();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updatePreference);
+      return () => mediaQuery.removeEventListener('change', updatePreference);
+    }
+
+    mediaQuery.addListener(updatePreference);
+    return () => mediaQuery.removeListener(updatePreference);
+  }, []);
 
   // Track the latest scene so the serialized loader always resolves to the most
   // recently requested room when an in-flight load settles.
@@ -128,6 +168,7 @@ export function PanoramaViewer({
   const startAutoRotate = useCallback(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
+    if (prefersReducedMotion) return;
     if (autoRotateFrameRef.current != null) return;
 
     const speedMultiplier = tourSettings?.auto_rotate_speed ?? 1;
@@ -146,24 +187,36 @@ export function PanoramaViewer({
       autoRotateLastTimeRef.current = timestamp;
 
       const position = currentViewer.getPosition();
-      currentViewer.rotate({ yaw: position.yaw + speedRadPerSecond * dtSeconds, pitch: position.pitch });
+      currentViewer.rotate({
+        yaw: position.yaw + speedRadPerSecond * dtSeconds,
+        pitch: position.pitch,
+      });
 
       autoRotateFrameRef.current = requestAnimationFrame(step);
     };
 
     autoRotateFrameRef.current = requestAnimationFrame(step);
-  }, [tourSettings?.auto_rotate_speed]);
+  }, [prefersReducedMotion, tourSettings?.auto_rotate_speed]);
 
   const scheduleAutoRotate = useCallback(() => {
     if (isEditor) return;
     if (tourSettings?.auto_rotate !== true) return;
+    if (prefersReducedMotion) return;
     if (gyroscopeEnabled || stereoEnabled) return;
 
     stopAutoRotate();
     autoRotateIdleTimeoutRef.current = window.setTimeout(() => {
       startAutoRotate();
     }, VIEWER_DEFAULTS.autorotateDelay);
-  }, [gyroscopeEnabled, isEditor, startAutoRotate, stereoEnabled, stopAutoRotate, tourSettings?.auto_rotate]);
+  }, [
+    gyroscopeEnabled,
+    isEditor,
+    prefersReducedMotion,
+    startAutoRotate,
+    stereoEnabled,
+    stopAutoRotate,
+    tourSettings?.auto_rotate,
+  ]);
 
   // Check VR capabilities
   useEffect(() => {
@@ -178,8 +231,9 @@ export function PanoramaViewer({
       if (window.DeviceOrientationEvent) {
         // On iOS 13+, we need to request permission
         if (
-          typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
-            .requestPermission === 'function'
+          typeof (
+            DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
+          ).requestPermission === 'function'
         ) {
           // Permission will be requested when user clicks the button
           support.gyroscope = true;
@@ -192,7 +246,11 @@ export function PanoramaViewer({
       // Check for WebXR support
       if ('xr' in navigator) {
         try {
-          support.webxr = await (navigator as Navigator & { xr: { isSessionSupported: (mode: string) => Promise<boolean> } }).xr.isSessionSupported('immersive-vr');
+          support.webxr = await (
+            navigator as Navigator & {
+              xr: { isSessionSupported: (mode: string) => Promise<boolean> };
+            }
+          ).xr.isSessionSupported('immersive-vr');
         } catch {
           support.webxr = false;
         }
@@ -207,130 +265,158 @@ export function PanoramaViewer({
     checkVrSupport();
   }, []);
 
+  // Serialize tourSettings for stable dependency — avoids re-creating the
+  // viewer when the parent passes a new object reference with identical values.
+  const tourSettingsKey = JSON.stringify(tourSettings);
+
   // Initialize viewer
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
 
-    // Build navbar items based on settings
-    const navbarItems: string[] = [];
-    if (!isEditor) {
-      if (tourSettings?.show_navbar !== false) {
-        navbarItems.push('zoom');
-        if (tourSettings?.enable_fullscreen !== false) {
-          navbarItems.push('fullscreen');
+    let viewerForCleanup: Viewer | null = null;
+
+    // Defer construction by one macrotask so React StrictMode's development-only
+    // throwaway mount can clean up before Photo Sphere Viewer starts image/texture
+    // loading. That avoids destroying a three.js-backed viewer mid-load.
+    const initViewer = () => {
+      if (!container.isConnected) return;
+
+      // Build navbar items based on settings
+      const navbarItems: string[] = [];
+      if (!isEditor) {
+        if (tourSettings?.show_navbar !== false) {
+          navbarItems.push('zoom');
+          if (tourSettings?.enable_fullscreen !== false) {
+            navbarItems.push('fullscreen');
+          }
         }
       }
-    }
 
-    // Build plugins array
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const plugins: any[] = [
-      [MarkersPlugin, { markers: [] }],
-    ];
+      // Build plugins array
+      const plugins: NonNullable<ViewerConfig['plugins']> = [[MarkersPlugin, { markers: [] }]];
 
-    // Add gyroscope plugin if VR is enabled
-    if (tourSettings?.enable_vr !== false && tourSettings?.enable_gyroscope !== false) {
-      plugins.push([GyroscopePlugin, {
-        touchmove: true,
-        absolutePosition: false,
-        moveMode: 'smooth',
-      }]);
-    }
-
-    // Add stereo plugin if VR is enabled
-    if (tourSettings?.enable_vr !== false) {
-      plugins.push([StereoPlugin, {}]);
-    }
-
-    const initialView = scene.metadata?.initial_view ?? tourSettings?.initial_view;
-
-    const viewer = new Viewer({
-      container: containerRef.current,
-      panorama: scene.image_url,
-      defaultPitch: initialView?.pitch ?? VIEWER_DEFAULTS.defaultPitch,
-      defaultYaw: initialView?.yaw ?? VIEWER_DEFAULTS.defaultYaw,
-      defaultZoomLvl:
-        typeof initialView === 'object' && 'zoom' in initialView && typeof initialView.zoom === 'number'
-          ? initialView.zoom
-          : VIEWER_DEFAULTS.defaultZoom,
-      minFov: scene.metadata?.camera?.min_fov ?? VIEWER_DEFAULTS.minFov,
-      maxFov: scene.metadata?.camera?.max_fov ?? VIEWER_DEFAULTS.maxFov,
-      navbar: isEditor ? false : navbarItems.length > 0 ? navbarItems : false,
-      plugins,
-    });
-
-    viewerRef.current = viewer;
-    // The constructor loads this panorama; record it so the scene-change effect
-    // skips a redundant (and race-inducing) setPanorama for the same URL, and mark
-    // the load in-flight so early scene switches are queued (not aborted) until
-    // 'ready' fires.
-    loadedPanoramaUrlRef.current = scene.image_url;
-    inFlightRef.current = true;
-    // The Viewer constructor types every plugin as `AbstractPlugin<any>`, so the
-    // specific plugin references need narrowing back to their concrete types.
-    markersPluginRef.current = viewer.getPlugin(MarkersPlugin) as MarkersPlugin;
-
-    // Hide the loading spinner once the viewer finishes its first render, and
-    // mark the viewer ready so markers can be applied (PSV drops markers added
-    // before this point).
-    viewer.addEventListener('ready', () => {
-      inFlightRef.current = false;
-      setIsPanoramaLoading(false);
-      setIsViewerReady(true);
-      // If the user navigated away from the initial scene while it was loading,
-      // load the latest one now.
-      if (latestSceneRef.current?.image_url !== loadedPanoramaUrlRef.current) {
-        processQueueRef.current(false);
+      // Add gyroscope plugin if VR is enabled
+      if (tourSettings?.enable_vr !== false && tourSettings?.enable_gyroscope !== false) {
+        plugins.push([
+          GyroscopePlugin,
+          {
+            touchmove: true,
+            absolutePosition: false,
+            moveMode: 'smooth',
+          },
+        ]);
       }
-    });
 
-    // Get VR plugins if available
-    if (tourSettings?.enable_vr !== false) {
-      try {
-        gyroscopePluginRef.current = viewer.getPlugin(GyroscopePlugin) as GyroscopePlugin;
-        stereoPluginRef.current = viewer.getPlugin(StereoPlugin) as StereoPlugin;
-      } catch {
-        // Plugins not available
+      // Add stereo plugin if VR is enabled
+      if (tourSettings?.enable_vr !== false) {
+        plugins.push([StereoPlugin, {}]);
       }
-    }
 
-    if (
-      !isEditor &&
-      tourSettings?.enable_vr !== false &&
-      tourSettings?.enable_gyroscope !== false &&
-      (tourSettings?.gyroscope_auto_start === true || persistedGyro) &&
-      gyroscopePluginRef.current &&
-      typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
-        .requestPermission !== 'function'
-    ) {
-      gyroscopePluginRef.current.start().then(
-        () => setGyroscopeEnabled(true),
-        () => undefined
-      );
-    }
+      const initialView = scene.metadata?.initial_view ?? tourSettings?.initial_view;
 
-    // Handle click for adding hotspots in editor mode
-    if (isEditor) {
-      viewer.addEventListener('click', (e) => {
-        const data = e.data as { yaw?: number; pitch?: number };
-        // Accept both right-click and regular click for hotspot placement
-        if (data?.yaw !== undefined && data?.pitch !== undefined) {
-          // Convert from radians (viewer) to degrees (API)
-          const position = viewerPositionToDegrees({
-            yaw: data.yaw,
-            pitch: data.pitch,
-          });
-          onPositionClickRef.current?.(position);
+      const viewer = new Viewer({
+        container,
+        panorama: scene.image_url,
+        defaultPitch: initialView?.pitch ?? VIEWER_DEFAULTS.defaultPitch,
+        defaultYaw: initialView?.yaw ?? VIEWER_DEFAULTS.defaultYaw,
+        defaultZoomLvl:
+          typeof initialView === 'object' &&
+          'zoom' in initialView &&
+          typeof initialView.zoom === 'number'
+            ? initialView.zoom
+            : VIEWER_DEFAULTS.defaultZoom,
+        minFov: scene.metadata?.camera?.min_fov ?? VIEWER_DEFAULTS.minFov,
+        maxFov: scene.metadata?.camera?.max_fov ?? VIEWER_DEFAULTS.maxFov,
+        navbar: isEditor ? false : navbarItems.length > 0 ? navbarItems : false,
+        plugins,
+      });
+
+      viewerForCleanup = viewer;
+      viewerRef.current = viewer;
+      // The constructor loads this panorama; record it so the scene-change effect
+      // skips a redundant (and race-inducing) setPanorama for the same URL, and mark
+      // the load in-flight so early scene switches are queued (not aborted) until
+      // 'ready' fires.
+      loadedPanoramaUrlRef.current = scene.image_url;
+      inFlightRef.current = true;
+      // The Viewer constructor types every plugin as `AbstractPlugin<any>`, so the
+      // specific plugin references need narrowing back to their concrete types.
+      markersPluginRef.current = viewer.getPlugin(MarkersPlugin) as MarkersPlugin;
+
+      // Hide the loading spinner once the viewer finishes its first render, and
+      // mark the viewer ready so markers can be applied (PSV drops markers added
+      // before this point).
+      viewer.addEventListener('ready', () => {
+        inFlightRef.current = false;
+        setIsPanoramaLoading(false);
+        setIsViewerReady(true);
+        setPanoramaError(false);
+        // If the user navigated away from the initial scene while it was loading,
+        // load the latest one now.
+        if (latestSceneRef.current?.image_url !== loadedPanoramaUrlRef.current) {
+          processQueueRef.current(false);
         }
       });
-    }
+
+      viewer.addEventListener('panorama-error', () => {
+        inFlightRef.current = false;
+        setIsPanoramaLoading(false);
+        setIsViewerReady(false);
+        setPanoramaError(true);
+      });
+
+      // Get VR plugins if available
+      if (tourSettings?.enable_vr !== false) {
+        try {
+          gyroscopePluginRef.current = viewer.getPlugin(GyroscopePlugin) as GyroscopePlugin;
+          stereoPluginRef.current = viewer.getPlugin(StereoPlugin) as StereoPlugin;
+        } catch {
+          // Plugins not available
+        }
+      }
+
+      if (
+        !isEditor &&
+        tourSettings?.enable_vr !== false &&
+        tourSettings?.enable_gyroscope !== false &&
+        (tourSettings?.gyroscope_auto_start === true || persistedGyro) &&
+        gyroscopePluginRef.current &&
+        typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
+          .requestPermission !== 'function'
+      ) {
+        gyroscopePluginRef.current.start().then(
+          () => setGyroscopeEnabled(true),
+          () => undefined
+        );
+      }
+
+      // Handle click for adding hotspots in editor mode
+      if (isEditor) {
+        viewer.addEventListener('click', e => {
+          const data = e.data as { yaw?: number; pitch?: number };
+          // Accept both right-click and regular click for hotspot placement
+          if (data?.yaw !== undefined && data?.pitch !== undefined) {
+            // Convert from radians (viewer) to degrees (API)
+            const position = viewerPositionToDegrees({
+              yaw: data.yaw,
+              pitch: data.pitch,
+            });
+            onPositionClickRef.current?.(position);
+          }
+        });
+      }
+    };
+
+    const initTimeoutId = window.setTimeout(initViewer, 0);
 
     return () => {
+      window.clearTimeout(initTimeoutId);
       stopAutoRotate();
       // Cleanup VR states
       setGyroscopeEnabled(false);
       setStereoEnabled(false);
-      viewer.destroy();
+      viewerForCleanup?.destroy();
       viewerRef.current = null;
       loadedPanoramaUrlRef.current = null;
       markersPluginRef.current = null;
@@ -346,7 +432,7 @@ export function PanoramaViewer({
     // of intermittent "The panorama cannot be loaded" errors. We only rebuild for
     // structural changes (editor mode, tour settings, gyro preference).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditor, stopAutoRotate, tourSettings, persistedGyro]);
+  }, [isEditor, stopAutoRotate, tourSettingsKey, persistedGyro]);
 
   // Swap to the latest desired scene via setPanorama — SERIALIZED. Only one
   // setPanorama runs at a time; new requests during a load are coalesced (latest
@@ -402,7 +488,9 @@ export function PanoramaViewer({
           showLoader: false,
           position: { pitch: initialView?.pitch ?? 0, yaw: initialView?.yaw ?? 0 },
           zoom:
-            typeof initialView === 'object' && 'zoom' in initialView && typeof initialView.zoom === 'number'
+            typeof initialView === 'object' &&
+            'zoom' in initialView &&
+            typeof initialView.zoom === 'number'
               ? initialView.zoom
               : VIEWER_DEFAULTS.defaultZoom,
         })
@@ -435,8 +523,9 @@ export function PanoramaViewer({
     markersPluginRef.current.clearMarkers();
 
     // Add new markers
-    hotspots.forEach((hotspot) => {
+    hotspots.forEach(hotspot => {
       if (!hotspot.is_active) return;
+      const markerId = escapeHtml(hotspot.id);
 
       const markerConfig: MarkerConfig & { draggable?: boolean } = {
         id: hotspot.id,
@@ -456,9 +545,9 @@ export function PanoramaViewer({
       // Set marker appearance based on type
       switch (hotspot.type) {
         case 'navigation': {
-          const label = (hotspot.title || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+          const label = escapeHtml(hotspot.title || '');
           markerConfig.html = `
-            <div class="psv-nav-marker" role="button" tabindex="0" aria-label="${label || 'Go to room'}" data-marker-id="${hotspot.id}">
+            <div class="psv-nav-marker" role="button" tabindex="0" aria-label="${label || 'Go to room'}" data-marker-id="${markerId}">
               <span class="psv-nav-pulse" aria-hidden="true"></span>
               <span class="psv-nav-core" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -472,10 +561,10 @@ export function PanoramaViewer({
         }
         case 'info':
           markerConfig.html = `
-            <div class="psv-marker-info" role="button" tabindex="0" aria-label="${hotspot.title || 'Hotspot'}" data-marker-id="${hotspot.id}" style="
-              width: ${hotspot.icon_size || 32}px;
-              height: ${hotspot.icon_size || 32}px;
-              background-color: ${hotspot.icon_color || '#10b981'};
+            <div class="psv-marker-info" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
+              width: ${safeSize(hotspot.icon_size)}px;
+              height: ${safeSize(hotspot.icon_size)}px;
+              background-color: ${safeColor(hotspot.icon_color, '#10b981')};
               border-radius: 50%;
               display: flex;
               align-items: center;
@@ -493,10 +582,10 @@ export function PanoramaViewer({
           break;
         case 'audio':
           markerConfig.html = `
-            <div class="psv-marker-audio" role="button" tabindex="0" aria-label="${hotspot.title || 'Hotspot'}" data-marker-id="${hotspot.id}" style="
-              width: ${hotspot.icon_size || 32}px;
-              height: ${hotspot.icon_size || 32}px;
-              background-color: ${hotspot.icon_color || '#FF5733'};
+            <div class="psv-marker-audio" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
+              width: ${safeSize(hotspot.icon_size)}px;
+              height: ${safeSize(hotspot.icon_size)}px;
+              background-color: ${safeColor(hotspot.icon_color, '#FF5733')};
               border-radius: 50%;
               display: flex;
               align-items: center;
@@ -514,10 +603,10 @@ export function PanoramaViewer({
           break;
         case 'video':
           markerConfig.html = `
-            <div class="psv-marker-video" role="button" tabindex="0" aria-label="${hotspot.title || 'Hotspot'}" data-marker-id="${hotspot.id}" style="
-              width: ${hotspot.icon_size || 32}px;
-              height: ${hotspot.icon_size || 32}px;
-              background-color: ${hotspot.icon_color || '#ef4444'};
+            <div class="psv-marker-video" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
+              width: ${safeSize(hotspot.icon_size)}px;
+              height: ${safeSize(hotspot.icon_size)}px;
+              background-color: ${safeColor(hotspot.icon_color, '#ef4444')};
               border-radius: 50%;
               display: flex;
               align-items: center;
@@ -534,10 +623,10 @@ export function PanoramaViewer({
           break;
         case 'link':
           markerConfig.html = `
-            <div class="psv-marker-link" role="button" tabindex="0" aria-label="${hotspot.title || 'Hotspot'}" data-marker-id="${hotspot.id}" style="
-              width: ${hotspot.icon_size || 32}px;
-              height: ${hotspot.icon_size || 32}px;
-              background-color: ${hotspot.icon_color || '#FF5733'};
+            <div class="psv-marker-link" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
+              width: ${safeSize(hotspot.icon_size)}px;
+              height: ${safeSize(hotspot.icon_size)}px;
+              background-color: ${safeColor(hotspot.icon_color, '#FF5733')};
               border-radius: 50%;
               display: flex;
               align-items: center;
@@ -555,10 +644,10 @@ export function PanoramaViewer({
           break;
         default:
           markerConfig.html = `
-            <div class="psv-marker-default" role="button" tabindex="0" aria-label="${hotspot.title || 'Hotspot'}" data-marker-id="${hotspot.id}" style="
-              width: ${hotspot.icon_size || 32}px;
-              height: ${hotspot.icon_size || 32}px;
-              background-color: ${hotspot.icon_color || '#f59e0b'};
+            <div class="psv-marker-default" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
+              width: ${safeSize(hotspot.icon_size)}px;
+              height: ${safeSize(hotspot.icon_size)}px;
+              background-color: ${safeColor(hotspot.icon_color, '#f59e0b')};
               border-radius: 50%;
               display: flex;
               align-items: center;
@@ -592,7 +681,10 @@ export function PanoramaViewer({
     };
 
     // Handle marker drag (editor mode only)
-    const handleMarkerDropped = (e: { type: string; marker?: { data?: unknown; position?: { yaw: number; pitch: number } } }) => {
+    const handleMarkerDropped = (e: {
+      type: string;
+      marker?: { data?: unknown; position?: { yaw: number; pitch: number } };
+    }) => {
       const hotspot = e.marker?.data as Hotspot;
       if (!hotspot || !onHotspotDrag) return;
       if (!e.marker?.position) return;
@@ -614,7 +706,7 @@ export function PanoramaViewer({
       // the plugin still emits it for draggable markers; cast to the event type.
       markersPluginRef.current.addEventListener(
         'marker-dropped' as MarkersEvents.MarkersPluginEvents['type'],
-        handleMarkerDropped,
+        handleMarkerDropped
       );
     }
 
@@ -628,10 +720,11 @@ export function PanoramaViewer({
       if (!markerEl) return;
       e.preventDefault();
       const markerId = markerEl.getAttribute('data-marker-id');
-      const hotspot = hotspots.find((h) => h.id === markerId);
+      const hotspot = hotspots.find(h => h.id === markerId);
       if (!hotspot) return;
       if (isEditor) onHotspotSelect?.(hotspot.id);
-      else if (hotspot.type === 'navigation' && hotspot.target_scene_id) onSceneChange?.(hotspot.target_scene_id);
+      else if (hotspot.type === 'navigation' && hotspot.target_scene_id)
+        onSceneChange?.(hotspot.target_scene_id);
       onHotspotClick?.(hotspot);
     };
     container?.addEventListener('keydown', onMarkerKey);
@@ -641,12 +734,20 @@ export function PanoramaViewer({
       if (isEditor && onHotspotDrag) {
         markersPluginRef.current?.removeEventListener(
           'marker-dropped' as MarkersEvents.MarkersPluginEvents['type'],
-          handleMarkerDropped,
+          handleMarkerDropped
         );
       }
       container?.removeEventListener('keydown', onMarkerKey);
     };
-  }, [hotspots, isViewerReady, isEditor, onHotspotSelect, onHotspotClick, onSceneChange, onHotspotDrag]);
+  }, [
+    hotspots,
+    isViewerReady,
+    isEditor,
+    onHotspotSelect,
+    onHotspotClick,
+    onSceneChange,
+    onHotspotDrag,
+  ]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -671,13 +772,26 @@ export function PanoramaViewer({
   useEffect(() => {
     if (isEditor) return;
 
-    if (tourSettings?.auto_rotate === true && !gyroscopeEnabled && !stereoEnabled) {
+    if (
+      tourSettings?.auto_rotate === true &&
+      !gyroscopeEnabled &&
+      !stereoEnabled &&
+      !prefersReducedMotion
+    ) {
       scheduleAutoRotate();
       return;
     }
 
     stopAutoRotate();
-  }, [gyroscopeEnabled, isEditor, scheduleAutoRotate, stereoEnabled, stopAutoRotate, tourSettings?.auto_rotate]);
+  }, [
+    gyroscopeEnabled,
+    isEditor,
+    prefersReducedMotion,
+    scheduleAutoRotate,
+    stereoEnabled,
+    stopAutoRotate,
+    tourSettings?.auto_rotate,
+  ]);
 
   // Toggle gyroscope
   const toggleGyroscope = useCallback(async () => {
@@ -696,8 +810,9 @@ export function PanoramaViewer({
         stopAutoRotate();
         // Request permission on iOS 13+
         if (
-          typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
-            .requestPermission === 'function'
+          typeof (
+            DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> }
+          ).requestPermission === 'function'
         ) {
           const permission = await (
             DeviceOrientationEvent as unknown as { requestPermission: () => Promise<string> }
@@ -761,7 +876,15 @@ export function PanoramaViewer({
       console.error('Stereo mode error:', error);
       setVrError('Failed to enable VR mode');
     }
-  }, [gyroscopeEnabled, onVrModeChange, setPersistedGyro, setPersistedStereo, stereoEnabled, stopAutoRotate, vrSupport.gyroscope]);
+  }, [
+    gyroscopeEnabled,
+    onVrModeChange,
+    setPersistedGyro,
+    setPersistedStereo,
+    stereoEnabled,
+    stopAutoRotate,
+    vrSupport.gyroscope,
+  ]);
 
   // Exit stereo mode on fullscreen exit
   useEffect(() => {
@@ -778,7 +901,8 @@ export function PanoramaViewer({
   }, [onVrModeChange, stereoEnabled]);
 
   // Check if VR controls should be shown
-  const showVrControls = showControls &&
+  const showVrControls =
+    showControls &&
     !isEditor &&
     tourSettings?.enable_vr !== false &&
     (vrSupport.gyroscope || vrSupport.stereo);
@@ -786,23 +910,41 @@ export function PanoramaViewer({
   return (
     <div className={cn('relative h-full w-full', className)}>
       {isPanoramaLoading && !panoramaError && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/50">
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/50"
+          role="status"
+          aria-live="polite"
+        >
           <Spinner size="lg" />
           <span className="text-sm font-medium text-white/80">Loading room…</span>
         </div>
       )}
       {panoramaError && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6 text-center">
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-6 text-center"
+          role="alert"
+        >
           <div className="max-w-sm">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-primary-500)]/15 text-[var(--color-primary-400)]">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                 <line x1="12" y1="9" x2="12" y2="13" />
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
             <h2 className="text-lg font-semibold text-white">This room couldn’t load</h2>
-            <p className="mt-1 text-sm text-white/60">The panorama failed to load. Check your connection and try again.</p>
+            <p className="mt-1 text-sm text-white/60">
+              The panorama failed to load. Check your connection and try again.
+            </p>
             <Button className="mt-4" onClick={() => processSceneQueue(true)}>
               Retry
             </Button>
@@ -812,6 +954,8 @@ export function PanoramaViewer({
       <div
         ref={containerRef}
         className="viewer-container h-full w-full"
+        data-testid="panorama-viewer"
+        aria-label={scene.title ? `${scene.title} panorama viewer` : '360 panorama viewer'}
         style={{ minHeight: '400px' }}
       />
 
@@ -827,6 +971,10 @@ export function PanoramaViewer({
                     variant={gyroscopeEnabled ? 'default' : 'secondary'}
                     size="icon"
                     onClick={toggleGyroscope}
+                    aria-label={
+                      gyroscopeEnabled ? 'Disable gyroscope control' : 'Enable gyroscope control'
+                    }
+                    aria-pressed={gyroscopeEnabled}
                     className={cn(
                       'rounded-full shadow-lg',
                       gyroscopeEnabled && 'bg-[var(--color-primary-500)]'
@@ -849,6 +997,8 @@ export function PanoramaViewer({
                     variant={stereoEnabled ? 'default' : 'secondary'}
                     size="icon"
                     onClick={toggleStereo}
+                    aria-label={stereoEnabled ? 'Exit VR mode' : 'Enter VR mode'}
+                    aria-pressed={stereoEnabled}
                     className={cn(
                       'rounded-full shadow-lg',
                       stereoEnabled && 'bg-[var(--color-primary-500)]'
@@ -874,6 +1024,7 @@ export function PanoramaViewer({
             <button
               onClick={() => setVrError(null)}
               className="hover:opacity-80"
+              aria-label="Dismiss VR error"
             >
               <X className="h-4 w-4" />
             </button>

@@ -25,13 +25,20 @@ import {
   ChevronLeft,
   ChevronRight,
   Upload,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui';
-import { toursApi, uploadApi } from '@/api';
+import { toursApi } from '@/api';
 import { QUERY_KEYS } from '@/constants';
-import { validateImageFile } from '@/utils/validation';
 import { cn } from '@/utils';
 import { useToast } from '@/hooks/useToast';
+import { confirm } from '@/stores';
+import {
+  SCENE_UPLOAD_ACCEPT_ATTRIBUTE,
+  SCENE_UPLOAD_MAX_CONCURRENT,
+  uploadSceneFiles,
+  validateSceneUploadFile,
+} from '@/lib/sceneUpload';
 import type { Scene } from '@/types';
 
 interface ScenePanelProps {
@@ -39,6 +46,9 @@ interface ScenePanelProps {
   scenes: Scene[];
   currentSceneId: string | null;
   onSceneSelect: (sceneId: string | null) => void;
+  className?: string;
+  allowCollapse?: boolean;
+  onClose?: () => void;
 }
 
 interface SortableSceneItemProps {
@@ -56,14 +66,9 @@ function SortableSceneItem({
   onSelect,
   onDelete,
 }: SortableSceneItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: scene.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: scene.id,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -76,7 +81,19 @@ function SortableSceneItem({
     <div
       ref={setNodeRef}
       style={style}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      aria-label={`Select ${scene.title || `Scene ${index + 1}`}`}
+      data-testid="scene-card"
       onClick={onSelect}
+      onKeyDown={e => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
       className={cn(
         'group relative cursor-pointer rounded-lg border transition-all',
         isSelected
@@ -113,11 +130,12 @@ function SortableSceneItem({
       </div>
 
       {/* Actions (shown on hover) */}
-      <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <Button
           variant="secondary"
           size="icon-sm"
           className="h-6 w-6"
+          aria-label={`Delete ${scene.title || `Scene ${index + 1}`}`}
           onClick={onDelete}
         >
           <Trash2 className="h-3 w-3" />
@@ -128,8 +146,9 @@ function SortableSceneItem({
       <div
         {...attributes}
         {...listeners}
-        className="absolute left-1 top-1/2 -translate-y-1/2 cursor-grab opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
-        onClick={(e) => e.stopPropagation()}
+        aria-label={`Reorder ${scene.title || `Scene ${index + 1}`}`}
+        className="absolute left-1 top-1/2 flex h-8 w-8 -translate-y-1/2 cursor-grab items-center justify-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 active:cursor-grabbing"
+        onClick={e => e.stopPropagation()}
       >
         <GripVertical className="h-4 w-4 text-[var(--color-text-muted)]" />
       </div>
@@ -142,6 +161,9 @@ export function ScenePanel({
   scenes,
   currentSceneId,
   onSceneSelect,
+  className,
+  allowCollapse = true,
+  onClose,
 }: ScenePanelProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -172,7 +194,9 @@ export function ScenePanel({
       toast('success', 'The scene has been removed from the tour.', { title: 'Scene deleted' });
     },
     onError: () => {
-      toast('error', 'Something went wrong. Please try again.', { title: 'Failed to delete scene' });
+      toast('error', 'Something went wrong. Please try again.', {
+        title: 'Failed to delete scene',
+      });
     },
   });
 
@@ -183,7 +207,9 @@ export function ScenePanel({
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, tourId] });
     },
     onError: () => {
-      toast('error', 'Something went wrong. Please try again.', { title: 'Failed to reorder scenes' });
+      toast('error', 'Something went wrong. Please try again.', {
+        title: 'Failed to reorder scenes',
+      });
       // Refetch to restore correct order
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, tourId] });
     },
@@ -195,11 +221,11 @@ export function ScenePanel({
       const { active, over } = event;
 
       if (over && active.id !== over.id) {
-        const oldIndex = sortedScenes.findIndex((s) => s.id === active.id);
-        const newIndex = sortedScenes.findIndex((s) => s.id === over.id);
+        const oldIndex = sortedScenes.findIndex(s => s.id === active.id);
+        const newIndex = sortedScenes.findIndex(s => s.id === over.id);
 
         const newOrder = arrayMove(sortedScenes, oldIndex, newIndex);
-        const sceneIds = newOrder.map((s) => s.id);
+        const sceneIds = newOrder.map(s => s.id);
 
         // Optimistic update
         queryClient.setQueryData(
@@ -222,10 +248,12 @@ export function ScenePanel({
     setIsUploading(true);
 
     try {
-      const validFiles = files.filter((file) => {
-        const validation = validateImageFile(file);
+      const validFiles = files.filter(file => {
+        const validation = validateSceneUploadFile(file);
         if (!validation.valid) {
-          toast('error', validation.error || 'File could not be uploaded.', { title: 'Invalid file' });
+          toast('error', validation.error || 'File could not be uploaded.', {
+            title: 'Invalid file',
+          });
           return false;
         }
         return true;
@@ -233,21 +261,12 @@ export function ScenePanel({
 
       if (validFiles.length === 0) return;
 
-      const results = await Promise.allSettled(
-        validFiles.map(async (file) => {
-          const uploadResult = await uploadApi.uploadFile(file, {
-            folder: 'scenes',
-            visibility: 'public',
-          });
-          await toursApi.createScene(tourId, {
-            image_url: uploadResult.public_url,
-            title: file.name.replace(/\.[^/.]+$/, ''),
-          });
-        })
-      );
+      const results = await uploadSceneFiles(tourId, validFiles, {
+        concurrency: SCENE_UPLOAD_MAX_CONCURRENT,
+      });
 
-      const successCount = results.filter((r) => r.status === 'fulfilled').length;
-      const errorCount = results.filter((r) => r.status === 'rejected').length;
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      const errorCount = results.filter(r => r.status === 'rejected').length;
 
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, tourId] });
       if (successCount > 0) {
@@ -271,22 +290,30 @@ export function ScenePanel({
 
   const handleDelete = async (sceneId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Are you sure you want to delete this scene?')) {
+    if (
+      await confirm({
+        title: 'Delete scene',
+        message: 'Delete this scene? This cannot be undone.',
+        confirmLabel: 'Delete',
+        destructive: true,
+      })
+    ) {
       await deleteMutation.mutateAsync(sceneId);
       if (currentSceneId === sceneId) {
-        const remainingScenes = sortedScenes.filter((s) => s.id !== sceneId);
+        const remainingScenes = sortedScenes.filter(s => s.id !== sceneId);
         onSceneSelect(remainingScenes[0]?.id || null);
       }
     }
   };
 
-  if (collapsed) {
+  if (collapsed && allowCollapse) {
     return (
       <div className="flex w-10 flex-col items-center border-r border-[var(--color-border)] bg-[var(--color-surface-elevated)] py-4">
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={() => setCollapsed(false)}
+          aria-label="Expand scenes panel"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
@@ -300,7 +327,13 @@ export function ScenePanel({
   }
 
   return (
-    <div className="flex w-64 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-elevated)]">
+    <div
+      className={cn(
+        'flex w-64 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-elevated)]',
+        className
+      )}
+      data-testid="scene-panel"
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--color-border)] p-3">
         <h3 className="font-semibold text-[var(--color-text-primary)]">Scenes</h3>
@@ -310,16 +343,31 @@ export function ScenePanel({
             size="icon-sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
+            aria-label="Upload scene images"
+            data-testid="add-scene"
           >
             <Plus className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setCollapsed(true)}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+          {allowCollapse && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setCollapsed(true)}
+              aria-label="Collapse scenes panel"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          )}
+          {!allowCollapse && onClose && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Close scenes panel"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -327,14 +375,14 @@ export function ScenePanel({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept={SCENE_UPLOAD_ACCEPT_ATTRIBUTE}
         multiple
         onChange={handleFileSelect}
         className="hidden"
       />
 
       {/* Scene List */}
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto p-2" data-testid="scene-list">
         {isUploading && (
           <div className="mb-2 rounded-lg border border-[var(--color-border)] p-3">
             <div className="flex items-center gap-2">
@@ -353,6 +401,7 @@ export function ScenePanel({
               size="sm"
               className="mt-4"
               onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
             >
               <Upload className="h-4 w-4" />
               Upload Images
@@ -365,7 +414,7 @@ export function ScenePanel({
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={sortedScenes.map((s) => s.id)}
+              items={sortedScenes.map(s => s.id)}
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-2">
@@ -376,7 +425,7 @@ export function ScenePanel({
                     index={index}
                     isSelected={currentSceneId === scene.id}
                     onSelect={() => onSceneSelect(scene.id)}
-                    onDelete={(e) => handleDelete(scene.id, e)}
+                    onDelete={e => handleDelete(scene.id, e)}
                   />
                 ))}
               </div>
@@ -388,9 +437,7 @@ export function ScenePanel({
       {/* Drag hint */}
       {sortedScenes.length > 1 && (
         <div className="border-t border-[var(--color-border)] p-2 text-center">
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Drag scenes to reorder
-          </p>
+          <p className="text-xs text-[var(--color-text-muted)]">Drag scenes to reorder</p>
         </div>
       )}
     </div>

@@ -2,15 +2,15 @@ import { useRef } from 'react';
 import { useInView } from '@/components/animations';
 import { cn } from '@/utils';
 
+// Neutral professional categories (avoids implying endorsements from
+// real, named companies that are not actually customers).
 const logos = [
-  { name: 'Compass', width: 120 },
-  { name: 'Redfin', width: 100 },
-  { name: 'Zillow', width: 90 },
-  { name: 'Century21', width: 130 },
-  { name: 'Coldwell Banker', width: 140 },
-  { name: 'Sotheby\'s', width: 120 },
-  { name: 'RE/MAX', width: 100 },
-  { name: 'Keller Williams', width: 130 },
+  { name: 'Real Estate Agents', width: 160 },
+  { name: 'Property Developers', width: 180 },
+  { name: 'Interior Designers', width: 170 },
+  { name: 'Architecture Firms', width: 170 },
+  { name: 'Hospitality Groups', width: 180 },
+  { name: 'Rental Platforms', width: 160 },
 ];
 
 export function SocialProofBar() {

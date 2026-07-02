@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useViewerStore } from '@/stores/viewerStore';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { getViewerSceneScope, useViewerStore } from '@/stores/viewerStore';
 
 // Mock the @/api module used by usePublicTourTracking
 const mockTrackEvent = vi.fn().mockResolvedValue(undefined);
@@ -30,7 +30,7 @@ vi.mock('@/lib/supabaseAuth', () => ({
 describe('viewerStore', () => {
   beforeEach(() => {
     // Reset store to initial state before each test
-    useViewerStore.setState({ currentSceneId: null });
+    useViewerStore.setState({ currentSceneId: null, currentSceneIdsByScope: {} });
     vi.clearAllMocks();
   });
 
@@ -38,6 +38,7 @@ describe('viewerStore', () => {
     it('has currentSceneId set to null', () => {
       const state = useViewerStore.getState();
       expect(state.currentSceneId).toBeNull();
+      expect(state.currentSceneIdsByScope).toEqual({});
     });
   });
 
@@ -67,11 +68,40 @@ describe('viewerStore', () => {
 
       useViewerStore.getState().reset();
       expect(useViewerStore.getState().currentSceneId).toBeNull();
+      expect(useViewerStore.getState().currentSceneIdsByScope).toEqual({});
     });
 
     it('is idempotent when state is already initial', () => {
       useViewerStore.getState().reset();
       expect(useViewerStore.getState().currentSceneId).toBeNull();
+      expect(useViewerStore.getState().currentSceneIdsByScope).toEqual({});
+    });
+  });
+
+  describe('setCurrentSceneForScope', () => {
+    it('keeps public and embed scene selections isolated for the same tour', () => {
+      const publicScope = getViewerSceneScope('public', 'tour-1');
+      const embedScope = getViewerSceneScope('embed', 'tour-1');
+
+      useViewerStore.getState().setCurrentSceneForScope(publicScope, 'scene-public');
+      useViewerStore.getState().setCurrentSceneForScope(embedScope, 'scene-embed');
+
+      expect(useViewerStore.getState().currentSceneIdsByScope[publicScope]).toBe(
+        'scene-public'
+      );
+      expect(useViewerStore.getState().currentSceneIdsByScope[embedScope]).toBe('scene-embed');
+    });
+
+    it('clears only the requested scoped scene selection', () => {
+      const publicScope = getViewerSceneScope('public', 'tour-1');
+      const embedScope = getViewerSceneScope('embed', 'tour-1');
+
+      useViewerStore.getState().setCurrentSceneForScope(publicScope, 'scene-public');
+      useViewerStore.getState().setCurrentSceneForScope(embedScope, 'scene-embed');
+      useViewerStore.getState().clearCurrentSceneScope(publicScope);
+
+      expect(useViewerStore.getState().currentSceneIdsByScope[publicScope]).toBeUndefined();
+      expect(useViewerStore.getState().currentSceneIdsByScope[embedScope]).toBe('scene-embed');
     });
   });
 });
@@ -85,6 +115,7 @@ describe('usePublicTourTracking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
     // Mock navigator.sendBeacon
     Object.defineProperty(navigator, 'sendBeacon', {
       value: vi.fn(() => true),
@@ -112,6 +143,23 @@ describe('usePublicTourTracking', () => {
     expect(typeof result.current.trackEvent).toBe('function');
   });
 
+  it('returns a sessionId when browser session storage is unavailable', () => {
+    vi.mocked(sessionStorage.getItem).mockImplementationOnce(() => {
+      throw new Error('storage blocked');
+    });
+
+    const { result } = renderHook(() =>
+      usePublicTourTracking({
+        tourId: 'tour-1',
+        tourLoaded: false,
+        currentSceneId: undefined,
+      })
+    );
+
+    expect(result.current.sessionId).toBeDefined();
+    expect(result.current.sessionId.length).toBeGreaterThan(0);
+  });
+
   it('trackEvent fires a POST request via toursApi.trackEvent', async () => {
     const { result } = renderHook(() =>
       usePublicTourTracking({
@@ -135,21 +183,19 @@ describe('usePublicTourTracking', () => {
   });
 
   it('tracks tour_view only once when tourLoaded becomes true', async () => {
-    const { rerender } = renderHook(
-      (props) => usePublicTourTracking(props),
-      {
-        initialProps: {
-          tourId: 'tour-1',
-          tourLoaded: false,
-          currentSceneId: undefined,
-        },
-      }
-    );
+    const { rerender } = renderHook(props => usePublicTourTracking(props), {
+      initialProps: {
+        tourId: 'tour-1',
+        tourLoaded: false,
+        currentSceneId: undefined,
+      },
+    });
 
     // No tour_view tracked yet because tourLoaded is false
     // The session_start is also not tracked yet
     const tourViewCalls = mockTrackEvent.mock.calls.filter(
-      (call: unknown[]) => (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
+      (call: unknown[]) =>
+        (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
     );
     expect(tourViewCalls.length).toBe(0);
 
@@ -163,7 +209,8 @@ describe('usePublicTourTracking', () => {
     });
 
     const tourViewCallsAfter = mockTrackEvent.mock.calls.filter(
-      (call: unknown[]) => (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
+      (call: unknown[]) =>
+        (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
     );
     expect(tourViewCallsAfter.length).toBe(1);
 
@@ -177,7 +224,8 @@ describe('usePublicTourTracking', () => {
     });
 
     const tourViewCallsFinal = mockTrackEvent.mock.calls.filter(
-      (call: unknown[]) => (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
+      (call: unknown[]) =>
+        (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
     );
     expect(tourViewCallsFinal.length).toBe(1);
   });
@@ -199,16 +247,13 @@ describe('usePublicTourTracking', () => {
   });
 
   it('tracks scene_view when currentSceneId changes', async () => {
-    const { rerender } = renderHook(
-      (props) => usePublicTourTracking(props),
-      {
-        initialProps: {
-          tourId: 'tour-1',
-          tourLoaded: true,
-          currentSceneId: undefined as string | undefined,
-        },
-      }
-    );
+    const { rerender } = renderHook(props => usePublicTourTracking(props), {
+      initialProps: {
+        tourId: 'tour-1',
+        tourLoaded: true,
+        currentSceneId: undefined as string | undefined,
+      },
+    });
 
     // Clear calls from initial mount (session_start, tour_view)
     mockTrackEvent.mockClear();
@@ -222,7 +267,8 @@ describe('usePublicTourTracking', () => {
     });
 
     const sceneViewCalls = mockTrackEvent.mock.calls.filter(
-      (call: unknown[]) => (call[1] as { event_type?: string } | undefined)?.event_type === 'scene_view'
+      (call: unknown[]) =>
+        (call[1] as { event_type?: string } | undefined)?.event_type === 'scene_view'
     );
     expect(sceneViewCalls.length).toBe(1);
     expect(sceneViewCalls[0][1]).toMatchObject({
@@ -232,16 +278,13 @@ describe('usePublicTourTracking', () => {
   });
 
   it('persists sessionId across re-renders', () => {
-    const { result, rerender } = renderHook(
-      (props) => usePublicTourTracking(props),
-      {
-        initialProps: {
-          tourId: 'tour-1',
-          tourLoaded: false,
-          currentSceneId: undefined,
-        },
-      }
-    );
+    const { result, rerender } = renderHook(props => usePublicTourTracking(props), {
+      initialProps: {
+        tourId: 'tour-1',
+        tourLoaded: false,
+        currentSceneId: undefined,
+      },
+    });
 
     const firstSessionId = result.current.sessionId;
 
@@ -252,5 +295,29 @@ describe('usePublicTourTracking', () => {
     });
 
     expect(result.current.sessionId).toBe(firstSessionId);
+  });
+
+  it('sends session duration via keepalive fetch on unmount and ignores failures', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    const { unmount } = renderHook(() =>
+      usePublicTourTracking({
+        tourId: 'tour-1',
+        tourLoaded: true,
+        currentSceneId: undefined,
+      })
+    );
+
+    unmount();
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'http://localhost:3600/api/v1/public/tours/tour-1/events',
+        expect.objectContaining({
+          method: 'POST',
+          keepalive: true,
+          body: expect.stringContaining('"session_duration"'),
+        })
+      );
+    });
   });
 });

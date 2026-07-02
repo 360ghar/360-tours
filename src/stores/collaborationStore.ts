@@ -33,8 +33,10 @@ interface Collaborator {
 interface CollaborationState {
   activities: ActivityItem[];
   isLoadingActivities: boolean;
+  activitiesError: string | null;
   collaborators: Collaborator[];
   isLoadingCollaborators: boolean;
+  collaboratorsError: string | null;
 
   // Actions
   setActivities: (activities: ActivityItem[]) => void;
@@ -49,52 +51,67 @@ interface CollaborationState {
   removeCollaborator: (tourId: string, userId: string) => Promise<void>;
 }
 
-export const useCollaborationStore = create<CollaborationState>((set) => ({
+export const useCollaborationStore = create<CollaborationState>(set => ({
   activities: [],
   isLoadingActivities: false,
+  activitiesError: null,
   collaborators: [],
   isLoadingCollaborators: false,
+  collaboratorsError: null,
 
-  setActivities: (activities) => set({ activities }),
+  setActivities: activities => set({ activities }),
 
-  addActivity: (activity) =>
-    set((state) => ({
+  addActivity: activity =>
+    set(state => ({
       activities: [activity, ...state.activities],
     })),
 
-  setLoadingActivities: (loading) => set({ isLoadingActivities: loading }),
+  setLoadingActivities: loading => set({ isLoadingActivities: loading }),
 
-  setCollaborators: (collaborators) => set({ collaborators }),
+  setCollaborators: collaborators => set({ collaborators }),
 
-  setLoadingCollaborators: (loading) => set({ isLoadingCollaborators: loading }),
+  setLoadingCollaborators: loading => set({ isLoadingCollaborators: loading }),
 
   clearCollaboration: () =>
     set({
       activities: [],
       isLoadingActivities: false,
+      activitiesError: null,
       collaborators: [],
       isLoadingCollaborators: false,
+      collaboratorsError: null,
     }),
 
-  fetchActivities: async (tourId) => {
-    set({ isLoadingActivities: true });
+  fetchActivities: async tourId => {
+    set({ isLoadingActivities: true, activitiesError: null });
     try {
       const activities = await collaborationApi.getActivities(tourId);
-      set({ activities });
+      set({ activities, activitiesError: null });
     } catch (error) {
       console.error('Failed to fetch activities:', error instanceof Error ? error.message : error);
+      set({
+        activitiesError:
+          error instanceof Error ? error.message : 'Failed to fetch activity updates.',
+      });
     } finally {
       set({ isLoadingActivities: false });
     }
   },
 
-  fetchCollaborators: async (tourId) => {
-    set({ isLoadingCollaborators: true });
+  fetchCollaborators: async tourId => {
+    set({ isLoadingCollaborators: true, collaboratorsError: null });
     try {
       const collaborators = await collaborationApi.getCollaborators(tourId);
-      set({ collaborators });
+      set({ collaborators, collaboratorsError: null });
     } catch (error) {
-      console.error('Failed to fetch collaborators:', error instanceof Error ? error.message : error);
+      console.error(
+        'Failed to fetch collaborators:',
+        error instanceof Error ? error.message : error
+      );
+      set({
+        collaboratorsError:
+          error instanceof Error ? error.message : 'Failed to fetch collaborators.',
+      });
     } finally {
       set({ isLoadingCollaborators: false });
     }
@@ -103,11 +120,15 @@ export const useCollaborationStore = create<CollaborationState>((set) => ({
   inviteCollaborator: async (tourId, email, role) => {
     try {
       const collaborator = await collaborationApi.inviteCollaborator(tourId, { email, role });
-      set((state) => ({
+      set(state => ({
         collaborators: [...state.collaborators, collaborator],
+        collaboratorsError: null,
       }));
     } catch (error) {
-      console.error('Failed to invite collaborator:', error instanceof Error ? error.message : error);
+      console.error(
+        'Failed to invite collaborator:',
+        error instanceof Error ? error.message : error
+      );
       throw error;
     }
   },
@@ -115,11 +136,15 @@ export const useCollaborationStore = create<CollaborationState>((set) => ({
   removeCollaborator: async (tourId, userId) => {
     try {
       await collaborationApi.removeCollaborator(tourId, userId);
-      set((state) => ({
-        collaborators: state.collaborators.filter((c) => c.user_id !== userId),
+      set(state => ({
+        collaborators: state.collaborators.filter(c => c.user_id !== userId),
+        collaboratorsError: null,
       }));
     } catch (error) {
-      console.error('Failed to remove collaborator:', error instanceof Error ? error.message : error);
+      console.error(
+        'Failed to remove collaborator:',
+        error instanceof Error ? error.message : error
+      );
       throw error;
     }
   },

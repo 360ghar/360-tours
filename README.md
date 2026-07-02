@@ -60,3 +60,18 @@ npm run test:e2e       # Playwright
 ## Documentation
 
 See docs index: `docs/README.md`
+
+## Release Process
+
+This project follows [Semantic Versioning](https://semver.org/).
+
+1. Update `version` in `package.json`
+2. Update `CHANGELOG.md` (create it if it doesn't exist) with the changes
+3. Create a git tag: `git tag -a v<X.Y.Z> -m "Release vX.Y.Z"`
+4. Push the tag: `git push origin v<X.Y.Z>`
+5. The CI pipeline builds and validates before any deploy
+
+### Versioning Convention
+- **Major (X)**: Breaking changes to the public embed API or data contracts
+- **Minor (Y)**: New features, backward-compatible
+- **Patch (Z)**: Bug fixes, security patches

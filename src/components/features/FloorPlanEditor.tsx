@@ -29,6 +29,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui';
 import { uploadApi } from '@/api';
 import { cn } from '@/utils';
+import { confirm } from '@/stores';
 import type { FloorPlan, FloorPlanMarker, Scene } from '@/types';
 
 interface FloorPlanEditorProps {
@@ -36,7 +37,7 @@ interface FloorPlanEditorProps {
   onOpenChange: (open: boolean) => void;
   floorPlans: FloorPlan[];
   scenes: Scene[];
-  onSave: (floorPlans: FloorPlan[]) => void;
+  onSave: (floorPlans: FloorPlan[]) => void | Promise<void>;
   isLoading?: boolean;
 }
 
@@ -53,27 +54,17 @@ export function FloorPlanEditor({
   const [isPlacingMarker, setIsPlacingMarker] = useState(false);
   const [pendingSceneId, setPendingSceneId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const imageRef = useRef<HTMLDivElement>(null);
-  // Tracks the last fallback object URL so it can be revoked on replace/unmount
-  const fallbackUrlRef = useRef<string | null>(null);
-
-  // Revoke the outstanding fallback object URL on unmount
-  useEffect(
-    () => () => {
-      if (fallbackUrlRef.current) {
-        URL.revokeObjectURL(fallbackUrlRef.current);
-      }
-    },
-    []
-  );
 
   const selectedFloorPlan = localFloorPlans[selectedFloorIndex];
 
   useEffect(() => {
     if (!open) return;
     setLocalFloorPlans(floorPlans);
-    setSelectedFloorIndex((index) => Math.min(index, Math.max(0, floorPlans.length - 1)));
+    setSelectedFloorIndex(index => Math.min(index, Math.max(0, floorPlans.length - 1)));
   }, [floorPlans, open]);
 
   // Generate unique ID
@@ -94,18 +85,28 @@ export function FloorPlanEditor({
 
   // Delete floor plan
   const handleDeleteFloorPlan = (index: number) => {
-    const newFloorPlans = localFloorPlans.filter((_, i) => i !== index);
-    setLocalFloorPlans(newFloorPlans);
-    if (selectedFloorIndex >= newFloorPlans.length) {
-      setSelectedFloorIndex(Math.max(0, newFloorPlans.length - 1));
-    }
+    void (async () => {
+      if (
+        !(await confirm({
+          message: 'Delete this floor plan and its scene markers?',
+          confirmLabel: 'Delete',
+          destructive: true,
+        }))
+      ) {
+        return;
+      }
+
+      const newFloorPlans = localFloorPlans.filter((_, i) => i !== index);
+      setLocalFloorPlans(newFloorPlans);
+      if (selectedFloorIndex >= newFloorPlans.length) {
+        setSelectedFloorIndex(Math.max(0, newFloorPlans.length - 1));
+      }
+    })();
   };
 
   // Update floor plan
   const updateFloorPlan = (index: number, updates: Partial<FloorPlan>) => {
-    setLocalFloorPlans((prev) =>
-      prev.map((fp, i) => (i === index ? { ...fp, ...updates } : fp))
-    );
+    setLocalFloorPlans(prev => prev.map((fp, i) => (i === index ? { ...fp, ...updates } : fp)));
   };
 
   // Move floor plan up/down
@@ -131,42 +132,19 @@ export function FloorPlanEditor({
 
     setIsUploading(true);
     setUploadProgress(0);
+    setUploadError(null);
 
     try {
       const uploadResult = await uploadApi.uploadFile(file, {
         folder: 'floor-plans',
         visibility: 'public',
-        onProgress: (progress) => setUploadProgress(progress),
+        onProgress: progress => setUploadProgress(progress),
       });
 
-      // Revoke a prior fallback blob URL before replacing it with the remote URL.
-      const previousFallback = fallbackUrlRef.current;
-      if (
-        previousFallback &&
-        !localFloorPlans.some(
-          (fp, i) => i !== selectedFloorIndex && fp.image_url === previousFallback
-        )
-      ) {
-        URL.revokeObjectURL(previousFallback);
-        fallbackUrlRef.current = null;
-      }
       updateFloorPlan(selectedFloorIndex, { image_url: uploadResult.public_url });
     } catch (error) {
       console.error('Failed to upload floor plan image:', error);
-      // Fall back to local URL if upload fails
-      const previousUrl = fallbackUrlRef.current;
-      const url = URL.createObjectURL(file);
-      fallbackUrlRef.current = url;
-      updateFloorPlan(selectedFloorIndex, { image_url: url });
-      // Revoke the prior fallback URL, but only if no other floor plan still renders it
-      if (
-        previousUrl &&
-        !localFloorPlans.some(
-          (fp, i) => i !== selectedFloorIndex && fp.image_url === previousUrl
-        )
-      ) {
-        URL.revokeObjectURL(previousUrl);
-      }
+      setUploadError(error instanceof Error ? error.message : 'Failed to upload floor plan image');
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -192,7 +170,7 @@ export function FloorPlanEditor({
 
       // Add or update marker
       const existingMarkerIndex = selectedFloorPlan.markers.findIndex(
-        (m) => m.scene_id === pendingSceneId
+        m => m.scene_id === pendingSceneId
       );
 
       const newMarker: FloorPlanMarker = {
@@ -217,9 +195,17 @@ export function FloorPlanEditor({
     [isPlacingMarker, pendingSceneId, selectedFloorPlan, selectedFloorIndex]
   );
 
-  // Remove marker
-  const handleRemoveMarker = (sceneId: string) => {
-    const newMarkers = selectedFloorPlan.markers.filter((m) => m.scene_id !== sceneId);
+  // Remove marker (with confirmation — removal is irreversible until re-placed)
+  const handleRemoveMarker = async (sceneId: string) => {
+    if (
+      !(await confirm({
+        message: 'Remove this marker?',
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))
+    )
+      return;
+    const newMarkers = selectedFloorPlan.markers.filter(m => m.scene_id !== sceneId);
     updateFloorPlan(selectedFloorIndex, { markers: newMarkers });
   };
 
@@ -230,21 +216,31 @@ export function FloorPlanEditor({
   };
 
   // Save changes
-  const handleSave = () => {
-    onSave(localFloorPlans);
-    onOpenChange(false);
+  const handleSave = async () => {
+    if (isUploading || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      await onSave(localFloorPlans);
+      onOpenChange(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Get scene by ID
-  const getScene = (sceneId: string) => scenes.find((s) => s.id === sceneId);
+  const getScene = (sceneId: string) => scenes.find(s => s.id === sceneId);
 
   // Check if scene has marker on current floor
   const hasMarker = (sceneId: string) =>
-    selectedFloorPlan?.markers.some((m) => m.scene_id === sceneId);
+    selectedFloorPlan?.markers.some(m => m.scene_id === sceneId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent
+        className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+        data-testid="floor-plan-editor"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Layers className="h-5 w-5" />
@@ -260,7 +256,12 @@ export function FloorPlanEditor({
           <div className="w-56 shrink-0 border-r border-[var(--color-border)] pr-4">
             <div className="flex items-center justify-between mb-3">
               <Label className="text-sm font-medium">Floors</Label>
-              <Button variant="ghost" size="icon-sm" onClick={handleAddFloorPlan}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleAddFloorPlan}
+                aria-label="Add floor plan"
+              >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -277,6 +278,10 @@ export function FloorPlanEditor({
                   localFloorPlans.map((fp, index) => (
                     <div
                       key={fp.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={selectedFloorIndex === index}
+                      aria-label={`Select ${fp.name || `Floor ${index + 1}`}`}
                       className={cn(
                         'group flex items-center gap-2 rounded-lg p-2 cursor-pointer transition-colors',
                         selectedFloorIndex === index
@@ -284,24 +289,30 @@ export function FloorPlanEditor({
                           : 'hover:bg-[var(--color-surface-elevated)]'
                       )}
                       onClick={() => setSelectedFloorIndex(index)}
+                      onKeyDown={e => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedFloorIndex(index);
+                        }
+                      }}
                     >
                       <GripVertical className="h-4 w-4 text-[var(--color-text-muted)] shrink-0" />
                       <div className="flex-1 min-w-0">
                         <Input
                           value={fp.name}
-                          onChange={(e) =>
-                            updateFloorPlan(index, { name: e.target.value })
-                          }
-                          onClick={(e) => e.stopPropagation()}
+                          onChange={e => updateFloorPlan(index, { name: e.target.value })}
+                          onClick={e => e.stopPropagation()}
                           className="h-7 text-sm px-2"
                           placeholder="Floor name"
                         />
                       </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={(e) => {
+                          aria-label={`Move ${fp.name || `Floor ${index + 1}`} up`}
+                          onClick={e => {
                             e.stopPropagation();
                             moveFloorPlan(index, 'up');
                           }}
@@ -312,7 +323,8 @@ export function FloorPlanEditor({
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={(e) => {
+                          aria-label={`Move ${fp.name || `Floor ${index + 1}`} down`}
+                          onClick={e => {
                             e.stopPropagation();
                             moveFloorPlan(index, 'down');
                           }}
@@ -323,7 +335,8 @@ export function FloorPlanEditor({
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={(e) => {
+                          aria-label={`Delete ${fp.name || `Floor ${index + 1}`}`}
+                          onClick={e => {
                             e.stopPropagation();
                             handleDeleteFloorPlan(index);
                           }}
@@ -364,21 +377,33 @@ export function FloorPlanEditor({
 
                       {/* Markers */}
                       <TooltipProvider>
-                        {selectedFloorPlan.markers.map((marker) => {
+                        {selectedFloorPlan.markers.map(marker => {
                           const scene = getScene(marker.scene_id);
                           return (
                             <Tooltip key={marker.scene_id}>
                               <TooltipTrigger asChild>
                                 <div
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-label={`Remove marker for ${scene?.title || 'scene'}`}
                                   className="absolute w-6 h-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-primary-500)] border-2 border-white shadow-lg flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
                                   style={{
                                     left: `${marker.x}%`,
                                     top: `${marker.y}%`,
                                   }}
-                                  onClick={(e) => {
+                                  onClick={e => {
                                     e.stopPropagation();
                                     if (!isPlacingMarker) {
                                       handleRemoveMarker(marker.scene_id);
+                                    }
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      if (!isPlacingMarker) {
+                                        handleRemoveMarker(marker.scene_id);
+                                      }
                                     }
                                   }}
                                 >
@@ -403,11 +428,12 @@ export function FloorPlanEditor({
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            onClick={(e) => {
+                            onClick={e => {
                               e.stopPropagation();
                               handleCancelPlacement();
                             }}
                             className="text-white hover:bg-white/20"
+                            aria-label="Cancel marker placement"
                           >
                             <X className="h-4 w-4" />
                           </Button>
@@ -415,10 +441,12 @@ export function FloorPlanEditor({
                       )}
                     </>
                   ) : (
-                    <label className={cn(
-                      "flex flex-col items-center justify-center h-full",
-                      isUploading ? "cursor-wait" : "cursor-pointer"
-                    )}>
+                    <label
+                      className={cn(
+                        'flex flex-col items-center justify-center h-full',
+                        isUploading ? 'cursor-wait' : 'cursor-pointer'
+                      )}
+                    >
                       {isUploading ? (
                         <>
                           <Loader2 className="h-10 w-10 text-[var(--color-primary-500)] mb-3 animate-spin" />
@@ -469,6 +497,11 @@ export function FloorPlanEditor({
                     </label>
                   </div>
                 )}
+                {uploadError && (
+                  <p role="alert" className="mt-2 text-sm text-[var(--color-error-600)]">
+                    {uploadError}
+                  </p>
+                )}
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center text-[var(--color-text-muted)]">
@@ -488,7 +521,7 @@ export function FloorPlanEditor({
                       No scenes in this tour
                     </p>
                   ) : (
-                    scenes.map((scene) => (
+                    scenes.map(scene => (
                       <div
                         key={scene.id}
                         className={cn(
@@ -522,6 +555,9 @@ export function FloorPlanEditor({
                           onClick={() => handleStartPlacingMarker(scene.id)}
                           disabled={!selectedFloorPlan.image_url}
                           title={hasMarker(scene.id) ? 'Move marker' : 'Place marker'}
+                          aria-label={`${hasMarker(scene.id) ? 'Move' : 'Place'} marker for ${
+                            scene.title || `Scene ${scene.order_index + 1}`
+                          }`}
                         >
                           <MapPin className="h-4 w-4" />
                         </Button>
@@ -535,10 +571,10 @@ export function FloorPlanEditor({
         </div>
 
         <DialogFooter className="mt-4 pt-4 border-t border-[var(--color-border)]">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} isLoading={isLoading}>
+          <Button onClick={handleSave} isLoading={isLoading || isSaving} disabled={isUploading}>
             <Save className="h-4 w-4" />
             Save Floor Plans
           </Button>

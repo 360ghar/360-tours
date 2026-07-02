@@ -3,7 +3,7 @@
  *
  * Provides utilities for creating authenticated test contexts.
  */
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 
 export const TEST_USER = {
   phone: process.env.E2E_TEST_USER_PHONE || '',
@@ -13,8 +13,22 @@ export const TEST_USER = {
 
 export const STORAGE_STATE_PATH = 'e2e/.auth/user.json';
 
+function phoneInputValue(phone: string): string {
+  return phone.startsWith('+91') ? phone.slice(3) : phone.replace(/^\+/, '');
+}
+
+export async function loginWithPhonePassword(page: Page): Promise<void> {
+  await page.goto('/login');
+
+  await page.getByLabel(/phone number/i).fill(phoneInputValue(TEST_USER.phone));
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+
+  await page.getByLabel(/^password$/i).fill(TEST_USER.password);
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+}
+
 export const test = base.extend<{
-  authenticatedPage: ReturnType<typeof base.extend>;
+  authenticatedPage: Page;
 }>({
   authenticatedPage: async ({ page }, provide) => {
     if (!TEST_USER.phone || !TEST_USER.password) {
@@ -22,12 +36,7 @@ export const test = base.extend<{
       return;
     }
 
-    await page.goto('/login');
-
-    await page.fill('input[name="phone"], input[type="tel"]', TEST_USER.phone);
-    await page.fill('input[name="password"], input[type="password"]', TEST_USER.password);
-
-    await page.click('button[type="submit"]');
+    await loginWithPhonePassword(page);
 
     await page.waitForURL(/\/(dashboard|tours)/, { timeout: 10000 }).catch(() => {
       console.warn('Login redirect timeout - backend may not be available');
@@ -37,26 +46,23 @@ export const test = base.extend<{
   },
 });
 
-export async function globalAuthSetup(page: ReturnType<typeof base.extend>['page']) {
+export async function globalAuthSetup(page: Page) {
   if (!TEST_USER.phone || !TEST_USER.password) {
     await page.context().storageState({ path: STORAGE_STATE_PATH });
     return;
   }
 
-  await page.goto('/login');
-
-  await page.fill('input[name="phone"], input[type="tel"]', TEST_USER.phone);
-  await page.fill('input[name="password"], input[type="password"]', TEST_USER.password);
-  await page.click('button[type="submit"]');
+  await loginWithPhonePassword(page);
 
   await page.waitForURL(/\/(dashboard|tours)/);
 
   await page.context().storageState({ path: STORAGE_STATE_PATH });
 }
 
-export async function isAuthenticated(page: ReturnType<typeof base.extend>['page']): Promise<boolean> {
+export async function isAuthenticated(page: Page): Promise<boolean> {
   const token = await page.evaluate(() => {
     return (
+      localStorage.getItem('360viewer_auth_tokens') ||
       localStorage.getItem('auth_token') ||
       localStorage.getItem('supabase.auth.token') ||
       sessionStorage.getItem('auth_token')
@@ -65,7 +71,7 @@ export async function isAuthenticated(page: ReturnType<typeof base.extend>['page
   return !!token;
 }
 
-export async function waitForAuth(page: ReturnType<typeof base.extend>['page'], timeout = 5000) {
+export async function waitForAuth(page: Page, timeout = 5000) {
   const startTime = Date.now();
   while (Date.now() - startTime < timeout) {
     if (await isAuthenticated(page)) {

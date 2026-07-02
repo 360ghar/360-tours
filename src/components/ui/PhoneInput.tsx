@@ -1,11 +1,7 @@
 import * as React from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/utils';
-import {
-  COUNTRY_CODES,
-  DEFAULT_COUNTRY_CODE,
-  type CountryCode,
-} from '@/constants/countryCodes';
+import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE, type CountryCode } from '@/constants/countryCodes';
 
 export interface PhoneInputProps {
   id?: string;
@@ -38,6 +34,11 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
     },
     ref
   ) => {
+    const autoId = React.useId();
+    const inputId = id ?? autoId;
+    const countryListboxId = `${inputId}-country-listbox`;
+    const errorId = error ? `${inputId}-error` : undefined;
+
     // Parse the value to extract country code and local number
     const parseValue = (val: string): { countryCode: string; localNumber: string } => {
       if (!val) {
@@ -68,7 +69,8 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
     const dropdownRef = React.useRef<HTMLDivElement>(null);
 
     // Get the selected country object
-    const selectedCountryData = COUNTRY_CODES.find((c) => c.code === selectedCountry) || COUNTRY_CODES[0];
+    const selectedCountryData =
+      COUNTRY_CODES.find(c => c.code === selectedCountry) || COUNTRY_CODES[0];
 
     // Close dropdown when clicking outside
     React.useEffect(() => {
@@ -98,6 +100,12 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
       }
     };
 
+    const handleCountryKeyDown = (event: React.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
     // Sync with external value changes
     React.useEffect(() => {
       const { countryCode, localNumber: parsed } = parseValue(value);
@@ -113,12 +121,17 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
             <button
               type="button"
               onClick={() => !disabled && setIsOpen(!isOpen)}
+              onKeyDown={handleCountryKeyDown}
               disabled={disabled}
+              aria-label={`Country code, ${selectedCountryData.name} ${selectedCountryData.dialCode}`}
+              aria-haspopup="listbox"
+              aria-expanded={isOpen}
+              aria-controls={countryListboxId}
               className={cn(
                 'flex h-10 items-center gap-1 rounded-l-lg border border-r-0 px-3',
                 'bg-[var(--color-surface)] border-[var(--color-border)]',
                 'text-sm text-[var(--color-text-primary)]',
-                'hover:bg-[var(--color-surface-hover)]',
+                'hover:bg-[var(--color-surface-elevated)]',
                 'focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-500)] focus:ring-offset-2',
                 'disabled:cursor-not-allowed disabled:opacity-50',
                 'transition-colors',
@@ -132,20 +145,26 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
             {/* Dropdown Menu */}
             {isOpen && (
               <div
+                id={countryListboxId}
+                role="listbox"
+                aria-label="Country codes"
+                onKeyDown={handleCountryKeyDown}
                 className={cn(
-                  'absolute left-0 top-full z-50 mt-1 max-h-60 w-56 overflow-auto',
+                  'absolute left-0 top-full z-[var(--z-dropdown)] mt-1 max-h-60 w-56 overflow-auto',
                   'rounded-lg border border-[var(--color-border)]',
                   'bg-[var(--color-surface-elevated)] shadow-lg'
                 )}
               >
-                {COUNTRY_CODES.map((country) => (
+                {COUNTRY_CODES.map(country => (
                   <button
                     key={country.code}
                     type="button"
+                    role="option"
+                    aria-selected={selectedCountry === country.code}
                     onClick={() => handleCountrySelect(country)}
                     className={cn(
                       'flex w-full items-center justify-between px-3 py-2 text-left text-sm',
-                      'hover:bg-[var(--color-surface)]',
+                      'hover:bg-[var(--color-surface)] focus:bg-[var(--color-surface)] focus:outline-none',
                       'text-[var(--color-text-primary)]',
                       selectedCountry === country.code && 'bg-[var(--color-primary-50)]'
                     )}
@@ -161,7 +180,7 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
           {/* Phone Number Input */}
           <input
             ref={ref}
-            id={id}
+            id={inputId}
             name={name}
             type="tel"
             inputMode="numeric"
@@ -169,6 +188,8 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
             onChange={handleLocalNumberChange}
             placeholder={placeholder}
             aria-label={ariaLabel ?? placeholder}
+            aria-invalid={!!error}
+            aria-describedby={errorId}
             required={required}
             autoComplete={autoComplete}
             disabled={disabled}
@@ -187,7 +208,9 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
 
         {/* Error Message */}
         {error && (
-          <p className="text-sm text-[var(--color-error-600)]">{error}</p>
+          <p id={errorId} className="text-sm text-[var(--color-error-600)]">
+            {error}
+          </p>
         )}
       </div>
     );

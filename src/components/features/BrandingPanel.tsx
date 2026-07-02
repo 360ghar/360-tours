@@ -100,6 +100,9 @@ const PRESET_THEMES = [
   },
 ];
 
+const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
+const SUPPORTED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+
 export function BrandingPanel({
   open,
   onOpenChange,
@@ -117,6 +120,11 @@ export function BrandingPanel({
   // Tracks the last fallback object URL (always a 'blob:' URL we created) so it
   // can be revoked on replace/unmount. Server 'https:' URLs are never stored here.
   const fallbackUrlRef = useRef<string | null>(null);
+  // Preview-only blob URL shown when an upload failed. This is NEVER persisted
+  // to settings.logo_url — the user must re-upload successfully before saving.
+  const [previewLogoUrl, setPreviewLogoUrl] = useState<string | null>(null);
+  const [logoUploadFailed, setLogoUploadFailed] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   // Revoke the outstanding fallback object URL on unmount
   useEffect(
@@ -136,37 +144,56 @@ export function BrandingPanel({
     });
   }, [initialSettings, open]);
 
-  const updateSetting = <K extends keyof BrandingSettings>(
-    key: K,
-    value: BrandingSettings[K]
-  ) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+  const updateSetting = <K extends keyof BrandingSettings>(key: K, value: BrandingSettings[K]) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!SUPPORTED_LOGO_TYPES.includes(file.type)) {
+      setLogoError('Upload a PNG, SVG, JPG, or WebP logo.');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > MAX_LOGO_SIZE_BYTES) {
+      setLogoError('Logo files must be 2MB or smaller.');
+      e.target.value = '';
+      return;
+    }
+
     setIsUploadingLogo(true);
+    setLogoError(null);
 
     try {
       const uploadResult = await uploadApi.uploadFile(file, {
         folder: 'branding',
         visibility: 'public',
       });
-      // Revoke a prior fallback blob URL before replacing it with the remote URL.
+      // Upload succeeded — clear any pending preview-only blob URL and commit
+      // the remote URL as the persisted logo_url.
       if (fallbackUrlRef.current?.startsWith('blob:')) {
         URL.revokeObjectURL(fallbackUrlRef.current);
         fallbackUrlRef.current = null;
       }
+      setPreviewLogoUrl(null);
+      setLogoUploadFailed(false);
+      setLogoError(null);
       updateSetting('logo_url', uploadResult.public_url);
     } catch (error) {
       console.error('Failed to upload logo:', error);
-      // Fall back to local URL if upload fails
+      // Upload failed: do NOT set the blob URL as the persistent logo_url,
+      // because blob URLs are local-only and would not render for anyone else
+      // (and would break persistence). Instead, show the image as a preview
+      // and require a successful re-upload before saving.
       const previousUrl = fallbackUrlRef.current;
       const url = URL.createObjectURL(file);
       fallbackUrlRef.current = url;
-      updateSetting('logo_url', url);
+      setPreviewLogoUrl(url);
+      setLogoUploadFailed(true);
+      setLogoError('Logo upload failed. Re-upload the file or remove the preview before saving.');
       if (previousUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(previousUrl);
       }
@@ -183,11 +210,14 @@ export function BrandingPanel({
       URL.revokeObjectURL(fallbackUrlRef.current);
       fallbackUrlRef.current = null;
     }
+    setPreviewLogoUrl(null);
+    setLogoUploadFailed(false);
+    setLogoError(null);
     updateSetting('logo_url', undefined);
   };
 
   const handleApplyPreset = (preset: (typeof PRESET_THEMES)[0]) => {
-    setSettings((prev) => ({
+    setSettings(prev => ({
       ...prev,
       primary_color: preset.primary,
       secondary_color: preset.secondary,
@@ -200,7 +230,19 @@ export function BrandingPanel({
   };
 
   const handleSave = () => {
-    onSave(settings);
+    if (logoUploadFailed) {
+      setLogoError('Re-upload the logo or remove the preview before saving branding.');
+      return;
+    }
+
+    // Hard guarantee: never persist a local blob URL — it would not render
+    // outside this browser session. Drop it (or revert to no logo) if a stale
+    // blob: URL ever reaches settings.logo_url.
+    const settingsToSave: BrandingSettings = {
+      ...settings,
+      logo_url: settings.logo_url?.startsWith('blob:') ? undefined : settings.logo_url,
+    };
+    onSave(settingsToSave);
     onOpenChange(false);
   };
 
@@ -243,10 +285,12 @@ export function BrandingPanel({
                   <div>
                     <Label className="mb-3 block">Quick Presets</Label>
                     <div className="grid grid-cols-3 gap-2">
-                      {PRESET_THEMES.map((preset) => (
+                      {PRESET_THEMES.map(preset => (
                         <button
                           key={preset.name}
                           onClick={() => handleApplyPreset(preset)}
+                          type="button"
+                          aria-pressed={settings.primary_color === preset.primary}
                           className={cn(
                             'p-3 rounded-lg border text-left transition-colors',
                             settings.primary_color === preset.primary
@@ -288,12 +332,12 @@ export function BrandingPanel({
                             id="primary-color"
                             type="color"
                             value={settings.primary_color}
-                            onChange={(e) => updateSetting('primary_color', e.target.value)}
+                            onChange={e => updateSetting('primary_color', e.target.value)}
                             className="w-12 h-10 p-1 cursor-pointer"
                           />
                           <Input
                             value={settings.primary_color}
-                            onChange={(e) => updateSetting('primary_color', e.target.value)}
+                            onChange={e => updateSetting('primary_color', e.target.value)}
                             className="flex-1 font-mono text-sm"
                           />
                         </div>
@@ -308,12 +352,12 @@ export function BrandingPanel({
                             id="secondary-color"
                             type="color"
                             value={settings.secondary_color}
-                            onChange={(e) => updateSetting('secondary_color', e.target.value)}
+                            onChange={e => updateSetting('secondary_color', e.target.value)}
                             className="w-12 h-10 p-1 cursor-pointer"
                           />
                           <Input
                             value={settings.secondary_color}
-                            onChange={(e) => updateSetting('secondary_color', e.target.value)}
+                            onChange={e => updateSetting('secondary_color', e.target.value)}
                             className="flex-1 font-mono text-sm"
                           />
                         </div>
@@ -328,12 +372,12 @@ export function BrandingPanel({
                             id="accent-color"
                             type="color"
                             value={settings.accent_color}
-                            onChange={(e) => updateSetting('accent_color', e.target.value)}
+                            onChange={e => updateSetting('accent_color', e.target.value)}
                             className="w-12 h-10 p-1 cursor-pointer"
                           />
                           <Input
                             value={settings.accent_color}
-                            onChange={(e) => updateSetting('accent_color', e.target.value)}
+                            onChange={e => updateSetting('accent_color', e.target.value)}
                             className="flex-1 font-mono text-sm"
                           />
                         </div>
@@ -348,12 +392,12 @@ export function BrandingPanel({
                             id="text-color"
                             type="color"
                             value={settings.text_color}
-                            onChange={(e) => updateSetting('text_color', e.target.value)}
+                            onChange={e => updateSetting('text_color', e.target.value)}
                             className="w-12 h-10 p-1 cursor-pointer"
                           />
                           <Input
                             value={settings.text_color}
-                            onChange={(e) => updateSetting('text_color', e.target.value)}
+                            onChange={e => updateSetting('text_color', e.target.value)}
                             className="flex-1 font-mono text-sm"
                           />
                         </div>
@@ -365,7 +409,7 @@ export function BrandingPanel({
                   <div className="space-y-2">
                     <Label>Button Style</Label>
                     <div className="flex gap-2">
-                      {(['rounded', 'square', 'pill'] as const).map((style) => (
+                      {(['rounded', 'square', 'pill'] as const).map(style => (
                         <button
                           key={style}
                           onClick={() => updateSetting('button_style', style)}
@@ -391,30 +435,46 @@ export function BrandingPanel({
                   <div className="space-y-4">
                     <Label>Logo</Label>
 
-                    {settings.logo_url ? (
+                    {logoUploadFailed && (
+                      <p className="text-xs text-[var(--color-error-500)]">
+                        Logo upload failed - preview only. Re-upload to save it.
+                      </p>
+                    )}
+
+                    {logoError && (
+                      <p className="text-xs text-[var(--color-error-500)]" role="alert">
+                        {logoError}
+                      </p>
+                    )}
+
+                    {previewLogoUrl || settings.logo_url ? (
                       <div className="relative inline-block">
                         <div className="p-4 rounded-lg bg-[var(--color-surface-elevated)] border border-[var(--color-border)]">
                           <img
-                            src={settings.logo_url}
+                            src={previewLogoUrl ?? settings.logo_url}
                             alt="Logo"
                             className="max-h-16 max-w-[200px] object-contain"
                           />
                         </div>
                         <button
                           onClick={handleRemoveLogo}
+                          type="button"
+                          aria-label="Remove logo"
                           className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-[var(--color-error-500)] text-white flex items-center justify-center"
                         >
                           <X className="h-3 w-3" />
                         </button>
                       </div>
                     ) : (
-                      <div
+                      <button
+                        type="button"
                         onClick={() => !isUploadingLogo && fileInputRef.current?.click()}
+                        disabled={isUploadingLogo}
                         className={cn(
-                          "border-2 border-dashed border-[var(--color-border)] rounded-lg p-8 text-center transition-colors",
+                          'w-full border-2 border-dashed border-[var(--color-border)] rounded-lg p-8 text-center transition-colors disabled:opacity-70',
                           isUploadingLogo
-                            ? "cursor-wait"
-                            : "cursor-pointer hover:border-[var(--color-primary-300)]"
+                            ? 'cursor-wait'
+                            : 'cursor-pointer hover:border-[var(--color-primary-300)]'
                         )}
                       >
                         {isUploadingLogo ? (
@@ -431,14 +491,15 @@ export function BrandingPanel({
                             </p>
                           </>
                         )}
-                      </div>
+                      </button>
                     )}
 
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/png,image/jpeg,image/svg+xml,image/webp"
                       onChange={handleLogoUpload}
+                      aria-label="Upload branding logo"
                       className="hidden"
                     />
 
@@ -455,7 +516,7 @@ export function BrandingPanel({
                       )}
                       {isUploadingLogo
                         ? 'Uploading...'
-                        : settings.logo_url
+                        : previewLogoUrl || settings.logo_url
                           ? 'Change Logo'
                           : 'Upload Logo'}
                     </Button>
@@ -472,7 +533,7 @@ export function BrandingPanel({
                       </div>
                       <Switch
                         checked={settings.show_watermark}
-                        onCheckedChange={(checked) => updateSetting('show_watermark', checked)}
+                        onCheckedChange={checked => updateSetting('show_watermark', checked)}
                       />
                     </div>
 
@@ -481,7 +542,7 @@ export function BrandingPanel({
                         <Label>Watermark Position</Label>
                         <Select
                           value={settings.watermark_position}
-                          onValueChange={(value) =>
+                          onValueChange={value =>
                             updateSetting(
                               'watermark_position',
                               value as BrandingSettings['watermark_position']
@@ -509,13 +570,13 @@ export function BrandingPanel({
                     <Label>Font Family</Label>
                     <Select
                       value={settings.font_family}
-                      onValueChange={(value) => updateSetting('font_family', value)}
+                      onValueChange={value => updateSetting('font_family', value)}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {FONT_OPTIONS.map((font) => (
+                        {FONT_OPTIONS.map(font => (
                           <SelectItem
                             key={font.value}
                             value={font.value}
@@ -557,6 +618,7 @@ export function BrandingPanel({
                   variant={previewMode === 'desktop' ? 'secondary' : 'ghost'}
                   size="sm"
                   onClick={() => setPreviewMode('desktop')}
+                  aria-pressed={previewMode === 'desktop'}
                 >
                   Desktop
                 </Button>
@@ -564,6 +626,7 @@ export function BrandingPanel({
                   variant={previewMode === 'mobile' ? 'secondary' : 'ghost'}
                   size="sm"
                   onClick={() => setPreviewMode('mobile')}
+                  aria-pressed={previewMode === 'mobile'}
                 >
                   Mobile
                 </Button>
@@ -585,9 +648,9 @@ export function BrandingPanel({
                   className="absolute top-0 left-0 right-0 p-3"
                   style={{ backgroundColor: `${settings.primary_color}dd` }}
                 >
-                  {settings.logo_url ? (
+                  {previewLogoUrl || settings.logo_url ? (
                     <img
-                      src={settings.logo_url}
+                      src={previewLogoUrl ?? settings.logo_url}
                       alt="Logo"
                       className="h-6 object-contain"
                     />
@@ -615,13 +678,10 @@ export function BrandingPanel({
                 {/* Navigation bar */}
                 <div className="absolute bottom-0 left-0 right-0 p-2 bg-black/50">
                   <div className="flex gap-1 justify-center">
-                    {[1, 2, 3, 4].map((i) => (
+                    {[1, 2, 3, 4].map(i => (
                       <div
                         key={i}
-                        className={cn(
-                          'w-12 h-8 rounded',
-                          i === 1 ? 'ring-2' : 'opacity-60'
-                        )}
+                        className={cn('w-12 h-8 rounded', i === 1 ? 'ring-2' : 'opacity-60')}
                         style={{
                           backgroundColor: settings.secondary_color,
                           ['--tw-ring-color' as string]: settings.primary_color,
@@ -677,7 +737,7 @@ export function BrandingPanel({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} isLoading={isLoading}>
+          <Button onClick={handleSave} isLoading={isLoading} disabled={isUploadingLogo}>
             <Check className="h-4 w-4" />
             Save Branding
           </Button>

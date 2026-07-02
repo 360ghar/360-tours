@@ -1,0 +1,65 @@
+{
+  "skill_name": "spatial-360-tour",
+  "evals": [
+    {
+      "id": 0,
+      "name": "rosalia-82-2bhk",
+      "prompt": "Build a 360 virtual tour for the property in seed_properties/00104-signature-global-rosalia-sector-82-2bhk-apartment-for-rent/. Analyze each panorama, write titles, descriptions, captions and narration, place navigation hotspots on the doorways, and save tour.json into that folder.",
+      "files": ["seed_properties/00104-signature-global-rosalia-sector-82-2bhk-apartment-for-rent/"],
+      "expected_output": "A valid tour.json with one scene per panorama, rooms classified from image content, bidirectional navigation hotspots on doorways (floor-band pitch), all scenes reachable, and non-empty title/description/caption/narration_script per scene.",
+      "assertions": [
+        { "text": "tour.json exists and is valid JSON" },
+        { "text": "initial_scene_id references an existing scene id" },
+        { "text": "one scene per panorama in equirectangular_images/" },
+        { "text": "every scene's image_url resolves to a file on disk" },
+        { "text": "every scene has non-empty title, description, caption and narration_script" },
+        { "text": "every navigation hotspot target_scene_id references an existing scene" },
+        { "text": "no duplicate (scene, target) navigation hotspots" },
+        { "text": "all yaw in [-180,180] and pitch in [-90,90]" },
+        { "text": "navigation hotspot pitch in floor band [-45,-10]" },
+        { "text": "all navigation links are bidirectional" },
+        { "text": "all scenes reachable from initial_scene_id" }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "rosalia-84-2bhk",
+      "prompt": "I have a folder of 360 panorama photos of an apartment at seed_properties/00105-signature-global-rosalia-sector-84-2bhk-apartment-for-rent/. Turn them into an interactive virtual walkthrough — figure out which room each photo is, link them with hotspots on the doorways, and add a title, description and short narration for each room. Write the result to tour.json in that folder.",
+      "files": ["seed_properties/00105-signature-global-rosalia-sector-84-2bhk-apartment-for-rent/"],
+      "expected_output": "A valid tour.json with rooms identified from content, doorway hotspots, full per-scene metadata, connected bidirectional graph.",
+      "assertions": [
+        { "text": "tour.json exists and is valid JSON" },
+        { "text": "initial_scene_id references an existing scene id" },
+        { "text": "one scene per panorama in equirectangular_images/" },
+        { "text": "every scene's image_url resolves to a file on disk" },
+        { "text": "every scene has non-empty title, description, caption and narration_script" },
+        { "text": "every navigation hotspot target_scene_id references an existing scene" },
+        { "text": "no duplicate (scene, target) navigation hotspots" },
+        { "text": "all yaw in [-180,180] and pitch in [-90,90]" },
+        { "text": "navigation hotspot pitch in floor band [-45,-10]" },
+        { "text": "all navigation links are bidirectional" },
+        { "text": "all scenes reachable from initial_scene_id" }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "vatika-49-3bhk",
+      "prompt": "Create a Matterport-style spatial tour from the equirectangular images in seed_properties/00107-vatika-city-sector-49-3bhk-builder-floor-for-rent/ and save it as tour.json there.",
+      "files": ["seed_properties/00107-vatika-city-sector-49-3bhk-builder-floor-for-rent/"],
+      "expected_output": "A valid tour.json: scenes from content, doorway hotspots, per-scene metadata, connected bidirectional graph.",
+      "assertions": [
+        { "text": "tour.json exists and is valid JSON" },
+        { "text": "initial_scene_id references an existing scene id" },
+        { "text": "one scene per panorama in equirectangular_images/" },
+        { "text": "every scene's image_url resolves to a file on disk" },
+        { "text": "every scene has non-empty title, description, caption and narration_script" },
+        { "text": "every navigation hotspot target_scene_id references an existing scene" },
+        { "text": "no duplicate (scene, target) navigation hotspots" },
+        { "text": "all yaw in [-180,180] and pitch in [-90,90]" },
+        { "text": "navigation hotspot pitch in floor band [-45,-10]" },
+        { "text": "all navigation links are bidirectional" },
+        { "text": "all scenes reachable from initial_scene_id" }
+      ]
+    }
+  ]
+}

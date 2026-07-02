@@ -18,8 +18,8 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     return <PageLoader message="Checking authentication..." />;
   }
 
-  // If we have tokens but still loading user, wait
-  if (tokens && !user) {
+  // If an authenticated session is still hydrating its user profile, wait.
+  if (tokens && isAuthenticated && !user) {
     return <PageLoader message="Loading user..." />;
   }
 

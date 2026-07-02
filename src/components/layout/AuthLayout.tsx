@@ -54,10 +54,10 @@ export function AuthLayout() {
       <div className="relative hidden w-0 flex-1 lg:block">
         <div className="absolute inset-0 gradient-primary opacity-90" />
         <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-white">
-          <h1 className="mb-4 text-4xl font-bold">Create Stunning Virtual Tours</h1>
+          <h2 className="mb-4 text-4xl font-bold">Create Stunning Virtual Tours</h2>
           <p className="max-w-md text-center text-lg text-white/90">
-            Transform your 360° images into immersive virtual experiences. Easy to create,
-            beautiful to view, powerful to share.
+            Transform your 360° images into immersive virtual experiences. Easy to create, beautiful
+            to view, powerful to share.
           </p>
           <div className="mt-12 grid grid-cols-3 gap-8 text-center">
             <div>

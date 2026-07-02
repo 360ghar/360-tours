@@ -47,7 +47,7 @@ export function FinalCTA() {
         >
           Ready to transform how you
           <br />
-          <span className="landing-gradient-text">create virtual tours?</span>
+          <span className="landing-accent-text">create virtual tours?</span>
         </h2>
 
         {/* Subtext */}

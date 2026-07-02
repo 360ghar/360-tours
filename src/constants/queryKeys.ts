@@ -10,6 +10,7 @@ export const QUERY_KEYS = {
   FLOOR_PLANS: 'floor-plans',
   ANALYTICS: 'analytics',
   DASHBOARD_STATS: 'dashboard-stats',
+  DASHBOARD_REALTIME: 'dashboard-realtime',
   MEDIA_FILES: 'media-files',
   AI_JOBS: 'ai-jobs',
   ACTIVITIES: 'activities',

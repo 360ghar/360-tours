@@ -52,7 +52,7 @@ export function PricingSection() {
           )}
           style={{ animationDelay: '150ms' }}
         >
-          <div className="relative rounded-3xl p-8 md:p-10 bg-white dark:bg-[#111111] border-2 border-[var(--landing-accent)] shadow-xl shadow-[var(--landing-accent)]/10">
+          <div className="relative z-0 rounded-3xl p-8 md:p-10 bg-white dark:bg-[#111111] border-2 border-[var(--landing-accent)] shadow-xl shadow-[var(--landing-accent)]/10">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full uppercase tracking-wider bg-[var(--landing-accent-subtle)] text-[var(--landing-accent)]">
               <Sparkles className="w-3 h-3" />
               Completely Free

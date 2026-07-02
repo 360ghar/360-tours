@@ -1,0 +1,65 @@
+{
+  "expectations": [
+    {
+      "text": "tour.json exists and is valid JSON",
+      "passed": true,
+      "evidence": "parsed 6 scenes"
+    },
+    {
+      "text": "initial_scene_id references an existing scene id",
+      "passed": true,
+      "evidence": "initial_scene_id='entrance'"
+    },
+    {
+      "text": "one scene per panorama in equirectangular_images/",
+      "passed": true,
+      "evidence": "6 scenes vs 6 panoramas (['balcony_panorama.webp', 'bathroom_panorama.webp', 'entrance_panorama.webp', 'kitchen_panorama.webp', 'living_room_panorama.webp', 'master_bedroom_panorama.webp'])"
+    },
+    {
+      "text": "every scene's image_url resolves to a file on disk",
+      "passed": true,
+      "evidence": "all resolve"
+    },
+    {
+      "text": "every scene has non-empty title, description, caption and narration_script",
+      "passed": true,
+      "evidence": "all present"
+    },
+    {
+      "text": "every navigation hotspot target_scene_id references an existing scene",
+      "passed": true,
+      "evidence": "all resolve"
+    },
+    {
+      "text": "no duplicate (scene, target) navigation hotspots",
+      "passed": true,
+      "evidence": "no dupes"
+    },
+    {
+      "text": "all yaw in [-180,180] and pitch in [-90,90]",
+      "passed": true,
+      "evidence": "all in range"
+    },
+    {
+      "text": "navigation hotspot pitch in floor band [-45,-18]",
+      "passed": true,
+      "evidence": "all in floor band"
+    },
+    {
+      "text": "all navigation links are bidirectional",
+      "passed": false,
+      "evidence": "one-way: ['entrance->bathroom']"
+    },
+    {
+      "text": "all scenes reachable from initial_scene_id",
+      "passed": true,
+      "evidence": "all reachable"
+    }
+  ],
+  "summary": {
+    "pass_rate": 0.9091,
+    "passed": 10,
+    "failed": 1,
+    "total": 11
+  }
+}

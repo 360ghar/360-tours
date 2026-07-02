@@ -20,6 +20,7 @@ export function Demo360Viewer({ className }: Demo360ViewerProps) {
   useEffect(() => {
     let viewer: unknown;
     const container = containerRef.current;
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     const stopAutoRotate = () => {
       if (autoRotateIdleTimeoutRef.current != null) {
@@ -34,6 +35,8 @@ export function Demo360Viewer({ className }: Demo360ViewerProps) {
     };
 
     const startAutoRotate = () => {
+      if (motionQuery.matches) return;
+
       const currentViewer = viewerRef.current as {
         getPosition: () => { yaw: number; pitch: number };
         rotate: (p: { yaw: number; pitch: number }) => void;
@@ -73,6 +76,14 @@ export function Demo360Viewer({ className }: Demo360ViewerProps) {
       }, RESUME_DELAY);
     };
 
+    const handleMotionPreferenceChange = () => {
+      if (motionQuery.matches) {
+        stopAutoRotate();
+      } else {
+        scheduleAutoRotate();
+      }
+    };
+
     const initViewer = async () => {
       if (!container || viewerRef.current) return;
 
@@ -91,11 +102,14 @@ export function Demo360Viewer({ className }: Demo360ViewerProps) {
         });
 
         viewerRef.current = viewer;
-        scheduleAutoRotate();
+        if (!motionQuery.matches) {
+          scheduleAutoRotate();
+        }
 
         container.addEventListener('pointerdown', scheduleAutoRotate);
         container.addEventListener('wheel', scheduleAutoRotate, { passive: true });
         container.addEventListener('touchstart', scheduleAutoRotate, { passive: true });
+        motionQuery.addEventListener('change', handleMotionPreferenceChange);
       } catch (error) {
         console.error('Failed to initialize 360 viewer:', error);
       }
@@ -107,6 +121,7 @@ export function Demo360Viewer({ className }: Demo360ViewerProps) {
       container?.removeEventListener('pointerdown', scheduleAutoRotate);
       container?.removeEventListener('wheel', scheduleAutoRotate);
       container?.removeEventListener('touchstart', scheduleAutoRotate);
+      motionQuery.removeEventListener('change', handleMotionPreferenceChange);
       stopAutoRotate();
       if (viewerRef.current && typeof (viewerRef.current as { destroy: () => void }).destroy === 'function') {
         try {
@@ -122,6 +137,8 @@ export function Demo360Viewer({ className }: Demo360ViewerProps) {
   return (
     <div
       ref={containerRef}
+      role="img"
+      aria-label="Interactive 360 degree tour preview. Drag or swipe to explore the room."
       className={cn(
         'w-full aspect-[16/10] rounded-2xl overflow-hidden bg-[#0A0A0B]',
         'shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)]',

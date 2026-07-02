@@ -6,10 +6,13 @@ import { useAIJobWebSocket, type AIJobUpdate } from '@/hooks';
 import type { AIProcessingJob } from '@/types';
 import { cn } from '@/utils';
 
+const POLLING_INTERVAL_MS = 2000;
+const WEBSOCKET_CONNECTING_FALLBACK_GRACE_MS = 5000;
+
 interface AIJobStatusProps {
   jobId: string;
   onComplete?: (job: AIProcessingJob, result?: unknown) => void;
-  onError?: (job: AIProcessingJob, error: string) => void;
+  onError?: (job: AIProcessingJob | null, error: string) => void;
   onCancel?: () => void;
   showCancelButton?: boolean;
   /** Use WebSocket for real-time updates (default: true) */
@@ -30,11 +33,17 @@ export function AIJobStatus({
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [wsConnectingFallbackEnabled, setWsConnectingFallbackEnabled] = useState(false);
   const terminalCallbackHandledRef = useRef(false);
+  const jobRef = useRef<AIProcessingJob | null>(null);
 
   useEffect(() => {
     terminalCallbackHandledRef.current = false;
   }, [jobId]);
+
+  useEffect(() => {
+    jobRef.current = job;
+  }, [job]);
 
   // WebSocket for real-time updates
   const { state: wsState, isConnected } = useAIJobWebSocket(
@@ -79,19 +88,23 @@ export function AIJobStatus({
       const response = await aiApi.getJobStatus(jobId);
       setJob(response.job);
 
-      if (response.result) {
-        setResult(response.result);
+      const responseResult = response.result ?? response.job.output_data;
+
+      if (responseResult) {
+        setResult(responseResult);
       }
 
       if (response.job.status === 'completed' && !terminalCallbackHandledRef.current) {
         terminalCallbackHandledRef.current = true;
-        onComplete?.(response.job, response.result);
+        onComplete?.(response.job, responseResult);
         return true; // Stop polling
       }
 
       if ((response.job.status === 'failed' || response.job.status === 'canceled') && !terminalCallbackHandledRef.current) {
         terminalCallbackHandledRef.current = true;
-        const errorMsg = response.job.error_message || 'Processing failed';
+        const errorMsg =
+          response.job.error_message ||
+          (response.job.status === 'canceled' ? 'Processing was canceled' : 'Processing failed');
         setError(errorMsg);
         onError?.(response.job, errorMsg);
         return true; // Stop polling
@@ -101,28 +114,54 @@ export function AIJobStatus({
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to get job status';
       setError(errorMsg);
+      setJob((prev) =>
+        prev ? { ...prev, status: 'failed', error_message: errorMsg } : prev
+      );
+      if (!terminalCallbackHandledRef.current) {
+        terminalCallbackHandledRef.current = true;
+        onError?.(jobRef.current, errorMsg);
+      }
       return true; // Stop polling on error
     }
   }, [jobId, onComplete, onError]);
+
+  useEffect(() => {
+    if (!useWebSocket || wsState !== 'connecting') {
+      setWsConnectingFallbackEnabled(false);
+      return;
+    }
+
+    setWsConnectingFallbackEnabled(false);
+    const timeoutId = setTimeout(() => {
+      setWsConnectingFallbackEnabled(true);
+    }, WEBSOCKET_CONNECTING_FALLBACK_GRACE_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [jobId, useWebSocket, wsState]);
 
   // Initial fetch and fallback polling (when WebSocket is disabled or not connected)
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
     let isActive = true;
+    const shouldPoll =
+      !useWebSocket ||
+      wsState === 'error' ||
+      wsState === 'disconnected' ||
+      (wsState === 'connecting' && wsConnectingFallbackEnabled);
 
     const startPolling = async () => {
       // Initial fetch to get job details
       const shouldStop = await fetchJobStatus();
 
       // Only poll if WebSocket is not being used or not connected
-      if (!shouldStop && isActive && (!useWebSocket || wsState === 'error' || wsState === 'disconnected')) {
+      if (!shouldStop && isActive && shouldPoll) {
         // Continue polling every 2 seconds
         intervalId = setInterval(async () => {
           const done = await fetchJobStatus();
           if (done) {
             clearInterval(intervalId);
           }
-        }, 2000);
+        }, POLLING_INTERVAL_MS);
       }
     };
 
@@ -134,7 +173,7 @@ export function AIJobStatus({
         clearInterval(intervalId);
       }
     };
-  }, [fetchJobStatus, useWebSocket, wsState]);
+  }, [fetchJobStatus, useWebSocket, wsConnectingFallbackEnabled, wsState]);
 
   // Call onComplete/onError when job status changes (for WebSocket updates)
   useEffect(() => {
@@ -145,9 +184,13 @@ export function AIJobStatus({
     if (job.status === 'completed' && result) {
       terminalCallbackHandledRef.current = true;
       onComplete?.(job, result);
-    } else if ((job.status === 'failed' || job.status === 'canceled') && job.error_message) {
+    } else if (job.status === 'failed' || job.status === 'canceled') {
       terminalCallbackHandledRef.current = true;
-      onError?.(job, job.error_message);
+      const errorMsg =
+        job.error_message ||
+        (job.status === 'canceled' ? 'Processing was canceled' : 'Processing failed');
+      setError(errorMsg);
+      onError?.(job, errorMsg);
     }
   }, [job?.status, result, job, onComplete, onError]);
 
@@ -218,6 +261,8 @@ export function AIJobStatus({
         return 'Description Generation';
       case 'quality_checks':
         return 'Quality Checks';
+      case 'generate_reel':
+        return 'Reel Generation';
       case 'optimization':
         return 'Tour Optimization';
       default:
@@ -253,6 +298,7 @@ export function AIJobStatus({
                 isConnected ? 'text-[var(--color-success-500)]' : 'text-[var(--color-text-muted)]'
               )}
               title={isConnected ? 'Real-time updates active' : 'Polling for updates'}
+              aria-label={isConnected ? 'Real-time updates active' : 'Polling for updates'}
             >
               {isConnected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
             </div>

@@ -7,6 +7,8 @@ import {
   generateShareUrl,
   generateSocialShareLinks,
   copyToClipboard,
+  EMBED_IFRAME_REFERRER_POLICY,
+  EMBED_IFRAME_SANDBOX,
 } from '@/utils/embedCode';
 import type { EmbedOptions } from '@/utils/embedCode';
 
@@ -99,6 +101,8 @@ describe('embedCode utilities', () => {
       expect(code).toContain('frameborder="0"');
       expect(code).toContain('allowfullscreen');
       expect(code).toContain('loading="lazy"');
+      expect(code).toContain(`sandbox="${EMBED_IFRAME_SANDBOX}"`);
+      expect(code).toContain(`referrerpolicy="${EMBED_IFRAME_REFERRER_POLICY}"`);
       expect(code).toContain('border-radius: 8px');
     });
 
@@ -127,6 +131,12 @@ describe('embedCode utilities', () => {
     it('includes allow attributes for fullscreen and VR', () => {
       const code = generateIframeCode(TEST_TOUR_ID);
       expect(code).toContain('allow="fullscreen; xr-spatial-tracking; accelerometer; gyroscope"');
+    });
+
+    it('matches the standalone SDK iframe security contract', () => {
+      const code = generateIframeCode(TEST_TOUR_ID);
+      expect(code).toContain(`sandbox="${EMBED_IFRAME_SANDBOX}"`);
+      expect(code).toContain(`referrerpolicy="${EMBED_IFRAME_REFERRER_POLICY}"`);
     });
   });
 
@@ -223,6 +233,12 @@ describe('embedCode utilities', () => {
       const code = generateResponsiveCode(TEST_TOUR_ID);
       expect(code).toContain('loading="lazy"');
     });
+
+    it('matches the standalone SDK iframe security contract', () => {
+      const code = generateResponsiveCode(TEST_TOUR_ID);
+      expect(code).toContain(`sandbox="${EMBED_IFRAME_SANDBOX}"`);
+      expect(code).toContain(`referrerpolicy="${EMBED_IFRAME_REFERRER_POLICY}"`);
+    });
   });
 
   // ─── generateShareUrl ──────────────────────────────────────────────
@@ -286,7 +302,9 @@ describe('embedCode utilities', () => {
 
     it('generates a LinkedIn share link', () => {
       const links = generateSocialShareLinks(TEST_TOUR_ID, TITLE);
-      expect(links.linkedin.startsWith('https://www.linkedin.com/sharing/share-offsite/?url=')).toBe(true);
+      expect(
+        links.linkedin.startsWith('https://www.linkedin.com/sharing/share-offsite/?url=')
+      ).toBe(true);
     });
 
     it('generates a WhatsApp share link with title', () => {

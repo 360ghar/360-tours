@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Moon, Sun, Monitor, Menu, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ROUTES } from '@/constants';
 import { useUIStore } from '@/stores';
 import { cn } from '@/utils';
@@ -10,13 +10,28 @@ export function PublicLayout() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isLandingPage = location.pathname === '/';
+  const mobileMenuId = 'public-mobile-menu';
+  const mobileMenuTabIndex = mobileMenuOpen ? undefined : -1;
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [mobileMenuOpen]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--landing-bg)]">
       {/* Header */}
       <header
         className={cn(
-          'sticky top-0 z-50 transition-all duration-300',
+          'sticky top-0 z-[var(--z-sticky)] transition-all duration-300',
           isLandingPage
             ? 'border-b border-transparent bg-[var(--landing-bg)]/80 backdrop-blur-md'
             : 'border-b border-[var(--color-border)] bg-[var(--color-background)]/95 backdrop-blur'
@@ -89,7 +104,7 @@ export function PublicLayout() {
             <button
               onClick={toggleTheme}
               className="rounded-lg p-2 text-[var(--landing-text-body)] transition-colors hover:bg-[var(--landing-accent-subtle)] hover:text-[var(--landing-accent)]"
-              aria-label="Toggle theme"
+              aria-label={`Switch theme. Current theme: ${theme}`}
             >
               {theme === 'dark' ? (
                 <Sun className="h-5 w-5" />
@@ -127,7 +142,9 @@ export function PublicLayout() {
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="md:hidden rounded-lg p-2 text-[var(--landing-text-body)] hover:bg-[var(--landing-accent-subtle)]"
-              aria-label="Toggle menu"
+              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileMenuOpen}
+              aria-controls={mobileMenuId}
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -135,58 +152,68 @@ export function PublicLayout() {
         </div>
 
         {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-[var(--landing-text-hero)]/5 bg-[var(--landing-bg)]">
-            <div className="px-6 py-4 space-y-3">
-              {isLandingPage && (
-                <>
-                  <a
-                    href="#features"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block py-2 text-sm font-medium text-[var(--landing-text-body)]"
-                    style={{ fontFamily: 'var(--font-body)' }}
-                  >
-                    Features
-                  </a>
-                  <a
-                    href="#pricing"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block py-2 text-sm font-medium text-[var(--landing-text-body)]"
-                    style={{ fontFamily: 'var(--font-body)' }}
-                  >
-                    Pricing
-                  </a>
-                  <a
-                    href="#how-it-works"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block py-2 text-sm font-medium text-[var(--landing-text-body)]"
-                    style={{ fontFamily: 'var(--font-body)' }}
-                  >
-                    How It Works
-                  </a>
-                </>
-              )}
-              <div className="pt-3 border-t border-[var(--landing-text-hero)]/5 flex items-center gap-3">
-                <Link
-                  to={ROUTES.LOGIN}
+        <div
+          id={mobileMenuId}
+          aria-hidden={!mobileMenuOpen}
+          className={cn(
+            'md:hidden border-t border-[var(--landing-text-hero)]/5 bg-[var(--landing-bg)] overflow-hidden transition-all duration-300 ease-in-out',
+            mobileMenuOpen ? 'max-h-96' : 'max-h-0 border-t-0 pointer-events-none'
+          )}
+        >
+          <div className="px-6 py-4 space-y-3">
+            {isLandingPage && (
+              <>
+                <a
+                  href="#features"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="text-sm font-medium text-[var(--landing-text-body)]"
+                  tabIndex={mobileMenuTabIndex}
+                  className="block py-2 text-sm font-medium text-[var(--landing-text-body)]"
                   style={{ fontFamily: 'var(--font-body)' }}
                 >
-                  Sign in
-                </Link>
-                <Link
-                  to={ROUTES.REGISTER}
+                  Features
+                </a>
+                <a
+                  href="#pricing"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-full bg-[var(--landing-accent)] px-5 py-2 text-sm font-semibold text-white"
+                  tabIndex={mobileMenuTabIndex}
+                  className="block py-2 text-sm font-medium text-[var(--landing-text-body)]"
                   style={{ fontFamily: 'var(--font-body)' }}
                 >
-                  Get Started
-                </Link>
-              </div>
+                  Pricing
+                </a>
+                <a
+                  href="#how-it-works"
+                  onClick={() => setMobileMenuOpen(false)}
+                  tabIndex={mobileMenuTabIndex}
+                  className="block py-2 text-sm font-medium text-[var(--landing-text-body)]"
+                  style={{ fontFamily: 'var(--font-body)' }}
+                >
+                  How It Works
+                </a>
+              </>
+            )}
+            <div className="pt-3 border-t border-[var(--landing-text-hero)]/5 flex items-center gap-3">
+              <Link
+                to={ROUTES.LOGIN}
+                onClick={() => setMobileMenuOpen(false)}
+                tabIndex={mobileMenuTabIndex}
+                className="text-sm font-medium text-[var(--landing-text-body)]"
+                style={{ fontFamily: 'var(--font-body)' }}
+              >
+                Sign in
+              </Link>
+              <Link
+                to={ROUTES.REGISTER}
+                onClick={() => setMobileMenuOpen(false)}
+                tabIndex={mobileMenuTabIndex}
+                className="rounded-full bg-[var(--landing-accent)] px-5 py-2 text-sm font-semibold text-white"
+                style={{ fontFamily: 'var(--font-body)' }}
+              >
+                Get Started
+              </Link>
             </div>
           </div>
-        )}
+        </div>
       </header>
 
       {/* Main Content */}
@@ -249,13 +276,13 @@ export function PublicLayout() {
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="text-sm text-white/50 hover:text-white transition-colors"
+                  <span
+                    aria-disabled="true"
+                    className="text-sm text-white/30 cursor-not-allowed"
                     style={{ fontFamily: 'var(--font-body)' }}
                   >
                     API
-                  </a>
+                  </span>
                 </li>
               </ul>
             </div>
@@ -271,13 +298,13 @@ export function PublicLayout() {
               <ul className="mt-4 space-y-3">
                 {['About', 'Blog', 'Careers', 'Contact'].map(item => (
                   <li key={item}>
-                    <a
-                      href="#"
-                      className="text-sm text-white/50 hover:text-white transition-colors"
+                    <span
+                      aria-disabled="true"
+                      className="text-sm text-white/30 cursor-not-allowed"
                       style={{ fontFamily: 'var(--font-body)' }}
                     >
                       {item}
-                    </a>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -294,13 +321,13 @@ export function PublicLayout() {
               <ul className="mt-4 space-y-3">
                 {['Privacy Policy', 'Terms of Service', 'Cookie Policy'].map(item => (
                   <li key={item}>
-                    <a
-                      href="#"
-                      className="text-sm text-white/50 hover:text-white transition-colors"
+                    <span
+                      aria-disabled="true"
+                      className="text-sm text-white/30 cursor-not-allowed"
                       style={{ fontFamily: 'var(--font-body)' }}
                     >
                       {item}
-                    </a>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -314,14 +341,14 @@ export function PublicLayout() {
             </p>
             <div className="flex items-center gap-6">
               {['Twitter', 'LinkedIn', 'GitHub'].map(social => (
-                <a
+                <span
                   key={social}
-                  href="#"
-                  className="text-sm text-white/40 hover:text-white transition-colors"
+                  aria-disabled="true"
+                  className="text-sm text-white/20 cursor-not-allowed"
                   style={{ fontFamily: 'var(--font-body)' }}
                 >
                   {social}
-                </a>
+                </span>
               ))}
             </div>
           </div>

@@ -1,14 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Images,
-  Eye,
-  TrendingUp,
-  HardDrive,
-  Plus,
-  ArrowRight,
-  Clock,
-} from 'lucide-react';
+import { Images, Eye, TrendingUp, HardDrive, Plus, ArrowRight, Clock } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -37,25 +29,63 @@ export function DashboardPage() {
   const { user } = useAuthStore();
 
   // Fetch dashboard stats
-  const { data: stats, isLoading: isLoadingStats } = useQuery({
+  const {
+    data: stats,
+    isLoading: isLoadingStats,
+    isError: isStatsError,
+    refetch: refetchStats,
+  } = useQuery({
     queryKey: [QUERY_KEYS.DASHBOARD_STATS],
     queryFn: () => toursApi.getDashboardStats(),
   });
 
   // Fetch recent tours
-  const { data: toursData, isLoading: isLoadingTours } = useQuery({
+  const {
+    data: toursData,
+    isLoading: isLoadingTours,
+    isError: isToursError,
+    refetch: refetchTours,
+  } = useQuery({
     queryKey: [QUERY_KEYS.TOURS, 'recent', { limit: 5 }],
     queryFn: () => toursApi.getTours({ limit: 5 }),
   });
 
   // Fetch realtime stats (includes recent daily views)
-  const { data: realtimeStats } = useQuery({
-    queryKey: [QUERY_KEYS.DASHBOARD_STATS, 'realtime'],
+  const {
+    data: realtimeStats,
+    isLoading: isLoadingRealtime,
+    isError: realtimeError,
+    refetch: refetchRealtime,
+  } = useQuery({
+    queryKey: [QUERY_KEYS.DASHBOARD_REALTIME],
     queryFn: () => toursApi.getDashboardRealtime(),
   });
 
   const recentTours = toursData?.items || [];
   const viewsData = realtimeStats?.recent_views || [];
+
+  if (isStatsError) {
+    return (
+      <div className="animate-fade-in">
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+            <TrendingUp className="h-10 w-10 text-[var(--color-text-muted)]" />
+            <div>
+              <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                Dashboard could not load
+              </h1>
+              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                Refresh the dashboard stats or create a tour from the tours page.
+              </p>
+            </div>
+            <Button type="button" onClick={() => void refetchStats()}>
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -138,39 +168,71 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={viewsData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                  <XAxis
-                    dataKey="date"
-                    stroke="var(--color-text-muted)"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    stroke="var(--color-text-muted)"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'var(--color-surface-elevated)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: '8px',
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="views"
-                    stroke="var(--color-primary-600)"
-                    strokeWidth={2}
-                    dot={{ fill: 'var(--color-primary-600)', strokeWidth: 0, r: 4 }}
-                    activeDot={{ r: 6, fill: 'var(--color-primary-600)' }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {isLoadingRealtime ? (
+                <Skeleton className="h-full w-full" />
+              ) : realtimeError ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                  <p className="text-sm text-[var(--color-text-muted)]">
+                    Views data could not load.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void refetchRealtime()}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : viewsData.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <Eye className="h-8 w-8 text-[var(--color-text-muted)]" />
+                  <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                    No views recorded yet
+                  </p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={viewsData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                    <XAxis
+                      dataKey="date"
+                      stroke="var(--color-text-muted)"
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      stroke="var(--color-text-muted)"
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--color-surface-elevated)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '8px',
+                      }}
+                      labelFormatter={value =>
+                        new Date(value).toLocaleDateString('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      }
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="views"
+                      stroke="var(--color-primary-600)"
+                      strokeWidth={2}
+                      dot={{ fill: 'var(--color-primary-600)', strokeWidth: 0, r: 4 }}
+                      activeDot={{ r: 6, fill: 'var(--color-primary-600)' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -194,10 +256,28 @@ export function DashboardPage() {
                   <Skeleton key={i} className="h-16 w-full" />
                 ))}
               </div>
+            ) : isToursError ? (
+              <div className="py-8 text-center">
+                <Images className="mx-auto h-12 w-12 text-[var(--color-text-muted)]" />
+                <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                  Recent tours could not load.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => void refetchTours()}
+                >
+                  Try again
+                </Button>
+              </div>
             ) : recentTours.length === 0 ? (
               <div className="py-8 text-center">
                 <Images className="mx-auto h-12 w-12 text-[var(--color-text-muted)]" />
-                <p className="mt-2 text-[var(--color-text-muted)]">No tours yet</p>
+                <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                  Create your first tour to start uploading panoramas.
+                </p>
                 <Link to={ROUTES.TOUR_CREATE}>
                   <Button variant="outline" size="sm" className="mt-4">
                     Create your first tour
@@ -206,7 +286,7 @@ export function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {recentTours.map((tour) => (
+                {recentTours.map(tour => (
                   <Link
                     key={tour.id}
                     to={`/tours/${tour.id}`}
@@ -241,9 +321,7 @@ export function DashboardPage() {
                         </span>
                       </div>
                     </div>
-                    <Badge
-                      variant={tour.status === 'published' ? 'success' : 'secondary'}
-                    >
+                    <Badge variant={tour.status === 'published' ? 'success' : 'secondary'}>
                       {tour.status}
                     </Badge>
                   </Link>
@@ -280,9 +358,7 @@ function StatsCard({ title, value, subtitle, icon: Icon, isLoading }: StatsCardP
           ) : (
             <p className="text-2xl font-bold text-[var(--color-text-primary)]">{value}</p>
           )}
-          {subtitle && (
-            <p className="text-xs text-[var(--color-text-muted)]">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-xs text-[var(--color-text-muted)]">{subtitle}</p>}
         </div>
       </CardContent>
     </Card>

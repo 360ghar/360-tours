@@ -2,12 +2,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAuthStore } from '@/stores/authStore';
 import { authApi } from '@/api';
 import { supabaseAuth } from '@/lib/supabaseAuth';
+import { ERROR_MESSAGES } from '@/constants';
 import type { User, AuthTokens } from '@/types';
 
 // Mock the API
 vi.mock('@/api', () => ({
   authApi: {
     login: vi.fn(),
+    completeSession: vi.fn(),
     register: vi.fn(),
     logout: vi.fn(),
     getCurrentUser: vi.fn(),
@@ -57,6 +59,13 @@ const createMockTokens = (overrides?: Partial<AuthTokens>): AuthTokens => ({
   ...overrides,
 });
 
+const createMockSession = (overrides?: Partial<AuthTokens & { expires_at: number }>) => ({
+  ...createMockTokens(),
+  expires_at: 1_700_000_000,
+  user: null,
+  ...overrides,
+});
+
 describe('authStore', () => {
   beforeEach(() => {
     // Reset store to initial state
@@ -68,6 +77,7 @@ describe('authStore', () => {
       error: null,
     });
     vi.clearAllMocks();
+    window.localStorage.clear();
   });
 
   describe('initial state', () => {
@@ -156,15 +166,85 @@ describe('authStore', () => {
     it('handles login error', async () => {
       vi.mocked(authApi.login).mockRejectedValue(new Error('Invalid credentials'));
 
-      await expect(
-        useAuthStore.getState().login('+1234567890', 'wrong-password')
-      ).rejects.toThrow('Invalid credentials');
+      await expect(useAuthStore.getState().login('+1234567890', 'wrong-password')).rejects.toThrow(
+        'Invalid credentials'
+      );
 
       const state = useAuthStore.getState();
       expect(state.user).toBeNull();
       expect(state.isAuthenticated).toBe(false);
       expect(state.isLoading).toBe(false);
       expect(state.error).toBe('Invalid credentials');
+    });
+  });
+
+  describe('identifier auth completion', () => {
+    it('completes email password login through the canonical session helper', async () => {
+      const session = createMockSession();
+      const auth = {
+        user: createMockUser(),
+        tokens: createMockTokens({ access_token: 'completed-access-token' }),
+      };
+      vi.mocked(supabaseAuth.signInWithEmailPassword).mockResolvedValue(session);
+      vi.mocked(authApi.completeSession).mockResolvedValue(auth);
+
+      await useAuthStore.getState().loginWithPassword('email', 'test@example.com', 'password');
+
+      expect(supabaseAuth.signInWithEmailPassword).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        password: 'password',
+      });
+      expect(authApi.completeSession).toHaveBeenCalledWith(session);
+      expect(authApi.getCurrentUser).not.toHaveBeenCalled();
+      expect(authApi.recordLastMethod).toHaveBeenCalledWith('email_password');
+
+      const state = useAuthStore.getState();
+      expect(state.user).toEqual(auth.user);
+      expect(state.tokens).toEqual(auth.tokens);
+      expect(state.isAuthenticated).toBe(true);
+      expect(state.isLoading).toBe(false);
+      expect(state.error).toBeNull();
+
+      const stored = JSON.parse(window.localStorage.getItem('360ghar:lastAuthMethod') ?? '{}');
+      expect(stored.method).toBe('email_password');
+      expect(stored.identifierHint).toContain('@example.com');
+    });
+
+    it('completes phone OTP login through the same session helper', async () => {
+      const session = createMockSession();
+      const auth = {
+        user: createMockUser(),
+        tokens: createMockTokens({ access_token: 'otp-access-token' }),
+      };
+      vi.mocked(supabaseAuth.verifyOtp).mockResolvedValue(session);
+      vi.mocked(authApi.completeSession).mockResolvedValue(auth);
+
+      await useAuthStore.getState().verifyLoginOtp('phone', '+1234567890', '123456');
+
+      expect(supabaseAuth.verifyOtp).toHaveBeenCalledWith({
+        phone: '+1234567890',
+        token: '123456',
+      });
+      expect(authApi.completeSession).toHaveBeenCalledWith(session);
+      expect(authApi.getCurrentUser).not.toHaveBeenCalled();
+      expect(authApi.recordLastMethod).toHaveBeenCalledWith('phone_otp');
+
+      expect(useAuthStore.getState().user).toEqual(auth.user);
+      expect(useAuthStore.getState().tokens).toEqual(auth.tokens);
+
+      const stored = JSON.parse(window.localStorage.getItem('360ghar:lastAuthMethod') ?? '{}');
+      expect(stored.method).toBe('phone_otp');
+    });
+
+    it('records password auth completion after setting a password without refetching user', async () => {
+      await useAuthStore.getState().setPasswordAndComplete('phone', '+1234567890', 'new-password');
+
+      expect(supabaseAuth.updatePassword).toHaveBeenCalledWith('new-password');
+      expect(authApi.completeSession).not.toHaveBeenCalled();
+      expect(authApi.getCurrentUser).not.toHaveBeenCalled();
+      expect(authApi.recordLastMethod).toHaveBeenCalledWith('phone_password');
+      expect(useAuthStore.getState().isLoading).toBe(false);
+      expect(useAuthStore.getState().error).toBeNull();
     });
   });
 
@@ -262,16 +342,35 @@ describe('authStore', () => {
       expect(authApi.getCurrentUser).not.toHaveBeenCalled();
     });
 
-    it('clears auth on error', async () => {
+    it('clears auth on session expiration', async () => {
       vi.mocked(supabaseAuth.getTokens).mockReturnValue(createMockTokens());
 
-      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new Error('Unauthorized'));
+      vi.mocked(authApi.getCurrentUser).mockRejectedValue(
+        new Error(ERROR_MESSAGES.SESSION_EXPIRED)
+      );
 
       await useAuthStore.getState().fetchCurrentUser();
 
       const state = useAuthStore.getState();
       expect(state.user).toBeNull();
       expect(state.isAuthenticated).toBe(false);
+    });
+
+    it('preserves the current session on transient current-user errors', async () => {
+      const user = createMockUser();
+      const tokens = createMockTokens();
+      useAuthStore.setState({ user, tokens, isAuthenticated: true });
+      vi.mocked(supabaseAuth.getTokens).mockReturnValue(tokens);
+      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new Error('Network error'));
+
+      await useAuthStore.getState().fetchCurrentUser();
+
+      const state = useAuthStore.getState();
+      expect(state.user).toEqual(user);
+      expect(state.tokens).toEqual(tokens);
+      expect(state.isAuthenticated).toBe(true);
+      expect(state.isLoading).toBe(false);
+      expect(authApi.logout).not.toHaveBeenCalled();
     });
   });
 

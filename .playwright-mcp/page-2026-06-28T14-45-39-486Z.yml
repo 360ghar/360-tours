@@ -1,0 +1,51 @@
+- generic [ref=e2]:
+  - generic [ref=e106]:
+    - generic [ref=e109]:
+      - generic [ref=e112]:
+        - generic "Zoom out" [ref=e113] [cursor=pointer]:
+          - img [ref=e114]
+        - generic "Zoom in" [ref=e120] [cursor=pointer]:
+          - img [ref=e121]
+        - generic "Fullscreen" [ref=e124] [cursor=pointer]:
+          - img [ref=e125]
+      - generic:
+        - img
+    - generic:
+      - generic:
+        - paragraph: Signature Global Rosalia — 2BHK Apartment in Sector 82
+        - heading "Park-Facing Balcony Retreat" [level=1]:
+          - img
+          - generic: Park-Facing Balcony Retreat
+        - paragraph: Room 6 of 6
+      - generic [ref=e136]:
+        - button "Keyboard shortcuts" [ref=e137]:
+          - img [ref=e138]
+        - button "Enter fullscreen" [ref=e140]:
+          - img [ref=e141]
+    - button "Previous room" [ref=e146]:
+      - img [ref=e147]
+    - button "Next room" [ref=e149]:
+      - img [ref=e150]
+    - generic [ref=e152]:
+      - button "Welcoming Foyer with Open Living View Welcoming Foyer with Open Living View" [ref=e153]:
+        - img "Welcoming Foyer with Open Living View" [ref=e154]
+        - generic [ref=e155]: Welcoming Foyer with Open Living View
+      - button "Sunlit Open-Plan Living Room Sunlit Open-Plan Living Room" [ref=e156]:
+        - img "Sunlit Open-Plan Living Room" [ref=e157]
+        - generic [ref=e158]: Sunlit Open-Plan Living Room
+      - button "Functional Open Kitchen with Dining Functional Open Kitchen with Dining" [ref=e159]:
+        - img "Functional Open Kitchen with Dining" [ref=e160]
+        - generic [ref=e161]: Functional Open Kitchen with Dining
+      - button "Restful Master Bedroom Restful Master Bedroom" [ref=e162]:
+        - img "Restful Master Bedroom" [ref=e163]
+        - generic [ref=e164]: Restful Master Bedroom
+      - button "Tiled Bathroom with Walk-In Shower Tiled Bathroom with Walk-In Shower" [ref=e165]:
+        - img "Tiled Bathroom with Walk-In Shower" [ref=e166]
+        - generic [ref=e167]: Tiled Bathroom with Walk-In Shower
+      - button "Park-Facing Balcony Retreat Park-Facing Balcony Retreat" [active] [ref=e168]:
+        - img "Park-Facing Balcony Retreat" [ref=e169]
+        - generic [ref=e170]: Park-Facing Balcony Retreat
+  - generic [ref=e7]:
+    - img [ref=e9]
+    - button "Open Tanstack query devtools" [ref=e57] [cursor=pointer]:
+      - img [ref=e58]

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import type { Location as RouterLocation } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Lock, Mail, KeyRound, ArrowLeft } from 'lucide-react';
@@ -14,6 +15,7 @@ import {
   emailIdentifierSchema,
   phoneIdentifierSchema,
   passwordStepSchema,
+  loginPasswordSchema,
   otpSchema,
   type PasswordStepFormData,
   type OTPFormData,
@@ -22,6 +24,14 @@ import { ROUTES } from '@/constants';
 
 type Step = 'identifier' | 'password' | 'otp' | 'set-password';
 type IdentifierFormData = { identifier: string };
+type ReturnLocation = Pick<RouterLocation, 'pathname' | 'search' | 'hash'>;
+type LoginLocationState = { from?: ReturnLocation };
+
+const AUTH_RETURN_BLOCKLIST: readonly string[] = [
+  ROUTES.LOGIN,
+  ROUTES.REGISTER,
+  ROUTES.AUTH_CALLBACK,
+];
 
 function callbackErrorMessage(code: string | null): string | null {
   if (!code) return null;
@@ -32,6 +42,26 @@ function callbackErrorMessage(code: string | null): string | null {
     return 'Sign-in could not be completed. Please try again.';
   }
   return null;
+}
+
+function isSafeReturnPath(path: string): boolean {
+  return (
+    path.startsWith('/') &&
+    !path.startsWith('//') &&
+    !AUTH_RETURN_BLOCKLIST.includes(path.split(/[?#]/, 1)[0])
+  );
+}
+
+function safeReturnPath(from?: ReturnLocation, nextParam?: string | null): string {
+  if (nextParam && isSafeReturnPath(nextParam)) {
+    return nextParam;
+  }
+
+  if (!from?.pathname || !isSafeReturnPath(from.pathname)) {
+    return ROUTES.DASHBOARD;
+  }
+
+  return `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`;
 }
 
 export function LoginPage() {
@@ -54,7 +84,10 @@ export function LoginPage() {
   const [requiresPasswordSetup, setRequiresPasswordSetup] = useState(false);
 
   const lastMethod = getLastAuthMethod();
-  const from = (location.state as { from?: Location })?.from?.pathname || ROUTES.DASHBOARD;
+  const from = safeReturnPath(
+    (location.state as LoginLocationState | null)?.from,
+    searchParams.get('next')
+  );
 
   // Pre-select the channel from the last-used method on first mount.
   useEffect(() => {
@@ -77,7 +110,7 @@ export function LoginPage() {
   });
 
   const passwordForm = useForm<PasswordStepFormData>({
-    resolver: zodResolver(passwordStepSchema),
+    resolver: zodResolver(loginPasswordSchema),
     defaultValues: { password: '' },
   });
 
@@ -92,9 +125,17 @@ export function LoginPage() {
     defaultValues: { token: '' },
   });
 
+  // Auto-focus the OTP input when the step becomes active.
+  const otpInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (step === 'otp') {
+      otpInputRef.current?.focus();
+    }
+  }, [step]);
+
   // SMS OTP autofill (Android Chrome) — only listens during the phone OTP step.
   useWebOtp(
-    (code) => otpForm.setValue('token', code, { shouldValidate: true }),
+    code => otpForm.setValue('token', code, { shouldValidate: true }),
     step === 'otp' && channel === 'phone'
   );
 
@@ -136,7 +177,10 @@ export function LoginPage() {
       // has_password. Either way, force a set-password step after OTP succeeds.
       setRequiresPasswordSetup(!status.exists || !status.has_password);
       if (channel === 'email') {
-        await supabaseAuth.requestEmailOtp({ email: data.identifier, shouldCreateUser: !status.exists });
+        await supabaseAuth.requestEmailOtp({
+          email: data.identifier,
+          shouldCreateUser: !status.exists,
+        });
       } else {
         await supabaseAuth.requestOtp({ phone: data.identifier, shouldCreateUser: !status.exists });
       }
@@ -155,8 +199,8 @@ export function LoginPage() {
     try {
       await loginWithPassword(channel, identifier, data.password);
       navigate(from, { replace: true });
-    } catch {
-      // store sets `error`
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : 'Something went wrong');
     }
   };
 
@@ -172,8 +216,8 @@ export function LoginPage() {
         return;
       }
       navigate(from, { replace: true });
-    } catch {
-      // store sets `error`
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : 'Something went wrong');
     }
   };
 
@@ -184,8 +228,8 @@ export function LoginPage() {
     try {
       await setPasswordAndComplete(channel, identifier, data.password);
       navigate(from, { replace: true });
-    } catch {
-      // store sets `error`
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : 'Something went wrong');
     }
   };
 
@@ -211,7 +255,11 @@ export function LoginPage() {
     resetErrors();
     setGoogleLoading(true);
     try {
-      await supabaseAuth.signInWithGoogle();
+      const callbackUrl = new URL(ROUTES.AUTH_CALLBACK, window.location.origin);
+      if (from !== ROUTES.DASHBOARD) {
+        callbackUrl.searchParams.set('next', from);
+      }
+      await supabaseAuth.signInWithGoogle(callbackUrl.toString());
       // Browser redirects to Google; nothing else runs here on success.
     } catch (err) {
       setGoogleLoading(false);
@@ -229,9 +277,11 @@ export function LoginPage() {
     resetErrors();
   };
 
+  const { ref: otpTokenRef, ...otpTokenField } = otpForm.register('token');
+
   return (
     <div className="animate-fade-in">
-      <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">Welcome back</h2>
+      <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Welcome back</h1>
       <p className="mt-2 text-sm text-[var(--color-text-muted)]">
         Sign in to your account to continue
       </p>
@@ -248,7 +298,10 @@ export function LoginPage() {
 
       <div className="mt-6 space-y-6">
         {displayError && (
-          <div className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]">
+          <div
+            role="alert"
+            className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]"
+          >
             {displayError}
           </div>
         )}
@@ -256,7 +309,11 @@ export function LoginPage() {
         {/* Step 1: Identifier */}
         {step === 'identifier' && (
           <>
-            <GoogleSignInButton onClick={onGoogle} isLoading={googleLoading} disabled={isLoading} />
+            <GoogleSignInButton
+              onClick={onGoogle}
+              isLoading={googleLoading}
+              disabled={isLoading || stepLoading}
+            />
 
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-[var(--color-border)]" />
@@ -265,25 +322,33 @@ export function LoginPage() {
             </div>
 
             {/* Channel toggle */}
-            <div className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm">
+            <div
+              role="tablist"
+              aria-label="Sign-in channel"
+              className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm"
+            >
               <button
                 type="button"
+                role="tab"
+                aria-selected={channel === 'phone'}
                 onClick={() => switchChannel('phone')}
                 className={
                   channel === 'phone'
-                    ? 'flex-1 rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                    : 'flex-1 rounded-md py-1.5 text-[var(--color-text-muted)]'
+                    ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
+                    : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
                 }
               >
                 Phone
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={channel === 'email'}
                 onClick={() => switchChannel('email')}
                 className={
                   channel === 'email'
-                    ? 'flex-1 rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                    : 'flex-1 rounded-md py-1.5 text-[var(--color-text-muted)]'
+                    ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
+                    : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
                 }
               >
                 Email
@@ -310,7 +375,7 @@ export function LoginPage() {
                 />
               ) : (
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                  <Mail className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
                   <Input
                     {...identifierForm.register('identifier')}
                     type="email"
@@ -325,7 +390,13 @@ export function LoginPage() {
                 </div>
               )}
 
-              <Button type="submit" className="w-full" size="lg" isLoading={stepLoading || isLoading}>
+              <Button
+                type="submit"
+                className="w-full"
+                size="lg"
+                isLoading={stepLoading || isLoading}
+                disabled={googleLoading}
+              >
                 Continue
               </Button>
             </form>
@@ -341,7 +412,7 @@ export function LoginPage() {
             </div>
 
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <Lock className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
               <Input
                 {...passwordForm.register('password')}
                 type={showPassword ? 'text' : 'password'}
@@ -355,19 +426,21 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
               >
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
 
             <div className="flex justify-end">
-              <Link
-                to={ROUTES.FORGOT_PASSWORD}
+              <button
+                type="button"
+                onClick={() => navigate(ROUTES.FORGOT_PASSWORD, { state: { identifier, channel } })}
                 className="text-sm font-medium text-[var(--color-primary-600)] hover:text-[var(--color-primary-700)]"
               >
                 Forgot password?
-              </Link>
+              </button>
             </div>
 
             <div className="flex gap-3">
@@ -391,9 +464,13 @@ export function LoginPage() {
             </div>
 
             <div className="relative">
-              <KeyRound className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <KeyRound className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
               <Input
-                {...otpForm.register('token')}
+                {...otpTokenField}
+                ref={el => {
+                  otpInputRef.current = el;
+                  otpTokenRef(el);
+                }}
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -423,7 +500,9 @@ export function LoginPage() {
               isLoading={stepLoading}
               disabled={resendTimer.isCoolingDown}
             >
-              {resendTimer.isCoolingDown ? `Resend code in ${resendTimer.secondsLeft}s` : 'Resend code'}
+              {resendTimer.isCoolingDown
+                ? `Resend code in ${resendTimer.secondsLeft}s`
+                : 'Resend code'}
             </Button>
           </form>
         )}
@@ -432,11 +511,12 @@ export function LoginPage() {
         {step === 'set-password' && (
           <form onSubmit={setPasswordForm.handleSubmit(onSubmitSetPassword)} className="space-y-6">
             <div className="rounded-lg bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-muted)]">
-              Set a password to finish securing your account. You&apos;ll use it to sign in next time.
+              Set a password to finish securing your account. You&apos;ll use it to sign in next
+              time.
             </div>
 
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <Lock className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
               <Input
                 {...setPasswordForm.register('password')}
                 type={showNewPassword ? 'text' : 'password'}
@@ -450,15 +530,22 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
               >
                 {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
 
-            <Button type="submit" className="w-full" size="lg" isLoading={isLoading}>
-              Set password and continue
-            </Button>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="w-full" onClick={backToIdentifier}>
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+              <Button type="submit" className="w-full" isLoading={isLoading}>
+                Set password and continue
+              </Button>
+            </div>
           </form>
         )}
       </div>

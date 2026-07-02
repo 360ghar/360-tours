@@ -1,0 +1,90 @@
+{
+  "title": "Vatika City — 3BHK Builder Floor in Sector 49",
+  "generator": "claude-spatial-tour-v1",
+  "notes": "Rooms classified by panorama CONTENT, not filename — the filenames are shuffled. Mapping: living_room_panorama=Living Room; dining_room_panorama=Master Bedroom; master_bedroom_panorama=Dining Room (central hub); kitchen_panorama=Bathroom (master ensuite); bathroom_panorama=Kitchen; balcony_panorama=Balcony. yaw 0 = image center, + = right, - = left; nav hotspot pitch is floor-anchored (negative).",
+  "initial_scene_id": "living_room",
+  "scenes": [
+    {
+      "id": "living_room",
+      "title": "Living Room",
+      "image_url": "equirectangular_images/living_room_panorama.webp",
+      "order_index": 0,
+      "caption": "Bright open-plan living room with a deep sage sectional and a balcony view.",
+      "description": "A warm, family-friendly living room finished in the home's signature Scandinavian palette of warm grey and white. A generous sage-green fabric sectional wraps around a light-wood coffee table on a soft neutral rug, facing a wall-mounted TV on a wood console. Floating shelves hold books, framed prints and indoor plants, while the entrance foyer with its shoe rack and rangoli sits to one side. The room opens directly onto the dining area and a road-facing balcony, filling the space with natural daylight.",
+      "narration_script": "Welcome to this 3BHK builder floor at Vatika City. We begin in the living room — the heart of the home. Notice the soft sage sectional and the cosy rug that make this an easy place for the family to gather, with the TV wall on one side and a sunlit balcony on the other. The entrance foyer is just to your left, and the open dining area flows off the far side. Let's step through.",
+      "metadata": { "initial_view": { "yaw": -30, "pitch": 0, "zoom": 0 } },
+      "hotspots": [
+        { "id": "living_room->dining", "type": "navigation", "target_scene_id": "dining", "title": "Dining Room", "position": { "yaw": -112, "pitch": -30 } },
+        { "id": "living_room->balcony", "type": "navigation", "target_scene_id": "balcony", "title": "Balcony", "position": { "yaw": 82, "pitch": -28 } }
+      ]
+    },
+    {
+      "id": "dining",
+      "title": "Dining Room",
+      "image_url": "equirectangular_images/master_bedroom_panorama.webp",
+      "order_index": 1,
+      "caption": "Central dining area with a six-seat wood table, open to the kitchen and bedrooms.",
+      "description": "The dining room sits at the center of the floor plan and acts as the home's circulation hub. A solid light-wood table seats six on rounded wooden chairs beneath a simple warm pendant light, with a sideboard holding family photos along one wall. Doorways lead off to the bedrooms, the open kitchen sits just behind the table, and a wide opening connects through to the living room — a practical, sociable Scandinavian layout that keeps the family connected across the home.",
+      "narration_script": "This is the dining room, and it's really the crossroads of the home. The six-seat table sits under a soft pendant light, perfect for everyday family meals. From here you can reach almost everywhere — the kitchen is open just behind the table, the bedrooms lead off through these doorways, and the living room opens up to the side. Take a look around and choose where to go next.",
+      "metadata": { "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 } },
+      "hotspots": [
+        { "id": "dining->living_room", "type": "navigation", "target_scene_id": "living_room", "title": "Living Room", "position": { "yaw": -150, "pitch": -30 } },
+        { "id": "dining->master_bedroom", "type": "navigation", "target_scene_id": "master_bedroom", "title": "Master Bedroom", "position": { "yaw": -68, "pitch": -30 } },
+        { "id": "dining->kitchen", "type": "navigation", "target_scene_id": "kitchen", "title": "Kitchen", "position": { "yaw": 8, "pitch": -32 } }
+      ]
+    },
+    {
+      "id": "kitchen",
+      "title": "Kitchen",
+      "image_url": "equirectangular_images/bathroom_panorama.webp",
+      "order_index": 2,
+      "caption": "Functional L-shaped modular kitchen with a granite breakfast counter.",
+      "description": "A well-used family kitchen in mid-range laminate cabinetry with black granite countertops and stainless-steel fixtures. A large side-by-side refrigerator anchors one wall, with a gas hob, chimney and a window over the sink bringing in daylight. A curved granite breakfast counter with a bar stool doubles as casual seating, and a small utility area with a washing machine sits off to the side. Everyday utensils and a child's sipper cup give it a genuine lived-in, family feel. The kitchen opens back toward the dining area.",
+      "narration_script": "Here's the kitchen — compact but very functional. You've got modular cabinetry, black granite counters, a tall fridge and a window over the sink for plenty of light. The curved breakfast counter is great for a quick coffee or for the kids to perch while you cook, and there's a handy utility nook with the washing machine tucked to the side. When you're ready, head back out to the dining room.",
+      "metadata": { "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 } },
+      "hotspots": [
+        { "id": "kitchen->dining", "type": "navigation", "target_scene_id": "dining", "title": "Dining Room", "position": { "yaw": -150, "pitch": -30 } }
+      ]
+    },
+    {
+      "id": "master_bedroom",
+      "title": "Master Bedroom",
+      "image_url": "equirectangular_images/dining_room_panorama.webp",
+      "order_index": 3,
+      "caption": "Calm master bedroom with a king bed, wardrobe and an ensuite bathroom.",
+      "description": "A restful master bedroom with engineered-wood laminate flooring and a muted grey accent wall behind the upholstered king bed. Matching nightstands with warm table lamps flank the bed, a large wood wardrobe with a mirror provides storage, and a compact study desk sits by the window. Linen curtains frame a balcony-style window that looks out over the neighbourhood, and an ensuite bathroom opens off the room. Family touches — a soft toy on the armchair, framed photos and books — keep it warm and lived-in.",
+      "narration_script": "This is the master bedroom — calm, comfortable and full of natural light. The king bed sits against a soft grey accent wall, with a roomy wardrobe, bedside lamps and a little study desk by the window. There's a private ensuite bathroom right off the room, which we'll step into next. It's a quiet retreat at the end of the day.",
+      "metadata": { "initial_view": { "yaw": 0, "pitch": 0, "zoom": 0 } },
+      "hotspots": [
+        { "id": "master_bedroom->dining", "type": "navigation", "target_scene_id": "dining", "title": "Dining Room", "position": { "yaw": -160, "pitch": -28 } },
+        { "id": "master_bedroom->bathroom", "type": "navigation", "target_scene_id": "bathroom", "title": "Ensuite Bathroom", "position": { "yaw": 145, "pitch": -30 } }
+      ]
+    },
+    {
+      "id": "bathroom",
+      "title": "Ensuite Bathroom",
+      "image_url": "equirectangular_images/kitchen_panorama.webp",
+      "order_index": 4,
+      "caption": "Clean ensuite bathroom with a granite vanity and a glass shower enclosure.",
+      "description": "The master ensuite is finished in light stone-look tiles for a calm, spa-like feel. A floating wood vanity with a black granite top and a framed mirror sits to one side, alongside a wall-hung WC with a health faucet. A curved glass enclosure houses the shower with a small window for ventilation. Brushed-nickel fittings, cotton towels and a bath mat complete the practical, mid-range family bathroom, which connects directly back to the master bedroom.",
+      "narration_script": "And this is the ensuite bathroom for the master bedroom. It's done in soft stone-look tiling with a granite-topped vanity, a framed mirror and a neat glass shower enclosure. Brushed-nickel fittings and good ventilation keep it fresh and easy to maintain. Step back through the door to return to the bedroom.",
+      "metadata": { "initial_view": { "yaw": -160, "pitch": 0, "zoom": 0 } },
+      "hotspots": [
+        { "id": "bathroom->master_bedroom", "type": "navigation", "target_scene_id": "master_bedroom", "title": "Master Bedroom", "position": { "yaw": -160, "pitch": -30 } }
+      ]
+    },
+    {
+      "id": "balcony",
+      "title": "Balcony",
+      "image_url": "equirectangular_images/balcony_panorama.webp",
+      "order_index": 5,
+      "caption": "Road-facing balcony with cane seating, potted plants and an open city view.",
+      "description": "A generous road-facing balcony that extends the living space outdoors. Cane armchairs with cushions and a glass-top side table make a relaxed spot for morning chai, framed by potted plants along the railing and a string of fairy lights overhead. A wall plaque with cheerful affirmations and a clothes-drying rack reflect everyday family life. The open aluminium railing gives a clear view across the low-rise Sector 49 neighbourhood, and a sliding glass door leads back into the living room.",
+      "narration_script": "Finally, step out onto the balcony. This road-facing terrace is a lovely spot to unwind, with cane seating, a scatter of potted plants and fairy lights for the evenings. You get an open, breezy view over the Sector 49 skyline. When you're done taking in the air, slide the door open to head back inside to the living room.",
+      "metadata": { "initial_view": { "yaw": 0, "pitch": -5, "zoom": 0 } },
+      "hotspots": [
+        { "id": "balcony->living_room", "type": "navigation", "target_scene_id": "living_room", "title": "Living Room", "position": { "yaw": 2, "pitch": -24 } }
+      ]
+    }
+  ]
+}

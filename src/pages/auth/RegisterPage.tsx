@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Lock, Mail, User, KeyRound } from 'lucide-react';
 import { Button, Input, PhoneInput, Checkbox } from '@/components/ui';
+import { GoogleSignInButton } from '@/components/features';
 import { type IdentifierChannel } from '@/api';
 import { supabaseAuth } from '@/lib/supabaseAuth';
 import { useWebOtp, useResendTimer } from '@/hooks';
 import { maskIdentifier } from '@/lib/lastAuthMethod';
+import { useAuthStore } from '@/stores';
 import {
   emailIdentifierSchema,
   phoneIdentifierSchema,
@@ -30,12 +32,14 @@ interface SetPasswordFormData {
 
 export function RegisterPage() {
   const navigate = useNavigate();
+  const fetchCurrentUser = useAuthStore(s => s.fetchCurrentUser);
   const [step, setStep] = useState<Step>('identifier');
   const [channel, setChannel] = useState<IdentifierChannel>('phone');
   const [identifier, setIdentifier] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [stepLoading, setStepLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -57,9 +61,16 @@ export function RegisterPage() {
 
   // SMS OTP autofill (Android Chrome) — only listens during the phone OTP step.
   useWebOtp(
-    (code) => otpForm.setValue('token', code, { shouldValidate: true }),
+    code => otpForm.setValue('token', code, { shouldValidate: true }),
     step === 'otp' && channel === 'phone'
   );
+
+  const otpInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (step === 'otp') {
+      otpInputRef.current?.focus();
+    }
+  }, [step]);
 
   // 30s cooldown for the Resend control on the OTP step.
   const resendTimer = useResendTimer();
@@ -77,7 +88,7 @@ export function RegisterPage() {
   };
 
   // Step 1: Collect identifier + name, then send OTP.
-  const onSubmitIdentifier = async (data: IdentifierFormData) => {
+  const onSubmitIdentifier = async (formData: IdentifierFormData) => {
     resetErrors();
 
     if (!fullName.trim()) {
@@ -92,12 +103,21 @@ export function RegisterPage() {
 
     setStepLoading(true);
     try {
+      const profileData = { full_name: fullName.trim() };
       if (channel === 'email') {
-        await supabaseAuth.requestEmailOtp({ email: data.identifier, shouldCreateUser: true });
+        await supabaseAuth.requestEmailOtp({
+          email: formData.identifier,
+          shouldCreateUser: true,
+          data: profileData,
+        });
       } else {
-        await supabaseAuth.requestOtp({ phone: data.identifier, shouldCreateUser: true });
+        await supabaseAuth.requestOtp({
+          phone: formData.identifier,
+          shouldCreateUser: true,
+          data: profileData,
+        });
       }
-      setIdentifier(data.identifier);
+      setIdentifier(formData.identifier);
       resendTimer.start();
       setStep('otp');
     } catch (err) {
@@ -120,7 +140,9 @@ export function RegisterPage() {
       // OTP verified — session established. Move to set-password step.
       setStep('set-password');
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Invalid or expired OTP. Please try again.');
+      setLocalError(
+        err instanceof Error ? err.message : 'Invalid or expired OTP. Please try again.'
+      );
     } finally {
       setStepLoading(false);
     }
@@ -144,9 +166,12 @@ export function RegisterPage() {
     setStepLoading(true);
     try {
       await supabaseAuth.updatePassword(data.password);
+      await fetchCurrentUser();
       navigate(ROUTES.DASHBOARD, { replace: true });
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Failed to set password. Please try again.');
+      setLocalError(
+        err instanceof Error ? err.message : 'Failed to set password. Please try again.'
+      );
     } finally {
       setStepLoading(false);
     }
@@ -170,6 +195,18 @@ export function RegisterPage() {
     }
   };
 
+  const onGoogle = async () => {
+    resetErrors();
+    setGoogleLoading(true);
+    try {
+      await supabaseAuth.signInWithGoogle();
+      // Browser redirects to Google; nothing else runs here on success.
+    } catch (err) {
+      setGoogleLoading(false);
+      setLocalError(err instanceof Error ? err.message : 'Could not start Google sign-in.');
+    }
+  };
+
   const backToIdentifier = () => {
     setStep('identifier');
     otpForm.reset();
@@ -178,16 +215,21 @@ export function RegisterPage() {
     resetErrors();
   };
 
+  const { ref: otpTokenRef, ...otpTokenField } = otpForm.register('token');
+
   return (
     <div className="animate-fade-in">
-      <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">Create your account</h2>
+      <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Create your account</h1>
       <p className="mt-2 text-sm text-[var(--color-text-muted)]">
         Start creating stunning virtual tours today
       </p>
 
       <div className="mt-6 space-y-6">
         {localError && (
-          <div className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]">
+          <div
+            role="alert"
+            className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]"
+          >
             {localError}
           </div>
         )}
@@ -195,26 +237,46 @@ export function RegisterPage() {
         {/* Step 1: Identifier + Name + Terms */}
         {step === 'identifier' && (
           <>
+            <GoogleSignInButton
+              onClick={onGoogle}
+              isLoading={googleLoading}
+              disabled={stepLoading}
+            />
+
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-[var(--color-border)]" />
+              <span className="text-xs text-[var(--color-text-muted)]">or</span>
+              <div className="h-px flex-1 bg-[var(--color-border)]" />
+            </div>
+
             {/* Channel toggle */}
-            <div className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm">
+            <div
+              role="tablist"
+              aria-label="Registration channel"
+              className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm"
+            >
               <button
                 type="button"
+                role="tab"
+                aria-selected={channel === 'phone'}
                 onClick={() => switchChannel('phone')}
                 className={
                   channel === 'phone'
-                    ? 'flex-1 rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                    : 'flex-1 rounded-md py-1.5 text-[var(--color-text-muted)]'
+                    ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
+                    : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
                 }
               >
                 Phone
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={channel === 'email'}
                 onClick={() => switchChannel('email')}
                 className={
                   channel === 'email'
-                    ? 'flex-1 rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                    : 'flex-1 rounded-md py-1.5 text-[var(--color-text-muted)]'
+                    ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
+                    : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
                 }
               >
                 Email
@@ -224,14 +286,15 @@ export function RegisterPage() {
             <form onSubmit={identifierForm.handleSubmit(onSubmitIdentifier)} className="space-y-5">
               {/* Full Name */}
               <div className="relative">
-                <User className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                <User className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
                 <Input
                   type="text"
                   placeholder="Full name"
                   aria-label="Full name"
                   autoComplete="name"
+                  required
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={e => setFullName(e.target.value)}
                   className="pl-10"
                 />
               </div>
@@ -256,7 +319,7 @@ export function RegisterPage() {
                 />
               ) : (
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                  <Mail className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
                   <Input
                     {...identifierForm.register('identifier')}
                     type="email"
@@ -278,7 +341,9 @@ export function RegisterPage() {
                     id="acceptTerms"
                     className="mt-0.5"
                     checked={acceptTerms}
-                    onCheckedChange={(checked) => {
+                    aria-invalid={!!termsError}
+                    aria-describedby={termsError ? 'acceptTerms-error' : undefined}
+                    onCheckedChange={checked => {
                       setAcceptTerms(checked === true);
                       if (checked) setTermsError(null);
                     }}
@@ -305,11 +370,23 @@ export function RegisterPage() {
                   </label>
                 </div>
                 {termsError && (
-                  <p className="mt-1 text-sm text-[var(--color-error-600)]">{termsError}</p>
+                  <p
+                    id="acceptTerms-error"
+                    role="alert"
+                    className="mt-1 text-sm text-[var(--color-error-600)]"
+                  >
+                    {termsError}
+                  </p>
                 )}
               </div>
 
-              <Button type="submit" className="w-full" size="lg" isLoading={stepLoading}>
+              <Button
+                type="submit"
+                className="w-full"
+                size="lg"
+                isLoading={stepLoading}
+                disabled={googleLoading}
+              >
                 Send verification code
               </Button>
             </form>
@@ -325,9 +402,13 @@ export function RegisterPage() {
             </div>
 
             <div className="relative">
-              <KeyRound className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <KeyRound className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
               <Input
-                {...otpForm.register('token')}
+                {...otpTokenField}
+                ref={el => {
+                  otpInputRef.current = el;
+                  otpTokenRef(el);
+                }}
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -356,17 +437,16 @@ export function RegisterPage() {
               isLoading={stepLoading}
               disabled={resendTimer.isCoolingDown}
             >
-              {resendTimer.isCoolingDown ? `Resend code in ${resendTimer.secondsLeft}s` : 'Resend code'}
+              {resendTimer.isCoolingDown
+                ? `Resend code in ${resendTimer.secondsLeft}s`
+                : 'Resend code'}
             </Button>
           </form>
         )}
 
         {/* Step 3: Set password */}
         {step === 'set-password' && (
-          <form
-            onSubmit={setPasswordForm.handleSubmit(onSubmitSetPassword)}
-            className="space-y-6"
-          >
+          <form onSubmit={setPasswordForm.handleSubmit(onSubmitSetPassword)} className="space-y-6">
             <div className="rounded-lg bg-[var(--color-surface)] p-3 text-sm text-[var(--color-text-muted)]">
               Set a password to finish securing{' '}
               <span className="font-medium text-[var(--color-text-primary)]">
@@ -376,7 +456,7 @@ export function RegisterPage() {
             </div>
 
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <Lock className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
               <Input
                 {...setPasswordForm.register('password')}
                 type={showPassword ? 'text' : 'password'}
@@ -389,14 +469,15 @@ export function RegisterPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
               >
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
 
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <Lock className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
               <Input
                 {...setPasswordForm.register('confirm_password')}
                 type={showConfirmPassword ? 'text' : 'password'}
@@ -409,7 +490,8 @@ export function RegisterPage() {
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
               >
                 {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>

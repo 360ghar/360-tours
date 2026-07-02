@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import type { Scene } from '@/types';
 
 // --- Photo Sphere Viewer mocks -------------------------------------------
@@ -10,6 +10,9 @@ const psv = vi.hoisted(() => {
   const constructorSpy = vi.fn();
   const destroySpy = vi.fn();
   const addEventListenerSpy = vi.fn();
+  const instances: Array<{
+    setPanorama: ReturnType<typeof vi.fn>;
+  }> = [];
 
   const createPluginMock = () => ({
     addEventListener: vi.fn(),
@@ -23,6 +26,7 @@ const psv = vi.hoisted(() => {
   class MockViewer {
     constructor(options: unknown) {
       constructorSpy(options);
+      instances.push(this);
     }
     addEventListener = addEventListenerSpy;
     removeEventListener = vi.fn();
@@ -33,7 +37,7 @@ const psv = vi.hoisted(() => {
     rotate = vi.fn();
   }
 
-  return { constructorSpy, destroySpy, addEventListenerSpy, MockViewer };
+  return { constructorSpy, destroySpy, addEventListenerSpy, instances, MockViewer };
 });
 
 vi.mock('@photo-sphere-viewer/core', () => ({
@@ -70,14 +74,21 @@ const createScene = (overrides?: Partial<Scene>): Scene => ({
   ...overrides,
 });
 
+async function waitForViewerInit() {
+  await act(async () => {
+    await new Promise(resolve => window.setTimeout(resolve, 0));
+  });
+}
+
 describe('PanoramaViewer viewer lifecycle stability', () => {
   beforeEach(() => {
     psv.constructorSpy.mockClear();
     psv.destroySpy.mockClear();
     psv.addEventListenerSpy.mockClear();
+    psv.instances.length = 0;
   });
 
-  it('does not destroy/recreate the viewer when onPositionClick changes, but does on scene change', () => {
+  it('does not destroy/recreate the viewer when callback or scene changes', async () => {
     const sceneA = createScene();
     const fn1 = vi.fn();
     const fn2 = vi.fn();
@@ -85,33 +96,44 @@ describe('PanoramaViewer viewer lifecycle stability', () => {
     const { rerender } = render(
       <PanoramaViewer scene={sceneA} hotspots={[]} isEditor onPositionClick={fn1} />
     );
+    await waitForViewerInit();
 
     expect(psv.constructorSpy).toHaveBeenCalledTimes(1);
     expect(psv.destroySpy).not.toHaveBeenCalled();
 
     // Changing only the onPositionClick callback must NOT rebuild the viewer
     // (it is read via a ref inside the component).
-    rerender(
-      <PanoramaViewer scene={sceneA} hotspots={[]} isEditor onPositionClick={fn2} />
-    );
+    rerender(<PanoramaViewer scene={sceneA} hotspots={[]} isEditor onPositionClick={fn2} />);
 
     expect(psv.destroySpy).not.toHaveBeenCalled();
     expect(psv.constructorSpy).toHaveBeenCalledTimes(1);
 
-    // Changing the scene MUST rebuild the viewer.
+    // Scene changes are loaded through setPanorama instead of rebuilding the
+    // viewer, which avoids aborting in-flight panorama loads.
     const sceneB = createScene({
       id: 'scene-2',
       image_url: 'https://example.com/scene-2.jpg',
     });
-    rerender(
-      <PanoramaViewer scene={sceneB} hotspots={[]} isEditor onPositionClick={fn2} />
-    );
+    rerender(<PanoramaViewer scene={sceneB} hotspots={[]} isEditor onPositionClick={fn2} />);
 
-    expect(psv.destroySpy).toHaveBeenCalledTimes(1);
-    expect(psv.constructorSpy).toHaveBeenCalledTimes(2);
+    expect(psv.destroySpy).not.toHaveBeenCalled();
+    expect(psv.constructorSpy).toHaveBeenCalledTimes(1);
+
+    const readyCall = psv.addEventListenerSpy.mock.calls.find(([event]) => event === 'ready');
+    expect(readyCall).toBeDefined();
+
+    await act(async () => {
+      (readyCall![1] as () => void)();
+      await Promise.resolve();
+    });
+
+    expect(psv.instances[0].setPanorama).toHaveBeenCalledWith(
+      'https://example.com/scene-2.jpg',
+      expect.objectContaining({ transition: true })
+    );
   });
 
-  it('invokes the latest onPositionClick callback without rebuilding the viewer', () => {
+  it('invokes the latest onPositionClick callback without rebuilding the viewer', async () => {
     const sceneA = createScene();
     const fn1 = vi.fn();
     const fn2 = vi.fn();
@@ -119,17 +141,14 @@ describe('PanoramaViewer viewer lifecycle stability', () => {
     const { rerender } = render(
       <PanoramaViewer scene={sceneA} hotspots={[]} isEditor onPositionClick={fn1} />
     );
+    await waitForViewerInit();
 
     // Grab the editor click handler registered on the viewer.
-    const clickCall = psv.addEventListenerSpy.mock.calls.find(
-      ([event]) => event === 'click'
-    );
+    const clickCall = psv.addEventListenerSpy.mock.calls.find(([event]) => event === 'click');
     expect(clickCall).toBeDefined();
     const clickHandler = clickCall![1] as (e: { data: { yaw: number; pitch: number } }) => void;
 
-    rerender(
-      <PanoramaViewer scene={sceneA} hotspots={[]} isEditor onPositionClick={fn2} />
-    );
+    rerender(<PanoramaViewer scene={sceneA} hotspots={[]} isEditor onPositionClick={fn2} />);
 
     // The original viewer instance (and its click listener) is still alive;
     // it must dispatch to the NEW callback.

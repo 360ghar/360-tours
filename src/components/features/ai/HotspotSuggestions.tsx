@@ -25,6 +25,7 @@ import { useToast } from '@/hooks';
 import type { Scene } from '@/types';
 import type { HotspotSuggestion } from '@/api';
 import { AIJobStatus } from './AIJobStatus';
+import { AiRetryError } from './AiRetryError';
 import { aiApi } from '@/api';
 
 interface HotspotSuggestionsProps {
@@ -51,14 +52,20 @@ export function HotspotSuggestions({
   const [suggestions, setSuggestions] = useState<HotspotSuggestion[]>([]);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
   const handleStartSuggestion = async () => {
     setIsAnalyzing(true);
+    setError(null);
+    setHasAnalyzed(false);
     try {
       const response = await aiApi.suggestHotspots(sceneId);
       setJobId(response.job.id);
-    } catch (error) {
-      console.error('Failed to start hotspot suggestion:', error);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to start analysis';
+      setError(message);
+      console.error('Hotspot suggestion failed:', e);
       setIsAnalyzing(false);
     }
   };
@@ -66,17 +73,25 @@ export function HotspotSuggestions({
   const handleJobComplete = (job: unknown, result: unknown) => {
     setIsAnalyzing(false);
     setJobId(null);
-    if (result && typeof result === 'object' && 'hotspots' in result) {
+    if (result && typeof result === 'object' && 'hotspots' in result && Array.isArray((result as { hotspots: unknown }).hotspots)) {
       const hotspots = (result as { hotspots: HotspotSuggestion[] }).hotspots;
       setSuggestions(hotspots);
       // Select all suggestions by default
       setSelectedSuggestions(new Set(hotspots.map((h) => h.id)));
+      setHasAnalyzed(true);
+      setError(null);
+      return;
     }
+
+    const message = 'Hotspot analysis finished without returning suggestions.';
+    setError(message);
+    toastError(message, { title: 'Suggestion incomplete' });
   };
 
   const handleJobError = (job: unknown, errorMessage: string) => {
     setIsAnalyzing(false);
     setJobId(null);
+    setError(errorMessage || 'Failed to get hotspot suggestions');
     toastError(errorMessage || 'Failed to get hotspot suggestions', { title: 'Suggestion failed' });
   };
 
@@ -109,7 +124,15 @@ export function HotspotSuggestions({
     return allScenes.find((s) => s.id === targetId);
   };
 
-  const getTypeIcon = (type: 'navigation' | 'info') => {
+  const getTypeIcon = (type: 'navigation' | 'info', selected = false) => {
+    if (selected) {
+      return type === 'navigation' ? (
+        <Navigation className="h-4 w-4 text-white" />
+      ) : (
+        <Info className="h-4 w-4 text-white" />
+      );
+    }
+
     switch (type) {
       case 'navigation':
         return <Navigation className="h-4 w-4 text-[var(--color-primary-500)]" />;
@@ -166,8 +189,9 @@ export function HotspotSuggestions({
               const y = 50 - suggestion.position.pitch;
 
               return (
-                <div
+                <button
                   key={suggestion.id}
+                  type="button"
                   className={cn(
                     'absolute w-6 h-6 -translate-x-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-pointer transition-all',
                     isSelected
@@ -180,16 +204,20 @@ export function HotspotSuggestions({
                   }}
                   onClick={() => handleToggleSuggestion(suggestion.id)}
                   title={suggestion.suggested_title || suggestion.reasoning}
+                  aria-label={`${isSelected ? 'Deselect' : 'Select'} ${
+                    suggestion.suggested_title || `${suggestion.type} hotspot`
+                  }`}
+                  aria-pressed={isSelected}
                 >
-                  {getTypeIcon(suggestion.type)}
-                </div>
+                  {getTypeIcon(suggestion.type, isSelected)}
+                </button>
               );
             })}
         </div>
 
         <div className="flex-1 overflow-hidden">
           {/* No suggestions yet - show start button */}
-          {!jobId && suggestions.length === 0 && (
+          {!jobId && suggestions.length === 0 && !hasAnalyzed && (
             <div className="flex flex-col items-center justify-center py-8">
               <div className="w-12 h-12 rounded-full bg-[var(--color-primary-50)] flex items-center justify-center mb-3">
                 <Lightbulb className="h-6 w-6 text-[var(--color-primary-500)]" />
@@ -198,9 +226,33 @@ export function HotspotSuggestions({
               <p className="text-sm text-[var(--color-text-muted)] text-center max-w-sm mb-4">
                 AI will analyze the scene to identify key features and suggest optimal hotspot placements.
               </p>
+              {error && (
+                <AiRetryError
+                  error={error}
+                  onRetry={handleStartSuggestion}
+                  isLoading={isAnalyzing}
+                  maxWidthClassName="max-w-sm"
+                />
+              )}
               <Button onClick={handleStartSuggestion} isLoading={isAnalyzing}>
                 <Sparkles className="h-4 w-4" />
                 Analyze Scene
+              </Button>
+            </div>
+          )}
+
+          {!jobId && suggestions.length === 0 && hasAnalyzed && (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="w-12 h-12 rounded-full bg-[var(--color-surface-elevated)] flex items-center justify-center mb-3">
+                <Lightbulb className="h-6 w-6 text-[var(--color-text-muted)]" />
+              </div>
+              <h3 className="font-semibold mb-1">No hotspot suggestions found</h3>
+              <p className="text-sm text-[var(--color-text-muted)] max-w-sm mb-4">
+                This scene may not have enough clear navigation or information points for AI placement.
+              </p>
+              <Button variant="outline" onClick={handleStartSuggestion} isLoading={isAnalyzing}>
+                <RefreshCw className="h-4 w-4" />
+                Re-analyze
               </Button>
             </div>
           )}
@@ -253,7 +305,18 @@ export function HotspotSuggestions({
                             ? 'border-[var(--color-primary-500)] bg-[var(--color-primary-50)]'
                             : 'border-[var(--color-border)] hover:bg-[var(--color-surface-elevated)]'
                         )}
+                        role="checkbox"
+                        tabIndex={0}
+                        aria-checked={isSelected}
+                        aria-label={`${isSelected ? 'Deselect' : 'Select'} ${
+                          suggestion.suggested_title || `${suggestion.type} hotspot`
+                        }`}
                         onClick={() => handleToggleSuggestion(suggestion.id)}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' && event.key !== ' ') return;
+                          event.preventDefault();
+                          handleToggleSuggestion(suggestion.id);
+                        }}
                       >
                         <div className="flex items-start gap-3">
                           {/* Type icon */}
@@ -306,6 +369,7 @@ export function HotspotSuggestions({
                                 ? 'bg-[var(--color-primary-500)] border-[var(--color-primary-500)]'
                                 : 'border-[var(--color-border)]'
                             )}
+                            aria-hidden="true"
                           >
                             {isSelected && <Check className="h-3 w-3 text-white" />}
                           </div>

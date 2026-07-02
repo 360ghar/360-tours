@@ -15,6 +15,7 @@ const sizeClasses = {
 export function Spinner({ size = 'md', className }: SpinnerProps) {
   return (
     <Loader2
+      aria-hidden="true"
       className={cn('animate-spin text-[var(--color-primary-600)]', sizeClasses[size], className)}
     />
   );
@@ -25,12 +26,17 @@ interface LoadingOverlayProps {
   fullScreen?: boolean;
 }
 
-export function LoadingOverlay({ message = 'Loading...', fullScreen = false }: LoadingOverlayProps) {
+export function LoadingOverlay({
+  message = 'Loading...',
+  fullScreen = false,
+}: LoadingOverlayProps) {
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={cn(
         'flex flex-col items-center justify-center gap-4 bg-[var(--color-background)]/80 backdrop-blur-sm',
-        fullScreen ? 'fixed inset-0 z-50' : 'absolute inset-0'
+        fullScreen ? 'fixed inset-0 z-[var(--z-modal)]' : 'absolute inset-0'
       )}
     >
       <Spinner size="lg" />
@@ -45,7 +51,11 @@ interface PageLoaderProps {
 
 export function PageLoader({ message = 'Loading...' }: PageLoaderProps) {
   return (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-[50vh] flex-col items-center justify-center gap-4"
+    >
       <Spinner size="lg" />
       <p className="text-[var(--color-text-muted)]">{message}</p>
     </div>

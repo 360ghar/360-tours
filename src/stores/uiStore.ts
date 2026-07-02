@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { STORAGE_KEYS } from '@/constants';
 
-type Theme = 'light' | 'dark' | 'system';
+export type Theme = 'light' | 'dark' | 'system';
 
 interface UIState {
   theme: Theme;
@@ -46,7 +46,7 @@ export const useUIStore = create<UIStore>()(
       toasts: [],
 
       // Theme actions
-      setTheme: (theme) => {
+      setTheme: theme => {
         set({ theme });
         applyTheme(theme);
       },
@@ -59,20 +59,20 @@ export const useUIStore = create<UIStore>()(
       },
 
       // Sidebar actions
-      setSidebarCollapsed: (collapsed) => {
+      setSidebarCollapsed: collapsed => {
         set({ sidebarCollapsed: collapsed });
       },
 
       toggleSidebar: () => {
-        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }));
+        set(state => ({ sidebarCollapsed: !state.sidebarCollapsed }));
       },
 
-      setSidebarMobileOpen: (open) => {
+      setSidebarMobileOpen: open => {
         set({ sidebarMobileOpen: open });
       },
 
       // Toast actions
-      addToast: (toast) => {
+      addToast: toast => {
         const id = generateToastId();
         const newToast: Toast = {
           id,
@@ -80,7 +80,7 @@ export const useUIStore = create<UIStore>()(
           duration: toast.duration ?? 5000,
         };
 
-        set((state) => ({
+        set(state => ({
           toasts: [...state.toasts, newToast],
         }));
 
@@ -94,28 +94,30 @@ export const useUIStore = create<UIStore>()(
         }
       },
 
-      removeToast: (id) => {
+      removeToast: id => {
         const timer = toastTimers.get(id);
         if (timer) {
           clearTimeout(timer);
           toastTimers.delete(id);
         }
-        set((state) => ({
-          toasts: state.toasts.filter((t) => t.id !== id),
+        set(state => ({
+          toasts: state.toasts.filter(t => t.id !== id),
         }));
       },
 
       clearToasts: () => {
+        toastTimers.forEach(timer => clearTimeout(timer));
+        toastTimers.clear();
         set({ toasts: [] });
       },
     }),
     {
       name: STORAGE_KEYS.THEME,
-      partialize: (state) => ({
+      partialize: state => ({
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
       }),
-      onRehydrateStorage: () => (state) => {
+      onRehydrateStorage: () => state => {
         // Apply stored theme after rehydration instead of at module import time
         if (state?.theme) {
           applyTheme(state.theme);
@@ -125,13 +127,32 @@ export const useUIStore = create<UIStore>()(
   )
 );
 
+// Track the current system-theme media query listener so we can replace it
+let systemThemeCleanup: (() => void) | null = null;
+
 // Helper function to apply theme to document
-function applyTheme(theme: Theme): void {
+export function applyTheme(theme: Theme): void {
+  if (typeof document === 'undefined') return;
+
   const root = document.documentElement;
 
+  // Always tear down any previous listener before setting up a new one
+  if (systemThemeCleanup) {
+    systemThemeCleanup();
+    systemThemeCleanup = null;
+  }
+
   if (theme === 'system') {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    root.classList.toggle('dark', prefersDark);
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      root.classList.remove('dark');
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => root.classList.toggle('dark', mediaQuery.matches);
+    apply();
+    mediaQuery.addEventListener('change', apply);
+    systemThemeCleanup = () => mediaQuery.removeEventListener('change', apply);
   } else {
     root.classList.toggle('dark', theme === 'dark');
   }

@@ -1,11 +1,6 @@
 import { apiClient } from './client';
-import { supabaseAuth } from '@/lib/supabaseAuth';
-import type {
-  User,
-  AuthTokens,
-  LoginCredentials,
-  RegisterCredentials,
-} from '@/types';
+import { supabaseAuth, type SupabaseSession } from '@/lib/supabaseAuth';
+import type { User, AuthTokens, LoginCredentials, RegisterCredentials } from '@/types';
 import type { AuthMethod } from '@/lib/lastAuthMethod';
 
 /** Channel the identifier resolves to (frozen backend contract). */
@@ -23,21 +18,39 @@ export interface IdentifierStatus {
   next_step: IdentifierNextStep;
 }
 
+function tokensFromSession(session: SupabaseSession): AuthTokens {
+  return {
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    expires_in: session.expires_in,
+    token_type: session.token_type,
+  };
+}
+
+async function completeAuthSession(session: SupabaseSession): Promise<{
+  user: User;
+  tokens: AuthTokens;
+}> {
+  const response = await apiClient.get<User>('/users/me');
+  return {
+    user: response.data,
+    tokens: tokensFromSession(session),
+  };
+}
+
 export const authApi = {
+  /**
+   * Convert an established Supabase session into the app's canonical auth
+   * payload by loading the backend user and extracting browser-safe tokens.
+   */
+  completeSession: completeAuthSession,
+
   /**
    * Login with phone and password
    */
   async login(credentials: LoginCredentials): Promise<{ user: User; tokens: AuthTokens }> {
     const session = await supabaseAuth.signInWithPassword(credentials);
-    const response = await apiClient.get<User>('/users/me');
-    const user = response.data;
-    const tokens: AuthTokens = {
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      expires_in: session.expires_in,
-      token_type: session.token_type,
-    };
-    return { user, tokens };
+    return completeAuthSession(session);
   },
 
   /**
@@ -59,15 +72,7 @@ export const authApi = {
       return { user: null, tokens: null };
     }
 
-    const response = await apiClient.get<User>('/users/me');
-    const user = response.data;
-    const tokens: AuthTokens = {
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      expires_in: session.expires_in,
-      token_type: session.token_type,
-    };
-    return { user, tokens };
+    return completeAuthSession(session);
   },
 
   /**
@@ -104,7 +109,10 @@ export const authApi = {
    */
   async recordLastMethod(method: AuthMethod): Promise<void> {
     try {
-      await apiClient.post('/auth/last-method', { method }, { _skipAuthExpiry: true } as Record<string, unknown>);
+      await apiClient.post('/auth/last-method', { method }, { _skipAuthExpiry: true } as Record<
+        string,
+        unknown
+      >);
     } catch (error) {
       console.warn(
         'Failed to record last auth method (non-critical):',
@@ -126,12 +134,7 @@ export const authApi = {
    */
   async verifyPasswordResetOTP(phone: string, token: string): Promise<AuthTokens> {
     const session = await supabaseAuth.verifyOtp({ phone, token, type: 'sms' });
-    return {
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      expires_in: session.expires_in,
-      token_type: session.token_type,
-    };
+    return tokensFromSession(session);
   },
 
   /**
@@ -146,12 +149,7 @@ export const authApi = {
    */
   async verifyPasswordResetEmailOTP(email: string, token: string): Promise<AuthTokens> {
     const session = await supabaseAuth.verifyEmailOtp({ email, token, type: 'email' });
-    return {
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      expires_in: session.expires_in,
-      token_type: session.token_type,
-    };
+    return tokensFromSession(session);
   },
 
   /**

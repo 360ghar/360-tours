@@ -36,18 +36,21 @@ export function SettingsPage() {
     onSuccess: () => {
       toast('success', 'Notification preferences saved.', { title: 'Settings updated' });
     },
-    onError: (error: Error) => {
-      toast('error', error.message || 'Failed to update notifications.', { title: 'Error' });
-    },
   });
 
   const handleNotificationChange = useCallback(
     (key: keyof typeof notifications, value: boolean) => {
+      const previous = notifications;
       const updated = { ...notifications, [key]: value };
       setNotifications(updated);
-      notificationMutation.mutate(updated);
+      notificationMutation.mutate(updated, {
+        onError: (error: Error) => {
+          setNotifications(previous);
+          toast('error', error.message || 'Failed to update notifications.', { title: 'Error' });
+        },
+      });
     },
-    [notifications, notificationMutation]
+    [notifications, notificationMutation, toast]
   );
 
   const {
@@ -81,7 +84,9 @@ export function SettingsPage() {
       toast('success', 'Your password has been updated.', { title: 'Password changed' });
     },
     onError: (error: Error) => {
-      toast('error', error.message || 'Failed to change password. Please try again.', { title: 'Error' });
+      toast('error', error.message || 'Failed to change password. Please try again.', {
+        title: 'Error',
+      });
     },
   });
 
@@ -91,7 +96,9 @@ export function SettingsPage() {
     confirm_password: string;
   }) => {
     if (data.new_password !== data.confirm_password) {
-      toast('error', 'New password and confirmation do not match.', { title: 'Passwords do not match' });
+      toast('error', 'New password and confirmation do not match.', {
+        title: 'Passwords do not match',
+      });
       return;
     }
     await changePasswordMutation.mutateAsync({
@@ -123,10 +130,12 @@ export function SettingsPage() {
             <div>
               <label className="mb-2 block text-sm font-medium">Theme</label>
               <div className="flex gap-3">
-                {(['light', 'dark', 'system'] as const).map((t) => (
+                {(['light', 'dark', 'system'] as const).map(t => (
                   <button
                     key={t}
+                    type="button"
                     onClick={() => setTheme(t)}
+                    aria-pressed={theme === t}
                     className={cn(
                       'flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors',
                       theme === t
@@ -154,7 +163,7 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <label className="flex items-center justify-between">
+            <label className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-medium">Email Notifications</p>
                 <p className="text-sm text-[var(--color-text-muted)]">
@@ -164,11 +173,12 @@ export function SettingsPage() {
               <input
                 type="checkbox"
                 checked={notifications.email_notifications}
-                onChange={(e) => handleNotificationChange('email_notifications', e.target.checked)}
+                onChange={e => handleNotificationChange('email_notifications', e.target.checked)}
+                disabled={notificationMutation.isPending}
                 className="h-5 w-5 rounded border-[var(--color-border)] text-[var(--color-primary-600)]"
               />
             </label>
-            <label className="flex items-center justify-between">
+            <label className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-medium">Marketing Emails</p>
                 <p className="text-sm text-[var(--color-text-muted)]">
@@ -178,10 +188,16 @@ export function SettingsPage() {
               <input
                 type="checkbox"
                 checked={notifications.marketing_emails}
-                onChange={(e) => handleNotificationChange('marketing_emails', e.target.checked)}
+                onChange={e => handleNotificationChange('marketing_emails', e.target.checked)}
+                disabled={notificationMutation.isPending}
                 className="h-5 w-5 rounded border-[var(--color-border)] text-[var(--color-primary-600)]"
               />
             </label>
+            {notificationMutation.isPending && (
+              <p className="text-sm text-[var(--color-text-muted)]" role="status">
+                Saving notification preferences...
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -201,13 +217,14 @@ export function SettingsPage() {
               <Input
                 label="Current Password"
                 type={showCurrentPassword ? 'text' : 'password'}
-                {...register('current_password', { required: 'Required' })}
+                {...register('current_password', { required: 'Enter your current password.' })}
                 error={errors.current_password?.message}
               />
               <button
                 type="button"
                 onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                className="absolute right-3 top-9 text-[var(--color-text-muted)]"
+                aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
+                className="absolute right-1 top-7 flex h-10 w-10 items-center justify-center text-[var(--color-text-muted)]"
               >
                 {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -216,13 +233,20 @@ export function SettingsPage() {
               <Input
                 label="New Password"
                 type={showNewPassword ? 'text' : 'password'}
-                {...register('new_password', { required: 'Required', minLength: 8 })}
+                {...register('new_password', {
+                  required: 'Enter a new password.',
+                  minLength: {
+                    value: 8,
+                    message: 'Use at least 8 characters.',
+                  },
+                })}
                 error={errors.new_password?.message}
               />
               <button
                 type="button"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-9 text-[var(--color-text-muted)]"
+                aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                className="absolute right-1 top-7 flex h-10 w-10 items-center justify-center text-[var(--color-text-muted)]"
               >
                 {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -230,11 +254,15 @@ export function SettingsPage() {
             <Input
               label="Confirm New Password"
               type="password"
-              {...register('confirm_password', { required: 'Required' })}
+              {...register('confirm_password', { required: 'Confirm your new password.' })}
               error={errors.confirm_password?.message}
             />
             <div className="flex justify-end">
-              <Button type="submit" isLoading={changePasswordMutation.isPending}>
+              <Button
+                type="submit"
+                disabled={changePasswordMutation.isPending}
+                isLoading={changePasswordMutation.isPending}
+              >
                 Update Password
               </Button>
             </div>

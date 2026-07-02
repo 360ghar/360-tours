@@ -25,6 +25,13 @@
 
   var BASE_URL = getBaseUrl();
 
+  // Security contract: keep these literal values in sync with
+  // src/utils/embedCode.ts (EMBED_IFRAME_*). This standalone SDK cannot import
+  // the TypeScript module.
+  var EMBED_IFRAME_ALLOW = 'fullscreen; xr-spatial-tracking; accelerometer; gyroscope';
+  var EMBED_IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-forms';
+  var EMBED_IFRAME_REFERRER_POLICY = 'strict-origin-when-cross-origin';
+
   var ALLOWED_ORIGINS = [BASE_URL];
 
   function isAllowedOrigin(origin) {
@@ -40,14 +47,20 @@
     var params = [];
 
     if (options.startScene) params.push('scene=' + encodeURIComponent(options.startScene));
-    if (options.autoplay !== undefined) params.push('autoplay=' + (options.autoplay ? 'true' : 'false'));
+    if (options.autoplay !== undefined)
+      params.push('autoplay=' + (options.autoplay ? 'true' : 'false'));
     if (options.navbar !== undefined) params.push('navbar=' + (options.navbar ? 'true' : 'false'));
-    if (options.minimal !== undefined) params.push('minimal=' + (options.minimal ? 'true' : 'false'));
-    if (options.autohide !== undefined) params.push('autohide=' + (options.autohide ? 'true' : 'false'));
-    if (options.fullscreen !== undefined) params.push('fullscreen=' + (options.fullscreen ? 'true' : 'false'));
+    if (options.minimal !== undefined)
+      params.push('minimal=' + (options.minimal ? 'true' : 'false'));
+    if (options.autohide !== undefined)
+      params.push('autohide=' + (options.autohide ? 'true' : 'false'));
+    if (options.fullscreen !== undefined)
+      params.push('fullscreen=' + (options.fullscreen ? 'true' : 'false'));
     if (options.vr !== undefined) params.push('vr=' + (options.vr ? 'true' : 'false'));
-    if (options.autoRotate !== undefined) params.push('rotate=' + (options.autoRotate ? 'true' : 'false'));
-    if (options.branding !== undefined) params.push('branding=' + (options.branding ? 'true' : 'false'));
+    if (options.autoRotate !== undefined)
+      params.push('rotate=' + (options.autoRotate ? 'true' : 'false'));
+    if (options.branding !== undefined)
+      params.push('branding=' + (options.branding ? 'true' : 'false'));
 
     if (typeof window !== 'undefined' && window.location && window.location.origin) {
       params.push('origin=' + encodeURIComponent(window.location.origin));
@@ -70,8 +83,7 @@
       throw new Error('Viewer360: tourId is required');
     }
 
-    var container =
-      typeof selector === 'string' ? document.querySelector(selector) : selector;
+    var container = typeof selector === 'string' ? document.querySelector(selector) : selector;
 
     if (!container) {
       throw new Error('Viewer360: container not found — ' + selector);
@@ -86,10 +98,11 @@
     iframe.style.height = height;
     iframe.style.border = 'none';
     iframe.style.borderRadius = '8px';
-    iframe.setAttribute('allow', 'fullscreen; xr-spatial-tracking; accelerometer; gyroscope');
+    iframe.setAttribute('allow', EMBED_IFRAME_ALLOW);
     iframe.setAttribute('allowfullscreen', '');
     iframe.setAttribute('loading', 'lazy');
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms');
+    iframe.setAttribute('sandbox', EMBED_IFRAME_SANDBOX);
+    iframe.setAttribute('referrerpolicy', EMBED_IFRAME_REFERRER_POLICY);
 
     container.appendChild(iframe);
 

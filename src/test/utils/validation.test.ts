@@ -340,7 +340,9 @@ describe('tourSchema', () => {
   });
 
   it('accepts a description of exactly 5000 characters', () => {
-    expect(tourSchema.safeParse({ title: 'Tour', description: 'x'.repeat(5000) }).success).toBe(true);
+    expect(tourSchema.safeParse({ title: 'Tour', description: 'x'.repeat(5000) }).success).toBe(
+      true
+    );
   });
 
   it('rejects an invalid status', () => {
@@ -370,12 +372,12 @@ describe('tourSchema', () => {
   });
 
   it('accepts auto_rotate_speed at boundaries (0.1 and 10)', () => {
-    expect(
-      tourSchema.safeParse({ title: 'T', settings: { auto_rotate_speed: 0.1 } }).success,
-    ).toBe(true);
-    expect(
-      tourSchema.safeParse({ title: 'T', settings: { auto_rotate_speed: 10 } }).success,
-    ).toBe(true);
+    expect(tourSchema.safeParse({ title: 'T', settings: { auto_rotate_speed: 0.1 } }).success).toBe(
+      true
+    );
+    expect(tourSchema.safeParse({ title: 'T', settings: { auto_rotate_speed: 10 } }).success).toBe(
+      true
+    );
   });
 });
 
@@ -468,100 +470,84 @@ describe('hotspotSchema', () => {
 
   it('rejects yaw below -180', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: -181, pitch: 0 } }).success,
+      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: -181, pitch: 0 } }).success
     ).toBe(false);
   });
 
   it('rejects yaw above 180', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 181, pitch: 0 } }).success,
+      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 181, pitch: 0 } }).success
     ).toBe(false);
   });
 
   it('accepts yaw at boundaries (-180 and 180)', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: -180, pitch: 0 } }).success,
+      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: -180, pitch: 0 } }).success
     ).toBe(true);
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 180, pitch: 0 } }).success,
+      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 180, pitch: 0 } }).success
     ).toBe(true);
   });
 
   it('rejects pitch below -90', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: -91 } }).success,
+      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: -91 } }).success
     ).toBe(false);
   });
 
   it('rejects pitch above 90', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: 91 } }).success,
+      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: 91 } }).success
     ).toBe(false);
   });
 
   it('accepts pitch at boundaries (-90 and 90)', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: -90 } }).success,
+      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: -90 } }).success
     ).toBe(true);
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: 90 } }).success,
+      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: 90 } }).success
     ).toBe(true);
   });
 
   it('rejects non-positive radius', () => {
     expect(
       hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: 0, radius: 0 } })
-        .success,
+        .success
     ).toBe(false);
     expect(
       hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: 0, radius: -1 } })
-        .success,
+        .success
     ).toBe(false);
   });
 
   it('accepts null target_scene_id', () => {
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, target_scene_id: null }).success,
-    ).toBe(true);
+    expect(hotspotSchema.safeParse({ ...validHotspot, target_scene_id: null }).success).toBe(true);
   });
 
   it('rejects non-UUID target_scene_id', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, target_scene_id: 'not-a-uuid' }).success,
+      hotspotSchema.safeParse({ ...validHotspot, target_scene_id: 'not-a-uuid' }).success
     ).toBe(false);
   });
 
   it('rejects invalid icon_color format', () => {
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, icon_color: 'red' }).success,
-    ).toBe(false);
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, icon_color: '#GGG000' }).success,
-    ).toBe(false);
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, icon_color: '#FFF' }).success,
-    ).toBe(false);
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon_color: 'red' }).success).toBe(false);
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon_color: '#GGG000' }).success).toBe(false);
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon_color: '#FFF' }).success).toBe(false);
   });
 
   it('accepts valid hex icon_color', () => {
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, icon_color: '#FF5733' }).success,
-    ).toBe(true);
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, icon_color: '#aabbcc' }).success,
-    ).toBe(true);
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon_color: '#FF5733' }).success).toBe(true);
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon_color: '#aabbcc' }).success).toBe(true);
   });
 
   it('rejects icon_size below 16', () => {
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, icon_size: 15 }).success,
-    ).toBe(false);
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon_size: 15 }).success).toBe(false);
   });
 
   it('rejects icon_size above 100', () => {
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, icon_size: 101 }).success,
-    ).toBe(false);
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon_size: 101 }).success).toBe(false);
   });
 
   it('accepts icon_size at boundaries (16 and 100)', () => {
@@ -574,14 +560,14 @@ describe('hotspotSchema', () => {
   });
 
   it('rejects title longer than 255 characters', () => {
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, title: 'x'.repeat(256) }).success,
-    ).toBe(false);
+    expect(hotspotSchema.safeParse({ ...validHotspot, title: 'x'.repeat(256) }).success).toBe(
+      false
+    );
   });
 
   it('rejects description longer than 2000 characters', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, description: 'x'.repeat(2001) }).success,
+      hotspotSchema.safeParse({ ...validHotspot, description: 'x'.repeat(2001) }).success
     ).toBe(false);
   });
 });
@@ -683,6 +669,10 @@ describe('validateImageFile', () => {
     return new File([blob], name, { type });
   }
 
+  function createFileLike(name: string, size: number, type: string): File {
+    return { name, size, type } as File;
+  }
+
   it('accepts a valid JPEG file', () => {
     const file = createMockFile('photo.jpg', 1024, 'image/jpeg');
     expect(validateImageFile(file)).toEqual({ valid: true });
@@ -714,14 +704,14 @@ describe('validateImageFile', () => {
 
   it('rejects a file exceeding the size limit', () => {
     // MAX_UPLOAD_SIZE_BYTES defaults to 50 * 1024 * 1024 = 52428800
-    const file = createMockFile('huge.jpg', 52428801, 'image/jpeg');
+    const file = createFileLike('huge.jpg', 52428801, 'image/jpeg');
     const result = validateImageFile(file);
     expect(result.valid).toBe(false);
     expect(result.error).toContain('File size exceeds');
   });
 
   it('accepts a file at exactly the size limit', () => {
-    const file = createMockFile('exact.jpg', 52428800, 'image/jpeg');
+    const file = createFileLike('exact.jpg', 52428800, 'image/jpeg');
     expect(validateImageFile(file)).toEqual({ valid: true });
   });
 

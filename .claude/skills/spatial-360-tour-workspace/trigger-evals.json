@@ -1,0 +1,22 @@
+[
+  {"query": "i've got a folder of equirectangular jpgs for a 3bhk in sector 82 — seed_properties/00131/equirectangular_images/. can you wire them up into a walkable tour with doorway hotspots and write the tour.json?", "should_trigger": true},
+  {"query": "build me a virtual walkthrough of this apartment from the 360 photos in seed_properties/00145/ — figure out which room is which and link them so you can click between rooms", "should_trigger": true},
+  {"query": "I need to turn these panorama shots of a villa into a Matterport-style tour where you click a marker on the floor to move into the next room", "should_trigger": true},
+  {"query": "analyze each of these 360 room images, give each one a title and description, and place the navigation hotspots so the rooms connect", "should_trigger": true},
+  {"query": "make a clickable property tour from the equirectangular images in equirectangular_images/ — scenes need to be connected on the doorways and every room reachable", "should_trigger": true},
+  {"query": "I have 8 three-sixty photos of a flat. connect them into an interactive tour and put the hotspots on the floor just inside each doorway", "should_trigger": true},
+  {"query": "place navigation hotspots linking the living room pano to the kitchen and bedroom panos, and work out the yaw/pitch for each doorway", "should_trigger": true},
+  {"query": "generate the scene metadata and room-to-room links for the panoramas in seed_properties/00150 and save it where the /local harness can preview it", "should_trigger": true},
+  {"query": "create a 360 tour of this penthouse listing — auto-detect the rooms from the images and add a short caption and narration for each", "should_trigger": true},
+  {"query": "assemble these room panoramas into a tour.json the photo-sphere viewer can render, with a narration script per room", "should_trigger": true},
+  {"query": "the PanoramaViewer component isn't rendering markers after a scene change — debug why the pucks disappear when I switch rooms", "should_trigger": false},
+  {"query": "how do I shoot good equirectangular panoramas with my Insta360 camera? what settings work best for indoor real-estate photos?", "should_trigger": false},
+  {"query": "convert this 360 video walkthrough of the apartment into a 30-second mp4 reel with captions for instagram", "should_trigger": false},
+  {"query": "write compelling real-estate listing descriptions for this 3BHK in Gurugram using the details in property.json", "should_trigger": false},
+  {"query": "stitch these 6 overlapping wide-angle photos into a single equirectangular panorama image", "should_trigger": false},
+  {"query": "add a Google Street View embed to our property detail page in src/pages/PublicTourPage.tsx", "should_trigger": false},
+  {"query": "the tour page at /local/00104 throws a 'WebGL context lost' error on mobile safari — track down and fix it", "should_trigger": false},
+  {"query": "resize and compress all the .webp panoramas under seed_properties/ to under 200kb each", "should_trigger": false},
+  {"query": "build a photo gallery carousel of the listing_images for the marketing landing page", "should_trigger": false},
+  {"query": "extract the GPS and EXIF metadata from these 360 jpgs and plot the capture points on a map", "should_trigger": false}
+]

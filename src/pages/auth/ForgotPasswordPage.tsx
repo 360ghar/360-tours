@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, CheckCircle, KeyRound, Mail } from 'lucide-react';
@@ -19,6 +19,7 @@ import { ROUTES } from '@/constants';
 type ResetStep = 'request' | 'verify' | 'reset' | 'success';
 
 export function ForgotPasswordPage() {
+  const location = useLocation();
   const [step, setStep] = useState<ResetStep>('request');
   const [channel, setChannel] = useState<'phone' | 'email'>('phone');
   const [identifier, setIdentifier] = useState('');
@@ -29,6 +30,19 @@ export function ForgotPasswordPage() {
     resolver: zodResolver(channel === 'email' ? emailIdentifierSchema : phoneIdentifierSchema),
     defaultValues: { identifier: '' },
   });
+
+  // Pre-fill identifier and channel from route state (e.g. passed from LoginPage).
+  useEffect(() => {
+    const state = location.state as { identifier?: string; channel?: 'phone' | 'email' } | null;
+    if (state?.channel) {
+      setChannel(state.channel);
+    }
+    if (state?.identifier) {
+      setIdentifier(state.identifier);
+      requestForm.setValue('identifier', state.identifier);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const otpForm = useForm<OTPFormData>({
     resolver: zodResolver(otpSchema),
@@ -42,9 +56,16 @@ export function ForgotPasswordPage() {
 
   // SMS OTP autofill (Android Chrome) — only listens during the phone verify step.
   useWebOtp(
-    (code) => otpForm.setValue('token', code, { shouldValidate: true }),
+    code => otpForm.setValue('token', code, { shouldValidate: true }),
     step === 'verify' && channel === 'phone'
   );
+
+  const otpInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (step === 'verify') {
+      otpInputRef.current?.focus();
+    }
+  }, [step]);
 
   // 30s cooldown for the Resend control on the verify step.
   const resendTimer = useResendTimer();
@@ -59,10 +80,11 @@ export function ForgotPasswordPage() {
       } else {
         await authApi.requestPasswordResetOTP(identifier);
       }
+      // Only start the cooldown after a confirmed success — never on error.
+      resendTimer.start();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resend OTP');
     } finally {
-      resendTimer.start();
       setIsLoading(false);
     }
   };
@@ -129,15 +151,17 @@ export function ForgotPasswordPage() {
     }
   };
 
+  const { ref: otpTokenRef, ...otpTokenField } = otpForm.register('token');
+
   if (step === 'success') {
     return (
       <div className="animate-fade-in text-center">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-success-50)]">
           <CheckCircle className="h-8 w-8 text-[var(--color-success-600)]" />
         </div>
-        <h2 className="mt-6 text-2xl font-bold text-[var(--color-text-primary)]">
+        <h1 className="mt-6 text-2xl font-bold text-[var(--color-text-primary)]">
           Password updated
-        </h2>
+        </h1>
         <p className="mt-2 text-sm text-[var(--color-text-muted)]">
           Your password has been updated for{' '}
           <span className="font-medium text-[var(--color-text-primary)]">{identifier}</span>
@@ -162,7 +186,7 @@ export function ForgotPasswordPage() {
         Back to sign in
       </Link>
 
-      <h2 className="mt-6 text-2xl font-bold text-[var(--color-text-primary)]">Forgot password?</h2>
+      <h1 className="mt-6 text-2xl font-bold text-[var(--color-text-primary)]">Forgot password?</h1>
       <p className="mt-2 text-sm text-[var(--color-text-muted)]">
         Reset your password using an OTP sent to your {channel === 'phone' ? 'phone' : 'email'}.
       </p>
@@ -170,30 +194,41 @@ export function ForgotPasswordPage() {
       {step === 'request' && (
         <form onSubmit={requestForm.handleSubmit(onRequestOTP)} className="mt-8 space-y-6">
           {error && (
-            <div className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]">
+            <div
+              role="alert"
+              className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]"
+            >
               {error}
             </div>
           )}
 
-          <div className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm">
+          <div
+            role="tablist"
+            aria-label="Password reset channel"
+            className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm"
+          >
             <button
               type="button"
+              role="tab"
+              aria-selected={channel === 'phone'}
               onClick={() => switchChannel('phone')}
               className={
                 channel === 'phone'
-                  ? 'flex-1 rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                  : 'flex-1 rounded-md py-1.5 text-[var(--color-text-muted)]'
+                  ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
+                  : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
               }
             >
               Phone
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={channel === 'email'}
               onClick={() => switchChannel('email')}
               className={
                 channel === 'email'
-                  ? 'flex-1 rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                  : 'flex-1 rounded-md py-1.5 text-[var(--color-text-muted)]'
+                  ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
+                  : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
               }
             >
               Email
@@ -206,16 +241,20 @@ export function ForgotPasswordPage() {
               control={requestForm.control}
               render={({ field }) => (
                 <PhoneInput
+                  name="identifier"
                   value={field.value}
                   onChange={field.onChange}
                   error={requestForm.formState.errors.identifier?.message}
                   placeholder="Phone number"
+                  ariaLabel="Phone number"
+                  autoComplete="tel"
+                  required
                 />
               )}
             />
           ) : (
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <Mail className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
               <Input
                 {...requestForm.register('identifier')}
                 type="email"
@@ -239,7 +278,10 @@ export function ForgotPasswordPage() {
       {step === 'verify' && (
         <form onSubmit={otpForm.handleSubmit(onVerifyOTP)} className="mt-8 space-y-6">
           {error && (
-            <div className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]">
+            <div
+              role="alert"
+              className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]"
+            >
               {error}
             </div>
           )}
@@ -250,9 +292,13 @@ export function ForgotPasswordPage() {
           </div>
 
           <div className="relative">
-            <KeyRound className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+            <KeyRound className="absolute left-3 top-5 h-5 w-5 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <Input
-              {...otpForm.register('token')}
+              {...otpTokenField}
+              ref={el => {
+                otpInputRef.current = el;
+                otpTokenRef(el);
+              }}
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
@@ -299,7 +345,10 @@ export function ForgotPasswordPage() {
       {step === 'reset' && (
         <form onSubmit={resetForm.handleSubmit(onResetPassword)} className="mt-8 space-y-6">
           {error && (
-            <div className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]">
+            <div
+              role="alert"
+              className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]"
+            >
               {error}
             </div>
           )}
@@ -308,6 +357,7 @@ export function ForgotPasswordPage() {
             label="New Password"
             type="password"
             autoComplete="new-password"
+            required
             {...resetForm.register('password')}
             error={resetForm.formState.errors.password?.message}
           />
@@ -316,6 +366,7 @@ export function ForgotPasswordPage() {
             label="Confirm New Password"
             type="password"
             autoComplete="new-password"
+            required
             {...resetForm.register('confirm_password')}
             error={resetForm.formState.errors.confirm_password?.message}
           />

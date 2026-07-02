@@ -1,7 +1,15 @@
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Keyboard, X, DoorOpen } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  Minimize2,
+  Keyboard,
+  X,
+  DoorOpen,
+} from 'lucide-react';
 import { PageLoader } from '@/components/ui';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { DEFAULT_TOUR_SETTINGS } from '@/constants';
@@ -133,11 +141,11 @@ export function LocalTourPage() {
   const currentScene = useMemo(() => {
     if (!scenes.length) return undefined;
     const targetId = currentSceneId ?? data?.initial_scene_id ?? scenes[0].id;
-    return scenes.find((s) => s.id === targetId) ?? scenes[0];
+    return scenes.find(s => s.id === targetId) ?? scenes[0];
   }, [scenes, currentSceneId, data?.initial_scene_id]);
 
   const currentIndex = useMemo(
-    () => (currentScene ? scenes.findIndex((s) => s.id === currentScene.id) : -1),
+    () => (currentScene ? scenes.findIndex(s => s.id === currentScene.id) : -1),
     [scenes, currentScene]
   );
 
@@ -153,8 +161,8 @@ export function LocalTourPage() {
   const toggleFullscreen = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    if (!document.fullscreenElement) el.requestFullscreen?.();
-    else document.exitFullscreen?.();
+    if (!document.fullscreenElement) void el.requestFullscreen().catch(() => undefined);
+    else void document.exitFullscreen().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -180,7 +188,7 @@ export function LocalTourPage() {
           toggleFullscreen();
           break;
         case '?':
-          setShowHints((v) => !v);
+          setShowHints(v => !v);
           break;
         case 'Escape':
           setShowHints(false);
@@ -210,12 +218,15 @@ export function LocalTourPage() {
         <div className="max-w-lg">
           <h1 className="text-2xl font-bold">Tour not available</h1>
           <p className="mt-2 text-white/70">
-            Could not load <code className="text-white">/seed_properties/{propertyId}/tour.json</code>.
+            Could not load{' '}
+            <code className="text-white">/seed_properties/{propertyId}/tour.json</code>.
             {error instanceof Error ? ` (${error.message})` : ''}
           </p>
           <p className="mt-3 text-sm text-white/50">
             Generate it with{' '}
-            <code className="text-white">python backend/tools/build_spatial_tour.py &lt;dir&gt;</code>{' '}
+            <code className="text-white">
+              python backend/tools/build_spatial_tour.py &lt;dir&gt;
+            </code>{' '}
             or author it manually.
           </p>
         </div>
@@ -230,7 +241,7 @@ export function LocalTourPage() {
         hotspots={currentScene.hotspots ?? []}
         isEditor={calibrate}
         tourSettings={viewerSettings}
-        onSceneChange={(sceneId) => setCurrentSceneId(sceneId)}
+        onSceneChange={sceneId => setCurrentSceneId(sceneId)}
         onPositionClick={calibrate ? handlePositionClick : undefined}
       />
 
@@ -258,7 +269,7 @@ export function LocalTourPage() {
             </div>
           )}
           <button
-            onClick={() => setShowHints((v) => !v)}
+            onClick={() => setShowHints(v => !v)}
             aria-label="Keyboard shortcuts"
             className="rounded-full bg-white/10 p-2 text-white/90 transition-colors hover:bg-white/20"
           >
@@ -298,12 +309,13 @@ export function LocalTourPage() {
           rendered low stay clickable; only the rail itself captures clicks. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-3 pb-3 pt-10 sm:px-4 sm:pb-4">
         <div className="pointer-events-auto mx-auto flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {scenes.map((s) => {
+          {scenes.map(s => {
             const active = currentScene.id === s.id;
             return (
               <button
                 key={s.id}
                 onClick={() => setCurrentSceneId(s.id)}
+                aria-label={`Open ${s.title ?? s.id}`}
                 aria-current={active}
                 className={cn(
                   'group relative shrink-0 overflow-hidden rounded-xl border transition-all duration-200',
@@ -337,14 +349,23 @@ export function LocalTourPage() {
         <div
           className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-6"
           onClick={() => setShowHints(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="local-viewer-shortcuts-title"
         >
           <div
             className="w-full max-w-xs rounded-2xl bg-neutral-900 p-5 text-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold">Shortcuts</h2>
-              <button onClick={() => setShowHints(false)} aria-label="Close" className="text-white/60 hover:text-white">
+              <h2 id="local-viewer-shortcuts-title" className="text-base font-semibold">
+                Shortcuts
+              </h2>
+              <button
+                onClick={() => setShowHints(false)}
+                aria-label="Close"
+                className="text-white/60 hover:text-white"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>

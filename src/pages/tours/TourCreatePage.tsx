@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,6 +24,7 @@ import type { Tour } from '@/types';
 import { AITourWizard } from '@/components/features';
 
 interface UploadingFile {
+  id: string;
   file: File;
   progress: number;
   status: 'pending' | 'uploading' | 'completed' | 'error';
@@ -31,13 +32,23 @@ interface UploadingFile {
   url?: string;
 }
 
+function createUploadId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function TourCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<'info' | 'upload'>('info');
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [createdTour, setCreatedTour] = useState<Tour | null>(null);
   const [showAIWizard, setShowAIWizard] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const {
     register,
@@ -72,7 +83,7 @@ export function TourCreatePage() {
   // Create tour mutation
   const createMutation = useMutation({
     mutationFn: (data: TourFormData) => toursApi.createTour(data),
-    onSuccess: (tour) => {
+    onSuccess: tour => {
       setCreatedTour(tour);
       setStep('upload');
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
@@ -83,7 +94,8 @@ export function TourCreatePage() {
   // the tour has already been created.
   const updateTourMutation = useMutation({
     mutationFn: (data: TourFormData) => toursApi.updateTour(createdTour!.id, data),
-    onSuccess: () => {
+    onSuccess: tour => {
+      setCreatedTour(tour);
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, createdTour!.id] });
       setStep('upload');
     },
@@ -91,15 +103,26 @@ export function TourCreatePage() {
 
   // Add scene mutation
   const addSceneMutation = useMutation({
-    mutationFn: ({ tourId, imageUrl }: { tourId: string; imageUrl: string }) =>
-      toursApi.createScene(tourId, { image_url: imageUrl }),
+    mutationFn: ({
+      tourId,
+      imageUrl,
+      title,
+    }: {
+      tourId: string;
+      imageUrl: string;
+      title: string;
+    }) => toursApi.createScene(tourId, { image_url: imageUrl, title }),
   });
 
   const onSubmit = async (data: TourFormData) => {
-    if (createdTour) {
-      await updateTourMutation.mutateAsync(data);
-    } else {
-      await createMutation.mutateAsync(data);
+    try {
+      if (createdTour) {
+        await updateTourMutation.mutateAsync(data);
+      } else {
+        await createMutation.mutateAsync(data);
+      }
+    } catch {
+      // Mutation errors are rendered inline below the form.
     }
   };
 
@@ -109,20 +132,21 @@ export function TourCreatePage() {
     navigate(`/tours/${tour.id}/edit`);
   };
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const addSelectedFiles = useCallback((files: File[]) => {
     const validFiles: UploadingFile[] = [];
 
-    files.forEach((file) => {
+    files.forEach(file => {
       const validation = validateImageFile(file);
       if (validation.valid) {
         validFiles.push({
+          id: createUploadId(),
           file,
           progress: 0,
           status: 'pending',
         });
       } else {
         validFiles.push({
+          id: createUploadId(),
           file,
           progress: 0,
           status: 'error',
@@ -131,88 +155,78 @@ export function TourCreatePage() {
       }
     });
 
-    setUploadingFiles((prev) => [...prev, ...validFiles]);
+    setUploadingFiles(prev => [...prev, ...validFiles]);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const files = Array.from(e.dataTransfer.files);
-    const validFiles: UploadingFile[] = [];
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      addSelectedFiles(Array.from(e.target.files || []));
+      e.target.value = '';
+    },
+    [addSelectedFiles]
+  );
 
-    files.forEach((file) => {
-      const validation = validateImageFile(file);
-      if (validation.valid) {
-        validFiles.push({
-          file,
-          progress: 0,
-          status: 'pending',
-        });
-      } else {
-        validFiles.push({
-          file,
-          progress: 0,
-          status: 'error',
-          error: validation.error,
-        });
-      }
-    });
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      addSelectedFiles(Array.from(e.dataTransfer.files));
+    },
+    [addSelectedFiles]
+  );
 
-    setUploadingFiles((prev) => [...prev, ...validFiles]);
-  }, []);
-
-  const removeFile = (index: number) => {
-    setUploadingFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = (id: string) => {
+    setUploadingFiles(prev => prev.filter(file => file.id !== id));
   };
 
   const uploadFiles = async () => {
     if (!createdTour) return;
 
-    const pending = uploadingFiles
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => item.status === 'pending');
+    const pending = uploadingFiles.filter(item => item.status === 'pending');
 
     if (pending.length === 0) return;
+    const pendingIds = new Set(pending.map(item => item.id));
 
     // Mark all pending files as uploading immediately (parallel uploads)
-    setUploadingFiles((prev) =>
-      prev.map((f, idx) =>
-        pending.some((p) => p.index === idx)
-          ? { ...f, status: 'uploading' as const, progress: 0 }
-          : f
+    setUploadingFiles(prev =>
+      prev.map(f =>
+        pendingIds.has(f.id) ? { ...f, status: 'uploading' as const, progress: 0 } : f
       )
     );
 
     await Promise.allSettled(
-      pending.map(async ({ item, index }) => {
+      pending.map(async item => {
         try {
           const uploadResult = await uploadApi.uploadFile(item.file, {
             folder: 'scenes',
             visibility: 'public',
-            onProgress: (progress) => {
-              setUploadingFiles((prev) =>
-                prev.map((f, idx) =>
-                  idx === index ? { ...f, progress } : f
-                )
-              );
+            onProgress: progress => {
+              setUploadingFiles(prev => prev.map(f => (f.id === item.id ? { ...f, progress } : f)));
             },
           });
 
           await addSceneMutation.mutateAsync({
             tourId: createdTour.id,
             imageUrl: uploadResult.public_url,
+            title: item.file.name.replace(/\.[^/.]+$/, ''),
           });
 
-          setUploadingFiles((prev) =>
-            prev.map((f, idx) =>
-              idx === index
-                ? { ...f, status: 'completed' as const, progress: 100, url: uploadResult.public_url }
+          setUploadingFiles(prev =>
+            prev.map(f =>
+              f.id === item.id
+                ? {
+                    ...f,
+                    status: 'completed' as const,
+                    progress: 100,
+                    url: uploadResult.public_url,
+                  }
                 : f
             )
           );
         } catch (err) {
-          setUploadingFiles((prev) =>
-            prev.map((f, idx) =>
-              idx === index
+          setUploadingFiles(prev =>
+            prev.map(f =>
+              f.id === item.id
                 ? {
                     ...f,
                     status: 'error' as const,
@@ -230,46 +244,59 @@ export function TourCreatePage() {
     queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, createdTour.id] });
   };
 
-  const pendingCount = uploadingFiles.filter((f) => f.status === 'pending').length;
-  const completedCount = uploadingFiles.filter((f) => f.status === 'completed').length;
-  const isUploading = uploadingFiles.some((f) => f.status === 'uploading');
+  const pendingCount = uploadingFiles.filter(f => f.status === 'pending').length;
+  const completedCount = uploadingFiles.filter(f => f.status === 'completed').length;
+  const errorCount = uploadingFiles.filter(f => f.status === 'error').length;
+  const isUploading = uploadingFiles.some(f => f.status === 'uploading');
+  const formError = createMutation.error || updateTourMutation.error;
 
   const totalUploadBytes = uploadingFiles
-    .filter((f) => f.status === 'pending' || f.status === 'uploading' || f.status === 'completed')
+    .filter(f => f.status === 'pending' || f.status === 'uploading' || f.status === 'completed')
     .reduce((sum, f) => sum + f.file.size, 0);
   const uploadedBytes = uploadingFiles
-    .filter((f) => f.status === 'pending' || f.status === 'uploading' || f.status === 'completed')
+    .filter(f => f.status === 'pending' || f.status === 'uploading' || f.status === 'completed')
     .reduce((sum, f) => {
       if (f.status === 'completed') return sum + f.file.size;
       return sum + Math.round((f.progress / 100) * f.file.size);
     }, 0);
-  const overallProgress = totalUploadBytes > 0 ? Math.round((uploadedBytes * 100) / totalUploadBytes) : 0;
+  const overallProgress =
+    totalUploadBytes > 0 ? Math.round((uploadedBytes * 100) / totalUploadBytes) : 0;
+  const attentionLabel = `${errorCount} file${errorCount === 1 ? '' : 's'} ${
+    errorCount === 1 ? 'needs' : 'need'
+  } attention`;
+  const uploadStatusLabel =
+    errorCount > 0
+      ? `${completedCount} uploaded, ${attentionLabel}`
+      : `${completedCount} of ${uploadingFiles.length} uploaded`;
 
   return (
     <div className="animate-fade-in mx-auto max-w-2xl space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate(ROUTES.TOURS)}
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
-            Create New Tour
-          </h1>
-          <p className="text-[var(--color-text-muted)]">
-            {step === 'info' ? 'Step 1: Tour Information' : 'Step 2: Upload Scenes'}
-          </p>
-        </div>
-        <div className="ml-auto">
-          <Button variant="outline" onClick={() => setShowAIWizard(true)}>
-            <Sparkles className="h-4 w-4" />
-            AI Generate
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Back to tours"
+            onClick={() => navigate(ROUTES.TOURS)}
+          >
+            <ArrowLeft className="h-5 w-5" />
           </Button>
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Create New Tour</h1>
+            <p className="text-[var(--color-text-muted)]">
+              {step === 'info' ? 'Step 1: Tour Information' : 'Step 2: Upload Scenes'}
+            </p>
+          </div>
         </div>
+        <Button
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => setShowAIWizard(true)}
+        >
+          <Sparkles className="h-4 w-4" />
+          AI Generate
+        </Button>
       </div>
 
       {/* Step 1: Tour Info */}
@@ -277,12 +304,21 @@ export function TourCreatePage() {
         <Card>
           <CardHeader>
             <CardTitle>Tour Information</CardTitle>
-            <CardDescription>
-              Enter the basic information for your virtual tour
-            </CardDescription>
+            <CardDescription>Enter the basic information for your virtual tour</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              {formError && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-[var(--color-error-200)] bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-700)]"
+                >
+                  {formError instanceof Error
+                    ? formError.message
+                    : 'Tour information could not be saved.'}
+                </div>
+              )}
+
               <Input
                 label="Tour Title"
                 {...register('title')}
@@ -291,31 +327,39 @@ export function TourCreatePage() {
               />
 
               <div className="w-full">
-                <label className="mb-1.5 block text-sm font-medium text-[var(--color-text-primary)]">
+                <label
+                  htmlFor="tour-description"
+                  className="mb-1.5 block text-sm font-medium text-[var(--color-text-primary)]"
+                >
                   Description
                 </label>
                 <textarea
                   {...register('description')}
+                  id="tour-description"
                   placeholder="Describe your virtual tour..."
                   rows={4}
+                  aria-invalid={!!errors.description}
+                  aria-describedby={errors.description ? 'tour-description-error' : undefined}
                   className="flex w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-500)]"
                 />
                 {errors.description && (
-                  <p className="mt-1.5 text-sm text-[var(--color-error-500)]">
+                  <p
+                    id="tour-description-error"
+                    className="mt-1.5 text-sm text-[var(--color-error-500)]"
+                  >
                     {errors.description.message}
                   </p>
                 )}
               </div>
 
               <div className="flex items-center justify-end gap-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate(ROUTES.TOURS)}
-                >
+                <Button type="button" variant="outline" onClick={() => navigate(ROUTES.TOURS)}>
                   Cancel
                 </Button>
-                <Button type="submit" isLoading={createMutation.isPending || updateTourMutation.isPending}>
+                <Button
+                  type="submit"
+                  isLoading={createMutation.isPending || updateTourMutation.isPending}
+                >
                   {createdTour ? 'Save & Return to Upload' : 'Continue to Upload'}
                 </Button>
               </div>
@@ -336,36 +380,51 @@ export function TourCreatePage() {
             </CardHeader>
             <CardContent>
               {/* Drop Zone */}
-              <label
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                disabled={isUploading}
+                className="hidden"
+              />
+              <button
+                type="button"
                 onDrop={handleDrop}
-                onDragOver={(e) => e.preventDefault()}
+                onDragOver={e => {
+                  e.preventDefault();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={e => {
+                  e.preventDefault();
+                  setIsDragOver(false);
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
                 className={cn(
-                  'flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors',
-                  'border-[var(--color-border)] hover:border-[var(--color-primary-500)] hover:bg-[var(--color-surface)]'
+                  'flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors',
+                  'disabled:cursor-not-allowed disabled:opacity-70',
+                  isDragOver
+                    ? 'border-[var(--color-primary-500)] bg-[var(--color-primary-50)]'
+                    : 'border-[var(--color-border)] hover:border-[var(--color-primary-500)] hover:bg-[var(--color-surface)]'
                 )}
               >
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
                 <Upload className="h-10 w-10 text-[var(--color-text-muted)]" />
                 <p className="mt-4 text-sm font-medium text-[var(--color-text-primary)]">
-                  Drop files here or click to upload
+                  {isUploading ? 'Uploading selected files' : 'Drop files here or click to upload'}
                 </p>
                 <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                   JPEG, PNG, or WebP up to 50MB each
                 </p>
-              </label>
+              </button>
 
               {/* File List */}
               {uploadingFiles.length > 0 && (
                 <div className="mt-6 space-y-3">
-                  {uploadingFiles.map((file, index) => (
+                  {uploadingFiles.map(file => (
                     <div
-                      key={index}
+                      key={file.id}
                       className="flex items-center gap-4 rounded-lg border border-[var(--color-border)] p-3"
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface)]">
@@ -391,7 +450,8 @@ export function TourCreatePage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          onClick={() => removeFile(index)}
+                          aria-label={`Remove ${file.file.name}`}
+                          onClick={() => removeFile(file.id)}
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -404,36 +464,35 @@ export function TourCreatePage() {
           </Card>
 
           {/* Actions */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" onClick={() => setStep('info')}>
                 <ArrowLeft className="h-4 w-4" />
                 Edit Info
               </Button>
-              <Button variant="outline" onClick={() => navigate(`/tours/${createdTour.id}/edit`)}>
-                Skip & Edit Later
-              </Button>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col items-stretch gap-3 sm:items-end">
               {uploadingFiles.length > 0 && isUploading && (
-                <div className="hidden w-40 flex-col gap-1 sm:flex">
+                <div className="flex w-full flex-col gap-1 sm:w-40">
                   <Progress value={overallProgress} className="h-1.5" />
-                  <span className="text-xs text-[var(--color-text-muted)]">
-                    {overallProgress}%
-                  </span>
+                  <span className="text-xs text-[var(--color-text-muted)]">{overallProgress}%</span>
                 </div>
               )}
               {uploadingFiles.length > 0 && (
-                <span className="text-sm text-[var(--color-text-muted)]">
-                  {completedCount} of {uploadingFiles.length} uploaded
-                </span>
+                <span className="text-sm text-[var(--color-text-muted)]">{uploadStatusLabel}</span>
               )}
               {pendingCount > 0 && (
-                <Button onClick={uploadFiles} isLoading={isUploading}>
+                <Button onClick={() => void uploadFiles()} disabled={isUploading}>
                   Upload {pendingCount} Files
                 </Button>
               )}
-              {pendingCount === 0 && completedCount > 0 && (
+              {isUploading && pendingCount === 0 && (
+                <Button disabled>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Uploading
+                </Button>
+              )}
+              {!isUploading && pendingCount === 0 && (
                 <Button onClick={() => navigate(`/tours/${createdTour.id}/edit`)}>
                   Continue to Editor
                 </Button>

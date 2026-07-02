@@ -34,11 +34,7 @@ import {
   copyToClipboard,
   type EmbedOptions,
 } from '@/utils/embedCode';
-import {
-  generateQRCodeDataURL,
-  downloadQRCodePNG,
-  downloadQRCodeSVG,
-} from '@/utils/qrCode';
+import { generateQRCodeDataURL, downloadQRCodePNG, downloadQRCodeSVG } from '@/utils/qrCode';
 import { useToast } from '@/hooks/useToast';
 
 interface ShareModalProps {
@@ -63,7 +59,8 @@ export function ShareModal({
   const copiedEmbedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<{ shareUrl: string; dataUrl: string } | null>(null);
+  const [qrError, setQrError] = useState<{ shareUrl: string; message: string } | null>(null);
   const [embedOptions, setEmbedOptions] = useState<EmbedOptions>({
     width: '100%',
     height: 500,
@@ -74,18 +71,60 @@ export function ShareModal({
     branding: true,
   });
 
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(copiedLinkTimerRef.current);
+      clearTimeout(copiedEmbedTimerRef.current);
+    };
+  }, []);
+
   const shareUrl = generateShareUrl(tourId);
   const embedCode = generateIframeCode(tourId, embedOptions);
   const socialLinks = generateSocialShareLinks(tourId, tourTitle, tourDescription);
+  const activeQrCodeDataUrl = qrCode?.shareUrl === shareUrl ? qrCode.dataUrl : null;
+  const activeQrError = qrError?.shareUrl === shareUrl ? qrError.message : null;
+
+  const generateQrCode = useCallback(() => {
+    setQrError(null);
+    setQrCode(null);
+    generateQRCodeDataURL(shareUrl, { width: 200 })
+      .then(dataUrl => setQrCode({ shareUrl, dataUrl }))
+      .catch(() => {
+        setQrError({
+          shareUrl,
+          message: 'QR code could not be generated. Try again or copy the link instead.',
+        });
+      });
+  }, [shareUrl]);
 
   // Generate QR code when modal opens
   useEffect(() => {
-    if (open) {
-      generateQRCodeDataURL(shareUrl, { width: 200 })
-        .then(setQrCodeDataUrl)
-        .catch(console.error);
+    if (!open || qrCode?.shareUrl === shareUrl) {
+      return;
     }
-  }, [open, shareUrl]);
+
+    let cancelled = false;
+    generateQRCodeDataURL(shareUrl, { width: 200 })
+      .then(dataUrl => {
+        if (!cancelled) {
+          setQrCode({ shareUrl, dataUrl });
+          setQrError(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQrError({
+            shareUrl,
+            message: 'QR code could not be generated. Try again or copy the link instead.',
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, qrCode?.shareUrl, shareUrl]);
 
   const handleCopyLink = useCallback(async () => {
     const success = await copyToClipboard(shareUrl);
@@ -95,6 +134,10 @@ export function ShareModal({
       toast('success', 'Tour link copied to clipboard.', { title: 'Link copied' });
       clearTimeout(copiedLinkTimerRef.current);
       copiedLinkTimerRef.current = setTimeout(() => setCopiedLink(false), 2000);
+    } else {
+      toast('error', 'Copy failed. Select the link and copy it manually.', {
+        title: 'Could not copy link',
+      });
     }
   }, [onTrackShare, shareUrl, toast]);
 
@@ -106,6 +149,10 @@ export function ShareModal({
       toast('success', 'Embed code copied to clipboard.', { title: 'Embed code copied' });
       clearTimeout(copiedEmbedTimerRef.current);
       copiedEmbedTimerRef.current = setTimeout(() => setCopiedEmbed(false), 2000);
+    } else {
+      toast('error', 'Copy failed. Select the embed code and copy it manually.', {
+        title: 'Could not copy embed code',
+      });
     }
   }, [embedCode, onTrackShare, toast]);
 
@@ -118,7 +165,9 @@ export function ShareModal({
         } else {
           await downloadQRCodeSVG(shareUrl, `${filename}.svg`, { width: 512 });
         }
-        toast('success', `QR code saved as ${format.toUpperCase()}.`, { title: 'QR code downloaded' });
+        toast('success', `QR code saved as ${format.toUpperCase()}.`, {
+          title: 'QR code downloaded',
+        });
       } catch {
         toast('error', 'Failed to download QR code.', { title: 'Download failed' });
       }
@@ -160,10 +209,20 @@ export function ShareModal({
           {/* Link Tab */}
           <TabsContent value="link" className="space-y-4 mt-4">
             <div className="space-y-2">
-              <Label>Share Link</Label>
+              <Label htmlFor="share-tour-link">Share Link</Label>
               <div className="flex gap-2">
-                <Input readOnly value={shareUrl} className="font-mono text-sm" />
-                <Button variant="outline" size="icon" onClick={handleCopyLink}>
+                <Input
+                  id="share-tour-link"
+                  readOnly
+                  value={shareUrl}
+                  className="font-mono text-sm"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopyLink}
+                  aria-label={copiedLink ? 'Tour link copied' : 'Copy tour link'}
+                >
                   {copiedLink ? (
                     <Check className="h-4 w-4 text-[var(--color-success-500)]" />
                   ) : (
@@ -182,6 +241,7 @@ export function ShareModal({
                   size="icon"
                   className="h-12 w-full hover:bg-[#1877f2] hover:text-white hover:border-[#1877f2]"
                   onClick={() => handleSocialShare('facebook')}
+                  aria-label="Share on Facebook"
                 >
                   <Facebook className="h-5 w-5" />
                 </Button>
@@ -190,6 +250,7 @@ export function ShareModal({
                   size="icon"
                   className="h-12 w-full hover:bg-[#1da1f2] hover:text-white hover:border-[#1da1f2]"
                   onClick={() => handleSocialShare('twitter')}
+                  aria-label="Share on X"
                 >
                   <Twitter className="h-5 w-5" />
                 </Button>
@@ -198,6 +259,7 @@ export function ShareModal({
                   size="icon"
                   className="h-12 w-full hover:bg-[#0a66c2] hover:text-white hover:border-[#0a66c2]"
                   onClick={() => handleSocialShare('linkedin')}
+                  aria-label="Share on LinkedIn"
                 >
                   <Linkedin className="h-5 w-5" />
                 </Button>
@@ -206,6 +268,7 @@ export function ShareModal({
                   size="icon"
                   className="h-12 w-full hover:bg-[#25d366] hover:text-white hover:border-[#25d366]"
                   onClick={() => handleSocialShare('whatsapp')}
+                  aria-label="Share on WhatsApp"
                 >
                   <MessageCircle className="h-5 w-5" />
                 </Button>
@@ -214,6 +277,7 @@ export function ShareModal({
                   size="icon"
                   className="h-12 w-full hover:bg-[var(--color-primary-500)] hover:text-white hover:border-[var(--color-primary-500)]"
                   onClick={() => handleSocialShare('email')}
+                  aria-label="Share via Email"
                 >
                   <Mail className="h-5 w-5" />
                 </Button>
@@ -228,14 +292,25 @@ export function ShareModal({
           <TabsContent value="qr" className="space-y-4 mt-4">
             <div className="flex flex-col items-center">
               <div className="bg-white p-4 rounded-lg shadow-sm border border-[var(--color-border)]">
-                {qrCodeDataUrl ? (
+                {activeQrCodeDataUrl ? (
                   <img
-                    src={qrCodeDataUrl}
-                    alt="QR Code"
+                    src={activeQrCodeDataUrl}
+                    alt={`QR code for ${tourTitle}`}
                     className="w-48 h-48"
                   />
+                ) : activeQrError ? (
+                  <div className="flex h-48 w-48 flex-col items-center justify-center gap-3 bg-[var(--color-surface)] p-4 text-center">
+                    <p className="text-sm text-[var(--color-error-500)]">{activeQrError}</p>
+                    <Button variant="outline" size="sm" onClick={generateQrCode}>
+                      Try again
+                    </Button>
+                  </div>
                 ) : (
-                  <div className="w-48 h-48 flex items-center justify-center bg-[var(--color-surface)]">
+                  <div
+                    className="w-48 h-48 flex items-center justify-center bg-[var(--color-surface)]"
+                    role="status"
+                    aria-label="Generating QR code"
+                  >
                     <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--color-primary-500)] border-t-transparent" />
                   </div>
                 )}
@@ -249,6 +324,7 @@ export function ShareModal({
               <Button
                 variant="outline"
                 onClick={() => handleDownloadQR('png')}
+                disabled={!activeQrCodeDataUrl}
               >
                 <Download className="h-4 w-4" />
                 Download PNG
@@ -256,6 +332,7 @@ export function ShareModal({
               <Button
                 variant="outline"
                 onClick={() => handleDownloadQR('svg')}
+                disabled={!activeQrCodeDataUrl}
               >
                 <Download className="h-4 w-4" />
                 Download SVG
@@ -272,8 +349,8 @@ export function ShareModal({
                 <Input
                   id="embed-width"
                   value={embedOptions.width}
-                  onChange={(e) =>
-                    setEmbedOptions((prev) => ({
+                  onChange={e =>
+                    setEmbedOptions(prev => ({
                       ...prev,
                       width: e.target.value,
                     }))
@@ -286,15 +363,12 @@ export function ShareModal({
                 <Input
                   id="embed-height"
                   type="number"
-                  value={
-                    typeof embedOptions.height === 'number'
-                      ? embedOptions.height
-                      : 500
-                  }
-                  onChange={(e) =>
-                    setEmbedOptions((prev) => ({
+                  min={100}
+                  value={typeof embedOptions.height === 'number' ? embedOptions.height : 500}
+                  onChange={e =>
+                    setEmbedOptions(prev => ({
                       ...prev,
-                      height: parseInt(e.target.value) || 500,
+                      height: Math.max(100, parseInt(e.target.value) || 500),
                     }))
                   }
                 />
@@ -303,9 +377,10 @@ export function ShareModal({
 
             {/* Embed Code */}
             <div className="space-y-2">
-              <Label>Embed Code</Label>
+              <Label htmlFor="share-embed-code">Embed Code</Label>
               <div className="relative">
                 <Textarea
+                  id="share-embed-code"
                   readOnly
                   value={embedCode}
                   className="font-mono text-xs min-h-[120px] resize-none pr-20"
@@ -315,6 +390,7 @@ export function ShareModal({
                   size="sm"
                   className="absolute right-2 top-2"
                   onClick={handleCopyEmbed}
+                  aria-label={copiedEmbed ? 'Embed code copied' : 'Copy embed code'}
                 >
                   {copiedEmbed ? (
                     <>

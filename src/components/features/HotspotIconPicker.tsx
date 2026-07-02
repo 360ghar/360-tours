@@ -16,6 +16,7 @@ import {
   DEFAULT_HOTSPOT_ICON,
   HOTSPOT_ICON_BY_NAME,
   HOTSPOT_ICON_CATEGORIES,
+  getHotspotIconForeground,
 } from './hotspotIcons';
 
 // Predefined colors
@@ -52,15 +53,12 @@ interface HotspotIconPickerProps {
   trigger?: React.ReactNode;
 }
 
-export function HotspotIconPicker({
-  value,
-  onChange,
-  trigger,
-}: HotspotIconPickerProps) {
+export function HotspotIconPicker({ value, onChange, trigger }: HotspotIconPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [customColor, setCustomColor] = useState(value.iconColor);
 
   const CurrentIcon = HOTSPOT_ICON_BY_NAME[value.iconName] ?? DEFAULT_HOTSPOT_ICON;
+  const iconForeground = getHotspotIconForeground(value.iconColor);
 
   const handleIconSelect = (iconName: string) => {
     onChange({ ...value, iconName });
@@ -84,13 +82,13 @@ export function HotspotIconPicker({
               className="flex h-6 w-6 items-center justify-center rounded"
               style={{ backgroundColor: value.iconColor }}
             >
-              <CurrentIcon className="h-4 w-4 text-white" />
+              <CurrentIcon className="h-4 w-4" style={{ color: iconForeground }} />
             </div>
             <span>Change Icon</span>
           </Button>
         )}
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="start">
+      <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] p-0" align="start">
         <Tabs defaultValue="icon" className="w-full">
           <TabsList className="w-full justify-start rounded-none border-b border-[var(--color-border)] bg-transparent p-0">
             <TabsTrigger
@@ -121,13 +119,16 @@ export function HotspotIconPicker({
                   <p className="mb-2 text-xs font-medium text-[var(--color-text-muted)]">
                     {category.label}
                   </p>
-                  <div className="grid grid-cols-8 gap-1">
+                  <div className="grid grid-cols-6 gap-1">
                     {category.icons.map(({ name, icon: Icon }) => (
                       <button
                         key={name}
+                        type="button"
+                        aria-label={`Use ${name} icon`}
+                        aria-pressed={value.iconName === name}
                         onClick={() => handleIconSelect(name)}
                         className={cn(
-                          'flex h-8 w-8 items-center justify-center rounded transition-colors',
+                          'flex h-10 w-10 items-center justify-center rounded transition-colors',
                           value.iconName === name
                             ? 'bg-[var(--color-primary-100)] text-[var(--color-primary-600)]'
                             : 'hover:bg-[var(--color-surface)] text-[var(--color-text-secondary)]'
@@ -150,12 +151,15 @@ export function HotspotIconPicker({
                   Preset Colors
                 </p>
                 <div className="grid grid-cols-5 gap-2">
-                  {PRESET_COLORS.map((color) => (
+                  {PRESET_COLORS.map(color => (
                     <button
                       key={color}
+                      type="button"
+                      aria-label={`Use color ${color}`}
+                      aria-pressed={value.iconColor === color}
                       onClick={() => handleColorSelect(color)}
                       className={cn(
-                        'h-8 w-8 rounded border-2 transition-all',
+                        'h-10 w-10 rounded border-2 transition-all',
                         value.iconColor === color
                           ? 'border-[var(--color-primary-500)] ring-2 ring-[var(--color-primary-500)]/20'
                           : 'border-[var(--color-border)]'
@@ -167,17 +171,22 @@ export function HotspotIconPicker({
               </div>
 
               <div>
-                <Label className="text-xs">Custom Color</Label>
+                <Label htmlFor="hotspot-custom-color" className="text-xs">
+                  Custom Color
+                </Label>
                 <div className="mt-1 flex gap-2">
                   <Input
+                    id="hotspot-custom-color"
+                    aria-label="Choose custom hotspot color"
                     type="color"
                     value={customColor}
-                    onChange={(e) => handleColorSelect(e.target.value)}
+                    onChange={e => handleColorSelect(e.target.value)}
                     className="h-10 w-12 cursor-pointer p-1"
                   />
                   <Input
+                    aria-label="Custom hotspot color hex value"
                     value={customColor}
-                    onChange={(e) => {
+                    onChange={e => {
                       setCustomColor(e.target.value);
                       if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
                         onChange({ ...value, iconColor: e.target.value });
@@ -196,7 +205,7 @@ export function HotspotIconPicker({
                   className="flex h-8 w-8 items-center justify-center rounded-full"
                   style={{ backgroundColor: value.iconColor }}
                 >
-                  <CurrentIcon className="h-4 w-4 text-white" />
+                  <CurrentIcon className="h-4 w-4" style={{ color: iconForeground }} />
                 </div>
               </div>
             </div>
@@ -206,13 +215,14 @@ export function HotspotIconPicker({
           <TabsContent value="size" className="m-0 p-3">
             <div className="space-y-3">
               <div>
-                <p className="mb-2 text-xs font-medium text-[var(--color-text-muted)]">
-                  Icon Size
-                </p>
+                <p className="mb-2 text-xs font-medium text-[var(--color-text-muted)]">Icon Size</p>
                 <div className="flex gap-2">
                   {ICON_SIZES.map(({ value: size, label }) => (
                     <button
                       key={size}
+                      type="button"
+                      aria-label={`Use ${size}px hotspot icon size`}
+                      aria-pressed={value.iconSize === size}
                       onClick={() => handleSizeSelect(size)}
                       className={cn(
                         'flex-1 rounded-lg border p-3 text-center transition-colors',
@@ -227,9 +237,7 @@ export function HotspotIconPicker({
                           style={{ width: size / 2, height: size / 2 }}
                         />
                         <span className="text-xs font-medium">{label}</span>
-                        <span className="text-xs text-[var(--color-text-muted)]">
-                          {size}px
-                        </span>
+                        <span className="text-xs text-[var(--color-text-muted)]">{size}px</span>
                       </div>
                     </button>
                   ))}
@@ -251,6 +259,7 @@ export function HotspotIconPicker({
                     style={{
                       width: value.iconSize * 0.5,
                       height: value.iconSize * 0.5,
+                      color: iconForeground,
                     }}
                   />
                 </div>

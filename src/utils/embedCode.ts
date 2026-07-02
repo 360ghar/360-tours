@@ -33,6 +33,12 @@ const DEFAULT_OPTIONS: Required<EmbedOptions> = {
   branding: true,
 };
 
+// Security contract: public/embed.js mirrors these literal values because it
+// cannot import this TypeScript module. Update both files together.
+export const EMBED_IFRAME_ALLOW = 'fullscreen; xr-spatial-tracking; accelerometer; gyroscope';
+export const EMBED_IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-forms';
+export const EMBED_IFRAME_REFERRER_POLICY = 'strict-origin-when-cross-origin';
+
 /**
  * Get the base URL for embedding
  */
@@ -128,9 +134,11 @@ export function generateIframeCode(tourId: string, options: EmbedOptions = {}): 
   width="${width}"
   height="${height}"
   frameborder="0"
-  allow="fullscreen; xr-spatial-tracking; accelerometer; gyroscope"
+  allow="${EMBED_IFRAME_ALLOW}"
   allowfullscreen
   loading="lazy"
+  sandbox="${EMBED_IFRAME_SANDBOX}"
+  referrerpolicy="${EMBED_IFRAME_REFERRER_POLICY}"
   style="border: none; border-radius: 8px;"
 ></iframe>`;
 }
@@ -178,9 +186,11 @@ export function generateResponsiveCode(tourId: string, options: EmbedOptions = {
   <iframe
     src="${embedUrl}"
     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
-    allow="fullscreen; xr-spatial-tracking; accelerometer; gyroscope"
+    allow="${EMBED_IFRAME_ALLOW}"
     allowfullscreen
     loading="lazy"
+    sandbox="${EMBED_IFRAME_SANDBOX}"
+    referrerpolicy="${EMBED_IFRAME_REFERRER_POLICY}"
   ></iframe>
 </div>`;
 }
@@ -219,7 +229,9 @@ export function generateSocialShareLinks(
 ): SocialShareLinks {
   const shareUrl = encodeURIComponent(generateShareUrl(tourId));
   const shareTitle = encodeURIComponent(title);
-  const shareDescription = encodeURIComponent(description || `Check out this virtual tour: ${title}`);
+  const shareDescription = encodeURIComponent(
+    description || `Check out this virtual tour: ${title}`
+  );
 
   return {
     facebook: `https://www.facebook.com/sharer/sharer.php?u=${shareUrl}`,

@@ -61,10 +61,11 @@ export function useAIJobWebSocket(
         const data = JSON.parse(event.data) as AIJobUpdate;
 
         if (data.type === 'job_update' && data.data) {
+          if (data.job_id && data.job_id !== jobId) return; // ignore messages for other jobs
           onUpdateRef.current?.(data);
 
-          if (data.data.status === 'completed' && data.data.result) {
-            onCompleteRef.current?.(data.data.result);
+          if (data.data.status === 'completed') {
+            onCompleteRef.current?.(data.data.result ?? {});
             disconnect();
           } else if (data.data.status === 'failed') {
             onErrorRef.current?.(data.data.error_message || 'Job failed');
