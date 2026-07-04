@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+> **Canonical guide: [CLAUDE.md](./CLAUDE.md).** Read it first for stack, structure, commands, and conventions.
+
 ## Project Structure & Module Organization
 
 - `src/`: React + TypeScript app code

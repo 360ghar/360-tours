@@ -174,7 +174,7 @@ describe('authStore', () => {
       expect(state.user).toBeNull();
       expect(state.isAuthenticated).toBe(false);
       expect(state.isLoading).toBe(false);
-      expect(state.error).toBe('Invalid credentials');
+      expect(state.error).toBe('Invalid email/phone or password.');
     });
   });
 

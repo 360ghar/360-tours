@@ -15,6 +15,7 @@ import {
   type ResetPasswordFormData,
 } from '@/utils/validation';
 import { ROUTES } from '@/constants';
+import { mapSupabaseAuthError } from '@/lib/authErrors';
 
 type ResetStep = 'request' | 'verify' | 'reset' | 'success';
 
@@ -100,6 +101,13 @@ export function ForgotPasswordPage() {
     setIsLoading(true);
     setError(null);
     try {
+      const status = await authApi.checkIdentifierStatus(data.identifier);
+      if (!status.exists) {
+        setError(
+          'No account found with this email or phone. Check the address or sign up.'
+        );
+        return;
+      }
       if (channel === 'email') {
         await authApi.requestPasswordResetEmailOTP(data.identifier);
       } else {
@@ -113,7 +121,7 @@ export function ForgotPasswordPage() {
       resendTimer.start();
       setStep('verify');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send OTP');
+      setError(mapSupabaseAuthError(err, 'forgot_password'));
       // Stay on the request step so the error message renders here and the
       // user can retry / correct the identifier.
     } finally {

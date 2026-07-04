@@ -21,6 +21,7 @@ import {
   type OTPFormData,
 } from '@/utils/validation';
 import { ROUTES } from '@/constants';
+import { mapSupabaseAuthError, UNVERIFIED_ACCOUNT_MESSAGE } from '@/lib/authErrors';
 
 type Step = 'identifier' | 'password' | 'otp' | 'set-password';
 type IdentifierFormData = { identifier: string };
@@ -41,7 +42,7 @@ function callbackErrorMessage(code: string | null): string | null {
   if (code === 'auth') {
     return 'Sign-in could not be completed. Please try again.';
   }
-  return null;
+  return code;
 }
 
 function isSafeReturnPath(path: string): boolean {
@@ -172,6 +173,9 @@ export function LoginPage() {
       }
 
       // OTP-first: unverified existing user, or unknown (treat as signup).
+      if (status.exists && !status.verified) {
+        setError(UNVERIFIED_ACCOUNT_MESSAGE);
+      }
       setIsSignupOtp(!status.exists);
       // An unknown identifier has no password; an existing account is gated on
       // has_password. Either way, force a set-password step after OTP succeeds.

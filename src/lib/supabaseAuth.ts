@@ -1,6 +1,11 @@
 import { createClient, type AuthChangeEvent, type Session } from '@supabase/supabase-js';
 import { STORAGE_KEYS, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/constants';
+import { mapSupabaseAuthError, type AuthErrorContext } from '@/lib/authErrors';
 import type { AuthTokens } from '@/types';
+
+function mappedError(error: unknown, context: AuthErrorContext = 'login'): Error {
+  return new Error(mapSupabaseAuthError(error, context));
+}
 
 export type SupabaseAuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED';
 
@@ -22,9 +27,10 @@ const supabase =
   SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
         auth: {
+          flowType: 'pkce',
+          detectSessionInUrl: false,
           persistSession: true,
           autoRefreshToken: true,
-          detectSessionInUrl: true,
           storageKey: STORAGE_KEYS.AUTH_TOKENS,
         },
       })
@@ -110,9 +116,7 @@ export const supabaseAuth = {
       password: payload.password,
     });
     if (error || !data.session) {
-      throw new Error(
-        error?.message || 'Login failed. Please check your credentials and try again.'
-      );
+      throw mappedError(error);
     }
     cachedSession = normalizeSession(data.session);
     return cachedSession!;
@@ -128,9 +132,7 @@ export const supabaseAuth = {
       password: payload.password,
     });
     if (error || !data.session) {
-      throw new Error(
-        error?.message || 'Login failed. Please check your credentials and try again.'
-      );
+      throw mappedError(error);
     }
     cachedSession = normalizeSession(data.session);
     return cachedSession!;
@@ -148,7 +150,7 @@ export const supabaseAuth = {
       options: { data: payload.data ?? {} },
     });
     if (error) {
-      throw new Error(error.message);
+      throw mappedError(error);
     }
     cachedSession = normalizeSession(data.session);
     return { session: cachedSession };
@@ -171,7 +173,7 @@ export const supabaseAuth = {
       options: { shouldCreateUser: payload.shouldCreateUser ?? true, data: payload.data },
     });
     if (error) {
-      throw new Error(error.message);
+      throw mappedError(error);
     }
   },
 
@@ -190,7 +192,7 @@ export const supabaseAuth = {
       options: { shouldCreateUser: payload.shouldCreateUser ?? true, data: payload.data },
     });
     if (error) {
-      throw new Error(error.message);
+      throw mappedError(error);
     }
   },
 
@@ -206,7 +208,7 @@ export const supabaseAuth = {
       type: payload.type ?? 'sms',
     });
     if (error || !data.session) {
-      throw new Error(error?.message || 'Invalid or expired OTP');
+      throw mappedError(error, 'otp');
     }
     cachedSession = normalizeSession(data.session);
     return cachedSession!;
@@ -228,7 +230,7 @@ export const supabaseAuth = {
       type: payload.type ?? 'email',
     });
     if (error || !data.session) {
-      throw new Error(error?.message || 'Invalid or expired OTP');
+      throw mappedError(error, 'otp');
     }
     cachedSession = normalizeSession(data.session);
     return cachedSession!;
@@ -238,7 +240,7 @@ export const supabaseAuth = {
     const client = requireClient();
     const { error } = await client.auth.updateUser({ password: newPassword });
     if (error) {
-      throw new Error(error.message);
+      throw mappedError(error);
     }
   },
 
@@ -263,7 +265,7 @@ export const supabaseAuth = {
       },
     });
     if (error) {
-      throw new Error(error.message);
+      throw mappedError(error);
     }
   },
 
@@ -275,7 +277,7 @@ export const supabaseAuth = {
     const client = requireClient();
     const { data, error } = await client.auth.exchangeCodeForSession(code);
     if (error || !data.session) {
-      throw new Error(error?.message || 'Failed to complete sign-in');
+      throw mappedError(error);
     }
     cachedSession = normalizeSession(data.session);
     return cachedSession!;

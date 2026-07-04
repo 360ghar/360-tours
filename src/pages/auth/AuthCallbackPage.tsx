@@ -5,6 +5,7 @@ import { authApi } from '@/api';
 import { useAuthStore } from '@/stores';
 import { setLastAuthMethod } from '@/lib/lastAuthMethod';
 import { ROUTES } from '@/constants';
+import { mapSupabaseAuthError } from '@/lib/authErrors';
 import { PageLoader } from '@/components/ui';
 
 /**
@@ -40,7 +41,14 @@ export function AuthCallbackPage() {
         : ROUTES.DASHBOARD;
 
     async function handleCallback() {
-      if (errorParam || !code) {
+      if (errorParam) {
+        navigate(
+          `${ROUTES.LOGIN}?error=${encodeURIComponent(errorParam)}`,
+          { replace: true }
+        );
+        return;
+      }
+      if (!code) {
         navigate(`${ROUTES.LOGIN}?error=auth`, { replace: true });
         return;
       }
@@ -61,10 +69,13 @@ export function AuthCallbackPage() {
         void authApi.recordLastMethod('google');
 
         navigate(safeNext, { replace: true });
-      } catch {
+      } catch (err) {
         await supabaseAuth.signOut().catch(() => {});
         clearAuth();
-        navigate(`${ROUTES.LOGIN}?error=auth`, { replace: true });
+        navigate(
+          `${ROUTES.LOGIN}?error=${encodeURIComponent(mapSupabaseAuthError(err))}`,
+          { replace: true }
+        );
       }
     }
 

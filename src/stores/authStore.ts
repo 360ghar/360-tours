@@ -5,6 +5,7 @@ import type { IdentifierChannel } from '@/api/auth';
 import { supabaseAuth, type SupabaseSession } from '@/lib/supabaseAuth';
 import { setLastAuthMethod, type AuthMethod } from '@/lib/lastAuthMethod';
 import { ERROR_MESSAGES } from '@/constants';
+import { mapSupabaseAuthError } from '@/lib/authErrors';
 
 /**
  * Determine whether an error represents a genuine authentication failure
@@ -142,7 +143,13 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         const auth = await authApi.login({ phone, password });
         commitCompletedSession(auth, 'phone_password', phone);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Login failed';
+        const message = mapSupabaseAuthError(error);
+        try {
+          await authApi.logout();
+        } catch {
+          // Best-effort: clear any dangling partial session after failed login.
+        }
+        get().clearAuth();
         set({ isLoading: false, error: message });
         throw error;
       }
@@ -158,7 +165,13 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
 
         await completeSupabaseSession(session, passwordMethodFor(channel), identifier);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Login failed';
+        const message = mapSupabaseAuthError(error);
+        try {
+          await authApi.logout();
+        } catch {
+          // Best-effort: clear any dangling partial session after failed login.
+        }
+        get().clearAuth();
         set({ isLoading: false, error: message });
         throw error;
       }
@@ -174,7 +187,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
 
         await completeSupabaseSession(session, otpMethodFor(channel), identifier);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Invalid or expired OTP';
+        const message = mapSupabaseAuthError(error, 'otp');
         set({ isLoading: false, error: message });
         throw error;
       }
