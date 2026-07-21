@@ -63,6 +63,15 @@ const EmbedTourPage = lazy(() =>
 const LocalTourPage = lazy(() =>
   import('@/pages/LocalTourPage').then(m => ({ default: m.LocalTourPage }))
 );
+const SplatLabPage = lazy(() =>
+  import('@/pages/lab/SplatLabPage').then(m => ({ default: m.SplatLabPage }))
+);
+const DollhouseEditorPage = lazy(() =>
+  import('@/pages/lab/DollhouseEditorPage').then(m => ({ default: m.DollhouseEditorPage }))
+);
+const KitchenTourPage = lazy(() =>
+  import('@/pages/lab/KitchenTourPage').then(m => ({ default: m.KitchenTourPage }))
+);
 
 // 404 page (eagerly loaded — users hitting unknown routes shouldn't see a spinner)
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -220,6 +229,32 @@ export const router = createBrowserRouter([
           </LazyPage>
         ),
       },
+
+      {
+        path: ROUTES.LAB,
+        element: (
+          <LazyPage>
+            <SplatLabPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.LAB_EDITOR,
+        element: (
+          <LazyPage>
+            <DollhouseEditorPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.LAB_KITCHEN_TOUR,
+        element: (
+          <LazyPage>
+            <KitchenTourPage />
+          </LazyPage>
+        ),
+      },
+
     ],
   },
 

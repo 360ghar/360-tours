@@ -6,6 +6,7 @@ import {
   FolderOpen,
   BarChart3,
   Settings,
+  Box,
   X,
   ChevronsLeft,
   ChevronsRight,
@@ -26,6 +27,7 @@ const navItems = [
   { label: 'Tours', path: ROUTES.TOURS, icon: Images },
   { label: 'Media', path: ROUTES.MEDIA, icon: FolderOpen },
   { label: 'Analytics', path: ROUTES.ANALYTICS, icon: BarChart3 },
+  { label: 'Splat Lab', path: ROUTES.LAB, icon: Box },
   { label: 'Settings', path: ROUTES.SETTINGS, icon: Settings },
 ];
 
