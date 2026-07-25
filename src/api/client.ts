@@ -53,7 +53,12 @@ const apiClient: AxiosInstance = axios.create({
 
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const accessToken = await supabaseAuth.getAccessToken();
+    // Prefer the in-memory session first so concurrent login/hydration
+    // requests don't race getSession() and go out without a Bearer token.
+    let accessToken = supabaseAuth.getTokens()?.access_token ?? null;
+    if (!accessToken) {
+      accessToken = await supabaseAuth.getAccessToken();
+    }
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
@@ -83,6 +88,20 @@ apiClient.interceptors.response.use(
           return Promise.reject(error);
         }
 
+        const hadAuthHeader = Boolean(
+          originalRequest.headers?.Authorization ||
+            // axios may store headers in AxiosHeaders
+            (originalRequest.headers as { get?: (k: string) => string } | undefined)?.get?.(
+              'Authorization'
+            )
+        );
+
+        // Unauthenticated probe (no Bearer) is not a session expiry — never
+        // force sign-out. This stops a race during login from wiping a good session.
+        if (!hadAuthHeader) {
+          return Promise.reject(error);
+        }
+
         const tokenRetryCount = extendedRequest._tokenRetryCount || 0;
 
         if (tokenRetryCount >= MAX_TOKEN_RETRY_ATTEMPTS) {
@@ -103,8 +122,13 @@ apiClient.interceptors.response.use(
           // refresh failed, fall through to sign-out
         }
 
-        await supabaseAuth.signOut().catch(() => {});
-        notifyAuthExpired();
+        // Only expire the session if we still look signed-in. A concurrent
+        // login may have already established a fresh token.
+        const stillHasToken = Boolean(supabaseAuth.getTokens()?.access_token);
+        if (stillHasToken) {
+          await supabaseAuth.signOut().catch(() => {});
+          notifyAuthExpired();
+        }
         return Promise.reject(new Error(ERROR_MESSAGES.SESSION_EXPIRED));
       }
 

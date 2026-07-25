@@ -8,6 +8,9 @@ export const ROUTES = {
   DASHBOARD: '/dashboard',
   TOURS: '/tours',
   TOUR_CREATE: '/tours/create',
+  /** Guided web capture (camera → upload → session) */
+  TOUR_CAPTURE: '/tours/capture',
+  TOUR_CAPTURE_SESSION: '/tours/capture/:sessionId',
   TOUR_EDIT: '/tours/:id/edit',
   TOUR_VIEW: '/tours/:id',
   TOUR_ANALYTICS: '/tours/:id/analytics',

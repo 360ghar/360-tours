@@ -33,6 +33,9 @@ const ToursPage = lazy(() =>
 const TourCreatePage = lazy(() =>
   import('@/pages/tours/TourCreatePage').then(m => ({ default: m.TourCreatePage }))
 );
+const GuidedCapturePage = lazy(() =>
+  import('@/pages/tours/GuidedCapturePage').then(m => ({ default: m.GuidedCapturePage }))
+);
 const TourEditPage = lazy(() =>
   import('@/pages/tours/TourEditPage').then(m => ({ default: m.TourEditPage }))
 );
@@ -170,6 +173,22 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <TourCreatePage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.TOUR_CAPTURE,
+        element: (
+          <LazyPage>
+            <GuidedCapturePage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.TOUR_CAPTURE_SESSION,
+        element: (
+          <LazyPage>
+            <GuidedCapturePage />
           </LazyPage>
         ),
       },

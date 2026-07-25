@@ -15,6 +15,8 @@ export const QUERY_KEYS = {
   AI_JOBS: 'ai-jobs',
   ACTIVITIES: 'activities',
   COLLABORATORS: 'collaborators',
+  CAPTURE_SESSIONS: 'capture-sessions',
+  CAPTURE_SESSION: 'capture-session',
 } as const;
 
 // Local Storage Keys
