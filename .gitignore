@@ -38,3 +38,29 @@ test-results
 *.sw?
 
 seed_properties/
+
+# Local agent / skill workspaces — scoped to generated eval runs so
+# project-maintained files under .claude/skills/* and .agents/skills/*
+# stay trackable.
+.claude/skills/*-workspace/
+.agents/skills/*-workspace/
+.playwright-mcp/
+
+# Pipeline / lab outputs (regenerated locally)
+outputs/
+
+# Large Gaussian splat / 3DGS binaries — never commit
+public/splats/*.splat
+public/splats/*.ply
+public/splats/*.spz
+public/splats/*.ksplat
+*.splat
+*.ply
+
+# Research papers / large downloads dropped in repo root
+/*.pdf
+!docs/**/*.pdf
+
+# Old local capture / drive dumps
+drive-download*/
+videoplayback*

@@ -37,18 +37,22 @@ function AuthInitializer() {
 
   useEffect(() => {
     const unsubscribe = onAuthExpired(() => {
-      if (window.location.pathname !== ROUTES.LOGIN) {
-        const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-        const loginUrl = new URL(ROUTES.LOGIN, window.location.origin);
-        if (
-          returnPath.startsWith('/') &&
-          !returnPath.startsWith('//') &&
-          !AUTH_REDIRECT_BLOCKLIST.includes(window.location.pathname)
-        ) {
-          loginUrl.searchParams.set('next', returnPath);
-        }
-        window.location.href = loginUrl.toString();
+      // Soft-clear store first; hard redirect only when not already on login.
+      // Avoid full reloads when already on /login (that caused bounce loops).
+      if (window.location.pathname === ROUTES.LOGIN) {
+        return;
       }
+      const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const loginUrl = new URL(ROUTES.LOGIN, window.location.origin);
+      if (
+        returnPath.startsWith('/') &&
+        !returnPath.startsWith('//') &&
+        !AUTH_REDIRECT_BLOCKLIST.includes(window.location.pathname)
+      ) {
+        loginUrl.searchParams.set('next', returnPath);
+      }
+      // Use replace so back-button doesn't re-enter a dying dashboard session.
+      window.location.replace(loginUrl.toString());
     });
     return unsubscribe;
   }, []);

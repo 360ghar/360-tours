@@ -305,11 +305,21 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
             });
           }
 
+          // Hydrate user profile after Supabase sign-in. Login methods also call
+          // completeSession — if they already set isAuthenticated, skip to avoid
+          // a second /users/me race that can 401 and wipe the session.
           if (event === 'SIGNED_IN' && session && !get().isAuthenticated) {
             try {
               const user = await authApi.getCurrentUser();
-              set({ user, isAuthenticated: true });
+              // Re-check: a concurrent loginWithPassword may have finished.
+              if (!get().isAuthenticated) {
+                set({ user, isAuthenticated: true, isLoading: false });
+              }
             } catch (error) {
+              // If login already succeeded, ignore this parallel failure.
+              if (get().isAuthenticated) {
+                return;
+              }
               if (isAuthError(error)) {
                 console.error(
                   'Auth error on SIGNED_IN, signing out:',

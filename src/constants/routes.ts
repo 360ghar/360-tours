@@ -8,6 +8,9 @@ export const ROUTES = {
   DASHBOARD: '/dashboard',
   TOURS: '/tours',
   TOUR_CREATE: '/tours/create',
+  /** Guided web capture (camera → upload → session) */
+  TOUR_CAPTURE: '/tours/capture',
+  TOUR_CAPTURE_SESSION: '/tours/capture/:sessionId',
   TOUR_EDIT: '/tours/:id/edit',
   TOUR_VIEW: '/tours/:id',
   TOUR_ANALYTICS: '/tours/:id/analytics',
@@ -18,6 +21,10 @@ export const ROUTES = {
   PUBLIC_TOUR: '/view/:id',
   EMBED_TOUR: '/embed/:id',
   LOCAL_TOUR: '/local/:propertyId',
+  LAB: '/lab',
+  LAB_EDITOR: '/lab/editor',
+  /** Constrained kitchen GS tour (standpoint nav) */
+  LAB_KITCHEN_TOUR: '/lab/kitchen-tour',
 } as const;
 
 // Navigation Items

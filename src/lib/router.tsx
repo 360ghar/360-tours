@@ -33,6 +33,9 @@ const ToursPage = lazy(() =>
 const TourCreatePage = lazy(() =>
   import('@/pages/tours/TourCreatePage').then(m => ({ default: m.TourCreatePage }))
 );
+const GuidedCapturePage = lazy(() =>
+  import('@/pages/tours/GuidedCapturePage').then(m => ({ default: m.GuidedCapturePage }))
+);
 const TourEditPage = lazy(() =>
   import('@/pages/tours/TourEditPage').then(m => ({ default: m.TourEditPage }))
 );
@@ -62,6 +65,15 @@ const EmbedTourPage = lazy(() =>
 );
 const LocalTourPage = lazy(() =>
   import('@/pages/LocalTourPage').then(m => ({ default: m.LocalTourPage }))
+);
+const SplatLabPage = lazy(() =>
+  import('@/pages/lab/SplatLabPage').then(m => ({ default: m.SplatLabPage }))
+);
+const DollhouseEditorPage = lazy(() =>
+  import('@/pages/lab/DollhouseEditorPage').then(m => ({ default: m.DollhouseEditorPage }))
+);
+const KitchenTourPage = lazy(() =>
+  import('@/pages/lab/KitchenTourPage').then(m => ({ default: m.KitchenTourPage }))
 );
 
 // 404 page (eagerly loaded — users hitting unknown routes shouldn't see a spinner)
@@ -165,6 +177,22 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: ROUTES.TOUR_CAPTURE,
+        element: (
+          <LazyPage>
+            <GuidedCapturePage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.TOUR_CAPTURE_SESSION,
+        element: (
+          <LazyPage>
+            <GuidedCapturePage />
+          </LazyPage>
+        ),
+      },
+      {
         path: ROUTES.TOUR_EDIT,
         element: (
           <LazyPage>
@@ -220,6 +248,32 @@ export const router = createBrowserRouter([
           </LazyPage>
         ),
       },
+
+      {
+        path: ROUTES.LAB,
+        element: (
+          <LazyPage>
+            <SplatLabPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.LAB_EDITOR,
+        element: (
+          <LazyPage>
+            <DollhouseEditorPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.LAB_KITCHEN_TOUR,
+        element: (
+          <LazyPage>
+            <KitchenTourPage />
+          </LazyPage>
+        ),
+      },
+
     ],
   },
 

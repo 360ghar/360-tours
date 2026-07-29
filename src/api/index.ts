@@ -6,6 +6,7 @@ export { collaborationApi } from './collaboration';
 export type { Collaborator, InviteCollaboratorInput } from './collaboration';
 export { usersApi } from './users';
 export { uploadApi } from './upload';
+export { captureApi } from './capture';
 export { aiApi } from './ai';
 export { customDomainsApi } from './customDomains';
 export type {

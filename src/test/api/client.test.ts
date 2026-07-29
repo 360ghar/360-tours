@@ -4,6 +4,7 @@ import axios from 'axios';
 vi.mock('@/lib/supabaseAuth', () => ({
   supabaseAuth: {
     getAccessToken: vi.fn(),
+    getTokens: vi.fn().mockReturnValue(null),
     signOut: vi.fn().mockResolvedValue(undefined),
   },
 }));
@@ -70,6 +71,7 @@ describe('API Client', () => {
   describe('response interceptor - 401 handling', () => {
     it('attempts token refresh on 401, then signs out if refresh returns null', async () => {
       (supabaseAuth.getAccessToken as Mock).mockResolvedValue(null);
+      (supabaseAuth.getTokens as Mock).mockReturnValue({ access_token: 'stale-token' });
       (supabaseAuth.signOut as Mock).mockResolvedValue(undefined);
 
       const interceptor = getResponseInterceptor();
@@ -82,7 +84,7 @@ describe('API Client', () => {
         config: { headers: new axios.AxiosHeaders() } as never,
       });
       error.config = {
-        headers: new axios.AxiosHeaders(),
+        headers: new axios.AxiosHeaders({ Authorization: 'Bearer stale-token' }),
         url: '/test',
       } as never;
 
@@ -92,6 +94,7 @@ describe('API Client', () => {
     });
 
     it('signs out on 401 when token retry limit is exceeded', async () => {
+      (supabaseAuth.getTokens as Mock).mockReturnValue({ access_token: 'stale-token' });
       (supabaseAuth.signOut as Mock).mockResolvedValue(undefined);
 
       const interceptor = getResponseInterceptor();
@@ -104,7 +107,7 @@ describe('API Client', () => {
         config: { headers: new axios.AxiosHeaders() } as never,
       });
       error.config = {
-        headers: new axios.AxiosHeaders(),
+        headers: new axios.AxiosHeaders({ Authorization: 'Bearer stale-token' }),
         url: '/test',
         _tokenRetryCount: 1,
       } as never;
@@ -115,6 +118,7 @@ describe('API Client', () => {
 
     it('notifies auth expired listeners on 401 failure', async () => {
       (supabaseAuth.getAccessToken as Mock).mockResolvedValue(null);
+      (supabaseAuth.getTokens as Mock).mockReturnValue({ access_token: 'stale-token' });
       (supabaseAuth.signOut as Mock).mockResolvedValue(undefined);
 
       const listener = vi.fn();
@@ -130,7 +134,7 @@ describe('API Client', () => {
         config: { headers: new axios.AxiosHeaders() } as never,
       });
       error.config = {
-        headers: new axios.AxiosHeaders(),
+        headers: new axios.AxiosHeaders({ Authorization: 'Bearer stale-token' }),
         url: '/test',
       } as never;
 
@@ -138,6 +142,51 @@ describe('API Client', () => {
       expect(listener).toHaveBeenCalled();
 
       unsubscribe();
+    });
+
+    it('rejects unauthenticated probes (no Authorization header) without signing out', async () => {
+      const interceptor = getResponseInterceptor();
+
+      const error = new axios.AxiosError('Unauthorized', '401', undefined, undefined, {
+        status: 401,
+        data: {},
+        statusText: 'Unauthorized',
+        headers: {},
+        config: { headers: new axios.AxiosHeaders() } as never,
+      });
+      error.config = {
+        headers: new axios.AxiosHeaders(),
+        url: '/test',
+      } as never;
+
+      await expect(interceptor.rejected(error)).rejects.toBe(error);
+      expect(supabaseAuth.getAccessToken).not.toHaveBeenCalled();
+      expect(supabaseAuth.signOut).not.toHaveBeenCalled();
+    });
+
+    it('does not sign out when a concurrent login already replaced the failed token', async () => {
+      (supabaseAuth.getAccessToken as Mock).mockResolvedValue(null);
+      // A concurrent login succeeded and replaced the token after this
+      // request's refresh attempt failed — must not tear down that session.
+      (supabaseAuth.getTokens as Mock).mockReturnValue({ access_token: 'fresh-token-from-concurrent-login' });
+      (supabaseAuth.signOut as Mock).mockResolvedValue(undefined);
+
+      const interceptor = getResponseInterceptor();
+
+      const error = new axios.AxiosError('Unauthorized', '401', undefined, undefined, {
+        status: 401,
+        data: {},
+        statusText: 'Unauthorized',
+        headers: {},
+        config: { headers: new axios.AxiosHeaders() } as never,
+      });
+      error.config = {
+        headers: new axios.AxiosHeaders({ Authorization: 'Bearer stale-token' }),
+        url: '/test',
+      } as never;
+
+      await expect(interceptor.rejected(error)).rejects.toThrow(ERROR_MESSAGES.SESSION_EXPIRED);
+      expect(supabaseAuth.signOut).not.toHaveBeenCalled();
     });
   });
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, X, Images, ArrowLeft, Loader2, Sparkles } from 'lucide-react';
+import { Upload, X, Images, ArrowLeft, Loader2, Sparkles, Camera } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -44,7 +44,7 @@ export function TourCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState<'info' | 'upload'>('info');
+  const [step, setStep] = useState<'choose' | 'info' | 'upload'>('choose');
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [createdTour, setCreatedTour] = useState<Tour | null>(null);
   const [showAIWizard, setShowAIWizard] = useState(false);
@@ -285,19 +285,70 @@ export function TourCreatePage() {
           <div>
             <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Create New Tour</h1>
             <p className="text-[var(--color-text-muted)]">
-              {step === 'info' ? 'Step 1: Tour Information' : 'Step 2: Upload Scenes'}
+              {step === 'choose' && 'Choose how to add content'}
+              {step === 'info' && 'Step 1: Tour Information'}
+              {step === 'upload' && 'Step 2: Upload Scenes'}
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          className="w-full sm:w-auto"
-          onClick={() => setShowAIWizard(true)}
-        >
-          <Sparkles className="h-4 w-4" />
-          AI Generate
-        </Button>
+        {step !== 'choose' && (
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => setShowAIWizard(true)}
+          >
+            <Sparkles className="h-4 w-4" />
+            AI Generate
+          </Button>
+        )}
       </div>
+
+      {/* Path selection */}
+      {step === 'choose' && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.TOUR_CAPTURE)}
+            className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-left transition hover:border-[var(--color-primary-400)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-500)]"
+          >
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-primary-50)] text-[var(--color-primary-600)] group-hover:bg-[var(--color-primary-100)]">
+              <Camera className="h-5 w-5" />
+            </div>
+            <h2 className="font-semibold text-[var(--color-text-primary)]">Guided capture</h2>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              Use the device camera. Turn in place, capture with overlap, upload into a draft tour.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStep('info')}
+            className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-left transition hover:border-[var(--color-primary-400)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-500)]"
+          >
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-surface-elevated)] text-[var(--color-text-primary)]">
+              <Upload className="h-5 w-5" />
+            </div>
+            <h2 className="font-semibold text-[var(--color-text-primary)]">Upload panoramas</h2>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              Already have equirectangular 360° images? Drop them in and edit as usual.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowAIWizard(true)}
+            className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-left transition hover:border-[var(--color-primary-400)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-500)]"
+          >
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <h2 className="font-semibold text-[var(--color-text-primary)]">AI generate</h2>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+              Upload images and let AI order rooms, labels, and hotspot suggestions.
+            </p>
+          </button>
+        </div>
+      )}
 
       {/* Step 1: Tour Info */}
       {step === 'info' && (
@@ -353,8 +404,8 @@ export function TourCreatePage() {
               </div>
 
               <div className="flex items-center justify-end gap-4">
-                <Button type="button" variant="outline" onClick={() => navigate(ROUTES.TOURS)}>
-                  Cancel
+                <Button type="button" variant="outline" onClick={() => setStep('choose')}>
+                  Back
                 </Button>
                 <Button
                   type="submit"
