@@ -21,7 +21,7 @@ import {
   type OTPFormData,
 } from '@/utils/validation';
 import { ROUTES } from '@/constants';
-import { mapSupabaseAuthError, UNVERIFIED_ACCOUNT_MESSAGE } from '@/lib/authErrors';
+import { UNVERIFIED_ACCOUNT_MESSAGE } from '@/lib/authErrors';
 
 type Step = 'identifier' | 'password' | 'otp' | 'set-password';
 type IdentifierFormData = { identifier: string };
