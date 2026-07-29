@@ -1,0 +1,20 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Skill files
+*.skill
+
+# Local agent / skill workspaces — scoped to generated eval runs so
+# project-maintained files under .claude/skills/* and .agents/skills/*
+# stay trackable.
+.claude/skills/*-workspace/
+.agents/skills/*-workspace/
+.playwright-mcp/

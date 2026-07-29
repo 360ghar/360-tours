@@ -1,0 +1,73 @@
+PODS:
+  - DartCvIOS (4.12.0.2):
+    - DartCvIOS/calib3d (= 4.12.0.2)
+    - DartCvIOS/contrib (= 4.12.0.2)
+    - DartCvIOS/core (= 4.12.0.2)
+    - DartCvIOS/features2d (= 4.12.0.2)
+    - DartCvIOS/imgproc (= 4.12.0.2)
+    - DartCvIOS/objdetect (= 4.12.0.2)
+    - DartCvIOS/photo (= 4.12.0.2)
+    - DartCvIOS/stitching (= 4.12.0.2)
+    - DartCvIOS/video (= 4.12.0.2)
+  - DartCvIOS/calib3d (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/contrib (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/core (4.12.0.2)
+  - DartCvIOS/dnn (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/features2d (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/imgproc (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/objdetect (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/photo (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/stitching (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/video (4.12.0.2):
+    - DartCvIOS/core
+  - DartCvIOS/videoio (4.12.0.2):
+    - DartCvIOS/core
+  - Flutter (1.0.0)
+  - insta360_capture (0.1.0):
+    - Flutter
+  - lidar_scanner (0.1.0):
+    - Flutter
+  - opencv_dart (0.0.1):
+    - DartCvIOS (= 4.12.0.2)
+    - DartCvIOS/dnn (= 4.12.0.2)
+    - DartCvIOS/videoio (= 4.12.0.2)
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - insta360_capture (from `.symlinks/plugins/insta360_capture/ios`)
+  - lidar_scanner (from `.symlinks/plugins/lidar_scanner/ios`)
+  - opencv_dart (from `.symlinks/plugins/opencv_dart/ios`)
+
+SPEC REPOS:
+  trunk:
+    - DartCvIOS
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  insta360_capture:
+    :path: ".symlinks/plugins/insta360_capture/ios"
+  lidar_scanner:
+    :path: ".symlinks/plugins/lidar_scanner/ios"
+  opencv_dart:
+    :path: ".symlinks/plugins/opencv_dart/ios"
+
+SPEC CHECKSUMS:
+  DartCvIOS: 31615ff863f0fc709aee9b93dc3afa3500d35ba7
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  insta360_capture: beb16bd57ea14dd7dd66a3921b822e30e1be9c27
+  lidar_scanner: 097437eaa2232daa73783d5d120d4472db3f533e
+  opencv_dart: 71fc6f2ae1f9feb2f143eeee32823f3dc492ab47
+
+PODFILE CHECKSUM: 251cb053df7158f337c0712f2ab29f4e0fa474ce
+
+COCOAPODS: 1.16.2

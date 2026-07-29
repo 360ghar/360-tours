@@ -1,0 +1,47 @@
+# Playwright auth state
+e2e/.auth/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+coverage
+playwright-report
+test-results
+*.local
+
+# Editor directories and files
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+seed_properties/
+
+# Pipeline / lab outputs (regenerated locally)
+outputs/
+
+# Large Gaussian splat / 3DGS binaries — never commit
+public/splats/*.splat
+public/splats/*.ply
+public/splats/*.spz
+public/splats/*.ksplat
+*.splat
+*.ply
+
+# Research papers / large downloads dropped in repo root
+/*.pdf
+!docs/**/*.pdf
+
+# Old local capture / drive dumps
+drive-download*/
+videoplayback*

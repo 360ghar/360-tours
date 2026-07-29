@@ -1,0 +1,820 @@
+@import 'tailwindcss';
+
+/* Design Tokens - 360 Viewer Theme */
+:root {
+  /* Landing Page Typography */
+  --font-display: 'Clash Display', system-ui, sans-serif;
+  --font-body: 'Satoshi', system-ui, sans-serif;
+
+  /* Landing Page Specific Colors - Bold Editorial Palette */
+  --landing-bg: #fafafa;
+  --landing-bg-dark: #0a0a0b;
+  --landing-accent: #ff5733;
+  --landing-accent-hover: #e64a2e;
+  --landing-accent-subtle: #fff0ec;
+  --landing-text-hero: #0a0a0b;
+  --landing-text-body: #3d3d3d;
+  --landing-text-muted: #6b6b6b;
+
+  /* Gradient for AI emphasis */
+  --landing-gradient-ai: linear-gradient(135deg, #ff5733 0%, #ff8a5c 50%, #ffc857 100%);
+  --landing-gradient-dark: linear-gradient(180deg, #0a0a0b 0%, #1a1a1f 100%);
+
+  /* Editorial spacing scale */
+  --space-section: clamp(5rem, 10vw, 8rem);
+  --space-block: clamp(2.5rem, 5vw, 4rem);
+
+  /* Primary Brand Colors - Orange-Red (matching landing accent) */
+  --color-primary-50: #fff5f2;
+  --color-primary-100: #ffe8e1;
+  --color-primary-200: #ffcfc2;
+  --color-primary-300: #ffab94;
+  --color-primary-400: #ff8a5c;
+  --color-primary-500: #ff5733;
+  --color-primary-600: #e64a2e;
+  --color-primary-700: #cc3d25;
+  --color-primary-800: #a63320;
+  --color-primary-900: #872a1a;
+  --color-primary-950: #4a1610;
+
+  /* Secondary Colors - Golden/Amber (from landing gradient) */
+  --color-secondary-50: #fffbeb;
+  --color-secondary-100: #fef3c7;
+  --color-secondary-200: #fde68a;
+  --color-secondary-300: #fcd34d;
+  --color-secondary-400: #fbbf24;
+  --color-secondary-500: #ffc857;
+  --color-secondary-600: #d97706;
+  --color-secondary-700: #b45309;
+  --color-secondary-800: #92400e;
+  --color-secondary-900: #78350f;
+  --color-secondary-950: #451a03;
+
+  /* Semantic Colors - Success (Emerald palette) */
+  --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-200: #a7f3d0;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+  --color-success-800: #065f46;
+
+  /* Semantic Colors - Warning (Amber palette) */
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning-800: #92400e;
+
+  /* Semantic Colors - Error (Red palette) */
+  --color-error-50: #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-200: #fecaca;
+  --color-error-500: #ef4444;
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+  --color-error-800: #991b1b;
+
+  /* Semantic Colors - Info (Neutral palette) */
+  --color-info-50: #f5f5f5;
+  --color-info-100: #e5e5e5;
+  --color-info-200: #d4d4d4;
+  --color-info-500: #6b6b6b;
+  --color-info-600: #525252;
+  --color-info-700: #404040;
+  --color-info-800: #262626;
+
+  /* Background & Surface */
+  --color-background: #ffffff;
+  --color-surface: #f5f5f5;
+  --color-surface-elevated: #ffffff;
+
+  /* Text Colors */
+  --color-text-primary: #0a0a0b;
+  --color-text-secondary: #3d3d3d;
+  --color-text-muted: #6b6b6b;
+  --color-text-disabled: #9a9a9a;
+  --color-text-inverse: #ffffff;
+
+  /* Border Colors */
+  --color-border: #e5e5e5;
+  --color-border-focus: #ff5733;
+  --color-border-error: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Border Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Typography */
+  --font-sans: 'Satoshi', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Z-Index Scale */
+  --z-dropdown: 50;
+  --z-sticky: 100;
+  --z-overlay: 200;
+  --z-modal: 300;
+  --z-toast: 400;
+  --z-tooltip: 500;
+}
+
+/* Dark Mode */
+.dark {
+  --color-background: #0a0a0b;
+  --color-surface: #111111;
+  --color-surface-elevated: #1a1a1f;
+
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #b8b8b8;
+  --color-text-muted: #6b6b6b;
+  --color-text-disabled: #4a4a4a;
+
+  --color-border: #2a2a2f;
+
+  /* Primary color dark mode adjustments */
+  --color-primary-50: #1f1510;
+  --color-primary-100: #2d1a14;
+  --color-primary-200: #4a1610;
+  --color-primary-600: #ff8a5c;
+  --color-primary-800: #ffcfc2;
+
+  /* Success - Dark mode (dark bg, light text for contrast) */
+  --color-success-50: #064e3b;
+  --color-success-100: #065f46;
+  --color-success-200: #047857;
+  --color-success-500: #10b981;
+  --color-success-600: #34d399;
+  --color-success-700: #6ee7b7;
+  --color-success-800: #a7f3d0;
+
+  /* Warning - Dark mode */
+  --color-warning-50: #451a03;
+  --color-warning-100: #78350f;
+  --color-warning-200: #92400e;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #fbbf24;
+  --color-warning-700: #fcd34d;
+  --color-warning-800: #fde68a;
+
+  /* Error - Dark mode */
+  --color-error-50: #450a0a;
+  --color-error-100: #7f1d1d;
+  --color-error-200: #991b1b;
+  --color-error-500: #ef4444;
+  --color-error-600: #f87171;
+  --color-error-700: #fca5a5;
+  --color-error-800: #fecaca;
+
+  /* Info - Dark mode */
+  --color-info-50: #1a1a1f;
+  --color-info-100: #2a2a2f;
+  --color-info-200: #3a3a3f;
+  --color-info-500: #9a9a9a;
+  --color-info-600: #b8b8b8;
+  --color-info-700: #d4d4d4;
+  --color-info-800: #e5e5e5;
+
+  /* Landing page dark mode */
+  --landing-bg: #0a0a0b;
+  --landing-text-hero: #fafafa;
+  --landing-text-body: #b8b8b8;
+  --landing-text-muted: #6b6b6b;
+  --landing-accent-subtle: #1f1510;
+}
+
+/* Base Styles */
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Focus Styles */
+*:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-text-muted);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}
+
+/* Custom Utility Classes */
+.gradient-primary {
+  background: var(--landing-gradient-ai);
+}
+
+.text-gradient {
+  color: var(--landing-accent);
+}
+
+/* 360 Viewer Specific Styles */
+.viewer-container {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background: #000;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.hotspot-info {
+  background: var(--color-surface-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  padding: 1rem;
+}
+
+/* Animation Classes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--transition-base) ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp var(--transition-base) ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn var(--transition-base) ease-out;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ============================================
+   APP TYPOGRAPHY UTILITIES (matching landing style)
+   ============================================ */
+
+.app-headline {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+.app-subhead {
+  font-family: var(--font-body);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+.app-body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+.app-eyebrow {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-primary-600);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* Photo Sphere Viewer Overrides */
+.psv-container {
+  border-radius: var(--radius-lg);
+}
+
+/* Suppress PSV's built-in panorama overlay (its raw "!" / "The panorama cannot be
+   loaded" message). The app provides its own branded loading spinner and a
+   friendly error+retry state in PanoramaViewer, so the native overlay would only
+   duplicate (and visually clash with) those. */
+.psv-overlay {
+  display: none !important;
+}
+
+.psv-navbar {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent) !important;
+}
+
+.psv-marker--custom {
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.psv-marker--custom:hover {
+  transform: scale(1.1);
+}
+
+/* Navigation hotspot — Matterport-style floor puck.
+   A bright circular target with a forward chevron, a soft pulse ring, and a
+   room-name label that appears on hover/focus. White core + brand accent keeps it
+   legible over both bright and dark panoramas. */
+.psv-nav-marker {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.psv-nav-marker:hover,
+.psv-nav-marker:focus-visible {
+  transform: scale(1.14);
+  outline: none;
+}
+
+.psv-nav-pulse {
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  border: 2px solid var(--color-primary-400);
+  opacity: 0.7;
+  pointer-events: none;
+  animation: psv-nav-pulse 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.psv-nav-core {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--color-primary-600);
+  background: radial-gradient(circle at 50% 36%, #ffffff 0%, #ffffff 58%, #fff1ec 100%);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px var(--color-primary-500);
+}
+
+.psv-nav-core svg {
+  display: block;
+  transform: translateY(-1px);
+}
+
+.psv-nav-label {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(17, 17, 19, 0.9);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.psv-nav-marker:hover .psv-nav-label,
+.psv-nav-marker:focus-visible .psv-nav-label {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@keyframes psv-nav-pulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .psv-nav-pulse {
+    animation: none;
+    opacity: 0.5;
+  }
+  .psv-nav-marker {
+    transition: none;
+  }
+}
+
+/* ============================================
+   LANDING PAGE ANIMATIONS & UTILITIES
+   ============================================ */
+
+/* Landing Page Animation Keyframes */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(-3deg);
+  }
+}
+
+@keyframes drawPath {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes pulseGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 87, 51, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 16px rgba(255, 87, 51, 0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Landing animation utility classes */
+.landing-animate-fade-in-up {
+  animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.landing-animate-fade-in-right {
+  animation: fadeInRight 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.landing-animate-fade-in-left {
+  animation: fadeInLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.landing-animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+.landing-animate-draw-path {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: drawPath 2s ease-out forwards;
+}
+
+.landing-animate-marquee {
+  animation: marquee 40s linear infinite;
+}
+
+.landing-animate-pulse-glow {
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+.landing-animate-scale-in {
+  animation: scaleIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+/* Stagger delay utilities */
+.landing-delay-0 {
+  animation-delay: 0ms;
+}
+.landing-delay-100 {
+  animation-delay: 100ms;
+}
+.landing-delay-200 {
+  animation-delay: 200ms;
+}
+.landing-delay-300 {
+  animation-delay: 300ms;
+}
+.landing-delay-400 {
+  animation-delay: 400ms;
+}
+.landing-delay-500 {
+  animation-delay: 500ms;
+}
+.landing-delay-600 {
+  animation-delay: 600ms;
+}
+.landing-delay-700 {
+  animation-delay: 700ms;
+}
+.landing-delay-800 {
+  animation-delay: 800ms;
+}
+.landing-delay-900 {
+  animation-delay: 900ms;
+}
+.landing-delay-1000 {
+  animation-delay: 1000ms;
+}
+.landing-delay-1200 {
+  animation-delay: 1200ms;
+}
+
+/* Landing section base */
+.landing-section {
+  padding-top: var(--space-section);
+  padding-bottom: var(--space-section);
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .landing-section {
+    padding-left: 3rem;
+    padding-right: 3rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .landing-section {
+    padding-left: 4rem;
+    padding-right: 4rem;
+  }
+}
+
+/* Landing typography */
+.landing-headline {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: var(--landing-text-hero);
+}
+
+.landing-subhead {
+  font-family: var(--font-body);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--landing-text-body);
+}
+
+.landing-body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--landing-text-body);
+}
+
+.landing-eyebrow {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--landing-accent);
+}
+
+/* Accent text highlight */
+.landing-accent-text {
+  color: var(--landing-accent);
+}
+
+/* Landing gradient text */
+.landing-gradient-text {
+  color: var(--landing-accent);
+}
+
+/* CTA Button styles */
+.landing-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem 2rem;
+  background: var(--landing-accent);
+  color: white;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: 9999px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-btn-primary:hover {
+  background: var(--landing-accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(255, 87, 51, 0.3);
+}
+
+.landing-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem 2rem;
+  background: transparent;
+  color: var(--landing-text-hero);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: 9999px;
+  border: 2px solid var(--landing-text-hero);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.landing-btn-secondary:hover {
+  background: var(--landing-text-hero);
+  color: var(--landing-bg);
+  transform: translateY(-2px);
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .landing-animate-fade-in-up,
+  .landing-animate-fade-in-right,
+  .landing-animate-fade-in-left,
+  .landing-animate-float,
+  .landing-animate-draw-path,
+  .landing-animate-marquee,
+  .landing-animate-pulse-glow,
+  .landing-animate-scale-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

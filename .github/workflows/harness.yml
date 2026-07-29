@@ -1,0 +1,43 @@
+name: Mobile Harness
+
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', '.github/workflows/harness.yml']
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/harness.yml']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Docs harness
+        run: bash ./scripts/check_docs_harness.sh
+
+      - name: Architecture harness
+        run: dart run scripts/check_architecture.dart
+
+      - name: Install dependencies
+        working-directory: mobile/app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: mobile/app
+        run: flutter analyze
+
+      - name: Test
+        working-directory: mobile/app
+        run: flutter test
