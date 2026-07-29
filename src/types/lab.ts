@@ -35,6 +35,10 @@ export interface CreateSplatJobRequest {
   is_360_video: boolean;
   mask_people: boolean;
   quality_preset: QualityPreset;
+}
+
+/** What actually goes over the wire — `filenames` is derived from the picked files, not caller-supplied. */
+export interface CreateSplatJobPayload extends CreateSplatJobRequest {
   filenames: string[];
 }
 

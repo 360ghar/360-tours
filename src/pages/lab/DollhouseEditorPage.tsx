@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { useCallback, useRef, useState } from 'react';
+import { Canvas, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Splat, TransformControls, Html, Grid } from '@react-three/drei';
 import { Button } from '@/components/ui/Button';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@/constants';
-import { ArrowLeft, Move, RotateCw, Link, Save, Maximize, Settings, Eye } from 'lucide-react';
+import { ArrowLeft, Move, RotateCw, Link, Save, Maximize, Settings, Eye, Grid as GridIcon } from 'lucide-react';
 import * as THREE from 'three';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -35,42 +35,51 @@ const INITIAL_MODELS: ModelData[] = [
 
 export function DollhouseEditorPage() {
   const navigate = useNavigate();
-  
+
   const [models, setModels] = useState<ModelData[]>(INITIAL_MODELS);
   const [connections, setConnections] = useState<Connection[]>([]);
-  
+
   const [activeModelId, setActiveModelId] = useState<string>('room1');
   const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'scale' | 'connect'>('translate');
   const [orbitEnabled, setOrbitEnabled] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
-  
+
   const activeModel = models.find(m => m.id === activeModelId);
+  // Only ever dereferenced inside callbacks/effects below, never during render.
+  const groupRefsRef = useRef(new Map<string, THREE.Group>());
+  // This state mirrors "the currently active group" so TransformControls'
+  // `object` prop is read from state during render, never from the ref map.
+  // Kept in sync by the per-model ref callback below (inline ref callbacks
+  // re-fire on every render, so this updates whenever activeModelId changes).
+  const [activeGroup, setActiveGroup] = useState<THREE.Group | null>(null);
 
   const updateModel = (id: string, updates: Partial<ModelData>) => {
     setModels(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
   };
 
-  const handlePointerMissed = (e: MouseEvent) => {
-    if (transformMode === 'connect') {
-      // Find intersection with the grid (Y=0 plane)
-      const x = (e.clientX / window.innerWidth) * 2 - 1;
-      const y = -(e.clientY / window.innerHeight) * 2 + 1;
-      const mouse = new THREE.Vector2(x, y);
-      const raycaster = new THREE.Raycaster();
-      // Need camera for raycasting, but we don't have it directly here.
-      // So we'll pass a handler down to the Canvas or use useThree inside a helper component.
-    }
-  };
-
-  const handleTransformChange = (e: any) => {
-    if (!e || !e.target || !e.target.object) return;
-    const obj = e.target.object;
+  const handleTransformChange = useCallback(() => {
+    const obj = groupRefsRef.current.get(activeModelId);
+    if (!obj) return;
     updateModel(activeModelId, {
       position: [obj.position.x, obj.position.y, obj.position.z],
       rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
-      scale: [obj.scale.x, obj.scale.y, obj.scale.z]
+      scale: [obj.scale.x, obj.scale.y, obj.scale.z],
     });
-  };
+  }, [activeModelId]);
+
+  const handlePlaceConnection = useCallback(
+    (point: THREE.Vector3) => {
+      const toModelId = models.find(m => m.id !== activeModelId)?.id ?? 'room2';
+      const newConn: Connection = {
+        id: uuidv4(),
+        fromModel: activeModelId,
+        toModel: toModelId,
+        position: [point.x, point.y, point.z],
+      };
+      setConnections(prev => [...prev, newConn]);
+    },
+    [activeModelId, models]
+  );
 
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden font-sans">
@@ -86,9 +95,15 @@ export function DollhouseEditorPage() {
         
         <div className="flex gap-2 pointer-events-auto bg-black/50 backdrop-blur-md rounded-full p-1 border border-white/10">
            <Button variant="ghost" size="sm" className={`rounded-full ${showGrid ? 'bg-white/20' : ''}`} onClick={() => setShowGrid(!showGrid)}>
-             <Grid className="h-4 w-4 mr-2" /> Grid
+             <GridIcon className="h-4 w-4 mr-2" /> Grid
            </Button>
-           <Button variant="primary" size="sm" className="rounded-full bg-blue-600 hover:bg-blue-700">
+           <Button
+             variant="default"
+             size="sm"
+             disabled
+             title="Not wired up yet — layout persistence is coming in a later pass."
+             className="rounded-full bg-blue-600 opacity-50 hover:bg-blue-600"
+           >
              <Save className="h-4 w-4 mr-2" /> Save Tour
            </Button>
         </div>
@@ -102,26 +117,55 @@ export function DollhouseEditorPage() {
         {showGrid && <Grid infiniteGrid fadeDistance={50} sectionColor="#444" cellColor="#222" />}
 
         {models.map(model => (
-          <group key={model.id}>
-            {activeModelId === model.id && transformMode !== 'connect' ? (
-              <TransformControls
-                mode={transformMode as any}
-                onDraggingChanged={(e) => setOrbitEnabled(!e.value)}
-                onChange={handleTransformChange}
-                position={model.position}
-                rotation={model.rotation}
-                scale={model.scale}
-              >
-                <Splat src={model.src} />
-              </TransformControls>
-            ) : (
-              <group position={model.position} rotation={model.rotation} scale={model.scale}>
-                <Splat src={model.src} />
-              </group>
-            )}
+          <group
+            key={model.id}
+            ref={el => {
+              if (el) groupRefsRef.current.set(model.id, el);
+              else groupRefsRef.current.delete(model.id);
+              if (model.id === activeModelId) setActiveGroup(el);
+            }}
+            position={model.position}
+            rotation={model.rotation}
+            scale={model.scale}
+          >
+            <Splat src={model.src} />
           </group>
         ))}
-        
+
+        {activeGroup && transformMode !== 'connect' && (
+          <TransformControls
+            object={activeGroup}
+            mode={transformMode}
+            onChange={handleTransformChange}
+            ref={(controls) => {
+              if (!controls) return;
+              // three-stdlib's TransformControls dispatches a 'dragging-changed'
+              // event that isn't part of the typed Object3D event map.
+              const dispatcher = controls as unknown as THREE.EventDispatcher<{
+                'dragging-changed': { value: boolean };
+              }>;
+              const onDraggingChanged = (e: { value: boolean }) => setOrbitEnabled(!e.value);
+              dispatcher.addEventListener('dragging-changed', onDraggingChanged);
+              return () => dispatcher.removeEventListener('dragging-changed', onDraggingChanged);
+            }}
+          />
+        )}
+
+        {/* Invisible floor plane — click while in "connect" mode to place a
+            door/portal marker between the active model and the next one. */}
+        {transformMode === 'connect' && (
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            onClick={(e: ThreeEvent<MouseEvent>) => {
+              e.stopPropagation();
+              handlePlaceConnection(e.point);
+            }}
+          >
+            <planeGeometry args={[100, 100]} />
+            <meshBasicMaterial visible={false} />
+          </mesh>
+        )}
+
         {/* Render Connections */}
         {connections.map(conn => (
           <group key={conn.id} position={conn.position}>
@@ -170,24 +214,12 @@ export function DollhouseEditorPage() {
           <Maximize className="h-5 w-5" />
         </Button>
         <div className="w-px h-8 bg-white/20 self-center mx-1" />
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           className={`rounded-xl text-white hover:bg-white/20 hover:text-white ${transformMode === 'connect' ? 'bg-yellow-500/50' : ''}`}
-          onClick={() => {
-             setTransformMode('connect');
-             // Add a mock connection in front of the camera for now
-             if (transformMode !== 'connect') {
-                const newConn: Connection = {
-                  id: uuidv4(),
-                  fromModel: activeModelId,
-                  toModel: models.find(m => m.id !== activeModelId)?.id || 'room2',
-                  position: [activeModel?.position[0] ?? 0, 1, (activeModel?.position[2] ?? 0) + 2]
-                };
-                setConnections(prev => [...prev, newConn]);
-             }
-          }}
-          title="Add Connection"
+          onClick={() => setTransformMode(prev => (prev === 'connect' ? 'translate' : 'connect'))}
+          title={transformMode === 'connect' ? 'Click the floor to place a connection' : 'Add Connection'}
         >
           <Link className="h-5 w-5" />
         </Button>

@@ -34,14 +34,10 @@ export interface TourSpatialManifest {
   meta?: Record<string, unknown>;
 }
 
-export interface WalkableVolume {
-  type: 'camera_tube' | 'aabb' | 'mesh';
-  path?: [number, number, number][];
-  radius?: number;
-  min?: [number, number, number];
-  max?: [number, number, number];
-  mesh_url?: string;
-}
+export type WalkableVolume =
+  | { type: 'camera_tube'; path: [number, number, number][]; radius: number }
+  | { type: 'aabb'; min: [number, number, number]; max: [number, number, number] }
+  | { type: 'mesh'; mesh_url: string };
 
 export interface NavigationGraph {
   nodes: NavigationNode[];

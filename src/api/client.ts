@@ -29,6 +29,29 @@ function notifyAuthExpired() {
   }
 }
 
+function getBearerToken(headers: InternalAxiosRequestConfig['headers'] | undefined): string | null {
+  const raw =
+    (headers as { Authorization?: string } | undefined)?.Authorization ??
+    (headers as { get?: (k: string) => string | undefined } | undefined)?.get?.('Authorization');
+  if (!raw) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(raw);
+  return match ? match[1] : null;
+}
+
+/**
+ * Only force a sign-out if the token that failed is still the current one.
+ * If it differs, a concurrent refresh/login already replaced it — expiring
+ * the session here would wipe out that newer, valid session.
+ */
+async function expireSessionIfStillStale(failedToken: string | null): Promise<void> {
+  const currentToken = supabaseAuth.getTokens()?.access_token ?? null;
+  if (currentToken && failedToken && currentToken !== failedToken) {
+    return;
+  }
+  await supabaseAuth.signOut().catch(() => {});
+  notifyAuthExpired();
+}
+
 async function tryRefreshToken(): Promise<string | null> {
   if (!isRefreshingToken) {
     isRefreshingToken = true;
@@ -102,11 +125,11 @@ apiClient.interceptors.response.use(
           return Promise.reject(error);
         }
 
+        const failedToken = getBearerToken(originalRequest.headers);
         const tokenRetryCount = extendedRequest._tokenRetryCount || 0;
 
         if (tokenRetryCount >= MAX_TOKEN_RETRY_ATTEMPTS) {
-          await supabaseAuth.signOut().catch(() => {});
-          notifyAuthExpired();
+          await expireSessionIfStillStale(failedToken);
           return Promise.reject(new Error(ERROR_MESSAGES.SESSION_EXPIRED));
         }
 
@@ -122,13 +145,7 @@ apiClient.interceptors.response.use(
           // refresh failed, fall through to sign-out
         }
 
-        // Only expire the session if we still look signed-in. A concurrent
-        // login may have already established a fresh token.
-        const stillHasToken = Boolean(supabaseAuth.getTokens()?.access_token);
-        if (stillHasToken) {
-          await supabaseAuth.signOut().catch(() => {});
-          notifyAuthExpired();
-        }
+        await expireSessionIfStillStale(failedToken);
         return Promise.reject(new Error(ERROR_MESSAGES.SESSION_EXPIRED));
       }
 

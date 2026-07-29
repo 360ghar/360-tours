@@ -82,7 +82,7 @@ Professional analogues:
 2. Compute robust camera AABB: percentiles **p5–p95** of \(C_i\).  
 3. Density peak: voxelize \(G_j\) (e.g. 32³); pick densest voxel whose center lies inside camera AABB inflated by 10%.  
 4. Spawn \(s = \) mean of cameras in densest half of path **or** densest voxel center.  
-5. Lift to eye height: \(s_y \leftarrow \text{floor}_y + h_{\text{eye}}\) (default \(h_{\text{eye}} = 1.6\) in **metric-ish** scaled space; if unit-normalized scene, use \(0.15 \times\) room height).  
+5. Lift to eye height **along the normalized up vector \(u\) from §2.2, before applying \(R_{\text{align}}\)**: \(s \leftarrow s + h_{\text{eye}} \cdot u\) (default \(h_{\text{eye}} = 1.6\) in **metric-ish** scaled space; if unit-normalized scene, use \(0.15 \times\) room height). Lifting along raw \(s_y\) is only correct once the scene is already Y-up — if \(u\) isn't yet \((0,1,0)\), that offsets along the wrong axis and can place the spawn off the floor or outside the room.  
 6. Look-at: horizontal toward room centroid projected on floor plane.
 
 **Never** use world origin alone (often outside or in the shell center void incorrectly framed).
@@ -189,6 +189,8 @@ export interface TourSpatialManifest {
     position: [number, number, number];
     rotation_xyzw: [number, number, number, number]; // camera orientation
     eye_height: number;
+    /** Preferred graph node to spawn at, when the graph already covers this position */
+    node_id?: string;
   };
   bounds: {
     /** Robust AABB of usable volume */

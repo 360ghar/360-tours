@@ -1,5 +1,5 @@
 import { apiClient, extractData } from './client';
-import type { SplatJob, CreateSplatJobRequest } from '@/types/lab';
+import type { SplatJob, CreateSplatJobPayload } from '@/types/lab';
 
 interface JobListResponse {
   jobs: SplatJob[];
@@ -10,7 +10,7 @@ export const labApi = {
   /**
    * Create a new splat job
    */
-  async createJob(data: CreateSplatJobRequest): Promise<SplatJob> {
+  async createJob(data: CreateSplatJobPayload): Promise<SplatJob> {
     const response = await apiClient.post<SplatJob>('/lab/jobs', data);
     return extractData(response);
   },

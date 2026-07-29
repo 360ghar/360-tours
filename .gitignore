@@ -39,9 +39,11 @@ test-results
 
 seed_properties/
 
-# Local agent / skill workspaces
-.claude/
-.agents/
+# Local agent / skill workspaces — scoped to generated eval runs so
+# project-maintained files under .claude/skills/* and .agents/skills/*
+# stay trackable.
+.claude/skills/*-workspace/
+.agents/skills/*-workspace/
 .playwright-mcp/
 
 # Pipeline / lab outputs (regenerated locally)
@@ -56,7 +58,7 @@ public/splats/*.ksplat
 *.ply
 
 # Research papers / large downloads dropped in repo root
-*.pdf
+/*.pdf
 !docs/**/*.pdf
 
 # Old local capture / drive dumps

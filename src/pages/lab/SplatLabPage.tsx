@@ -55,7 +55,11 @@ const STAGE_ICONS: Record<string, React.ComponentType<{ className?: string }>> =
 
 type StageState = 'pending' | 'active' | 'done' | 'failed';
 
-function getStageState(stageId: SplatJobStatus, currentStatus: SplatJobStatus): StageState {
+function getStageState(
+  stageId: SplatJobStatus,
+  currentStatus: SplatJobStatus,
+  progress: number
+): StageState {
   const order: SplatJobStatus[] = [
     'uploading',
     'extracting',
@@ -66,14 +70,26 @@ function getStageState(stageId: SplatJobStatus, currentStatus: SplatJobStatus): 
     'collision',
     'ready',
   ];
-  const currentIdx = order.indexOf(currentStatus === 'failed' ? 'failed' : currentStatus);
   const stageIdx = order.indexOf(stageId);
 
+  if (currentStatus === 'ready') {
+    return 'done';
+  }
+
   if (currentStatus === 'failed') {
-    if (stageIdx < currentIdx) return 'done';
-    if (stageIdx === currentIdx) return 'failed';
+    // The job no longer reports which stage it died in, so estimate it from
+    // the last known progress percentage rather than treating every stage as
+    // still pending.
+    const failedIdx = Math.min(
+      order.length - 1,
+      Math.max(0, Math.round((progress / 100) * (order.length - 1)))
+    );
+    if (stageIdx < failedIdx) return 'done';
+    if (stageIdx === failedIdx) return 'failed';
     return 'pending';
   }
+
+  const currentIdx = order.indexOf(currentStatus);
   if (stageIdx < currentIdx) return 'done';
   if (stageIdx === currentIdx) return 'active';
   return 'pending';
@@ -84,7 +100,7 @@ function PipelineTracker({ job }: { job: SplatJob }) {
   return (
     <div className="flex items-start gap-1 overflow-x-auto pb-2">
       {PIPELINE_STAGES.map((stage, i) => {
-        const state = getStageState(stage.id, job.status);
+        const state = getStageState(stage.id, job.status, job.progress);
         const Icon = STAGE_ICONS[stage.id] ?? CheckCircle2;
 
         return (
@@ -175,7 +191,11 @@ function GpuWarningBanner() {
               Try Luma AI
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
-            <button className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-warning-600)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--color-warning-700)]">
+            <button
+              disabled
+              title="Not wired up yet — contact your Daytona admin directly to request GPU access."
+              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg bg-[var(--color-warning-600)] px-3 py-1.5 text-sm font-medium text-white opacity-50"
+            >
               Request GPU Access
             </button>
           </div>
@@ -273,28 +293,20 @@ function ActiveJobView({
           {/* Download Actions */}
           <div className="flex flex-wrap gap-2">
             {job.splat_url && (
-              <a href={job.splat_url} download className="inline-flex">
-                <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" asChild>
+                <a href={job.splat_url} download>
                   <Download className="h-4 w-4" />
-                  Download .ply
-                </Button>
-              </a>
-            )}
-            {job.splat_url && (
-              <a href={job.splat_url} download className="inline-flex">
-                <Button variant="outline" size="sm">
-                  <Download className="h-4 w-4" />
-                  Download .spz
-                </Button>
-              </a>
+                  Download splat
+                </a>
+              </Button>
             )}
             {job.supersplat_url && (
-              <a href={job.supersplat_url} target="_blank" rel="noopener noreferrer" className="inline-flex">
-                <Button size="sm">
+              <Button size="sm" asChild>
+                <a href={job.supersplat_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   Open in SuperSplat
-                </Button>
-              </a>
+                </a>
+              </Button>
             )}
           </div>
 
@@ -316,6 +328,7 @@ function ActiveJobView({
                       className="h-[480px] w-full rounded-lg border border-[var(--color-border)]"
                       title="Gaussian Splat Preview"
                       allow="xr-spatial-tracking"
+                      sandbox="allow-scripts allow-same-origin allow-pointer-lock"
                     />
                   ) : (
                     <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] text-[var(--color-text-muted)]">
@@ -382,7 +395,7 @@ function CreateJobForm({
   }, [title]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files || []);
+    const picked = Array.from(e.target.files || []).filter(f => f.type.startsWith('video/'));
     if (picked.length > 0) {
       setFiles(prev => [...prev, ...picked]);
       if (!title) setTitle(picked[0].name.replace(/\.[^.]+$/, '') + (picked.length > 1 ? ' + more' : ''));
@@ -430,7 +443,12 @@ function CreateJobForm({
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
         className={cn(
           'flex cursor-pointer flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed p-10 transition-all duration-200',
           dragOver
@@ -584,8 +602,7 @@ function CreateJobForm({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function SplatLabPage() {
   const navigate = useNavigate();
-  const { job, jobs, isCreating, stages: _stages, createAndStart, selectJob, clearJob, error } =
-    useSplatPipeline();
+  const { job, jobs, isCreating, createAndStart, selectJob, clearJob, error } = useSplatPipeline();
 
   const hasJobs = jobs.length > 0;
   const pastJobs = jobs.filter((j) => j.id !== job?.id);
@@ -627,17 +644,6 @@ export function SplatLabPage() {
               <Crosshair className="h-4 w-4" />
               Kitchen tour (constrained)
             </Button>
-            {hasJobs && !job && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-white/30 bg-white/10 text-white backdrop-blur hover:bg-white/20"
-                onClick={() => selectJob(jobs[0])}
-              >
-                <Plus className="h-4 w-4" />
-                New Job
-              </Button>
-            )}
           </div>
         </div>
 
@@ -705,7 +711,7 @@ export function SplatLabPage() {
           </h3>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {pastJobs.map((j) => (
-              <div key={j.id} className="relative">
+              <div key={j.id} className="group relative">
                 <PastJobCard job={j} onSelect={selectJob} />
                 <button
                   onClick={async (e) => {

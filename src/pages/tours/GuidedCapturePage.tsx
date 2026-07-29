@@ -41,6 +41,8 @@ interface LocalFrame {
   frameIndex: number;
   yawDeg: number;
   pitchDeg: number | null;
+  width: number;
+  height: number;
   capturedAt: string;
   uploadStatus: 'pending' | 'uploading' | 'done' | 'error';
   uploadError?: string;
@@ -49,6 +51,21 @@ interface LocalFrame {
 
 function makeId() {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** iOS Safari requires this to be called from a user gesture before `deviceorientation` fires. */
+async function requestOrientationPermission(): Promise<void> {
+  type RequestableDeviceOrientationEvent = {
+    requestPermission?: () => Promise<'granted' | 'denied'>;
+  };
+  if (typeof DeviceOrientationEvent === 'undefined') return;
+  const ctor = DeviceOrientationEvent as unknown as RequestableDeviceOrientationEvent;
+  if (typeof ctor.requestPermission !== 'function') return;
+  try {
+    await ctor.requestPermission();
+  } catch {
+    // Ignore — the level hint just won't be available.
+  }
 }
 
 function defaultPlan(roomLabel: string) {
@@ -186,17 +203,26 @@ export function GuidedCapturePage() {
     };
   }, [routeSessionId]);
 
-  // Cleanup object URLs
+  // Keep a ref in sync so the unmount cleanup below revokes the CURRENT
+  // frames, not whatever `frames` was when this effect first ran.
+  const framesRef = useRef<LocalFrame[]>(frames);
+  useEffect(() => {
+    framesRef.current = frames;
+  }, [frames]);
+
+  // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
-      frames.forEach(f => URL.revokeObjectURL(f.previewUrl));
+      framesRef.current.forEach(f => URL.revokeObjectURL(f.previewUrl));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on unmount
   }, []);
 
   const handleStart = async () => {
     setIsStarting(true);
     setError(null);
+    // Must run inside this user-gesture handler — iOS Safari refuses
+    // requestPermission() calls made outside a direct click/tap.
+    void requestOrientationPermission();
     try {
       const plan = defaultPlan(roomLabel.trim() || 'Room 1');
       const s = await captureApi.createSession({
@@ -255,6 +281,8 @@ export function GuidedCapturePage() {
         frameIndex: frames.length,
         yawDeg: yaw,
         pitchDeg,
+        width: w,
+        height: h,
         capturedAt: new Date().toISOString(),
         uploadStatus: 'pending',
       };
@@ -297,7 +325,10 @@ export function GuidedCapturePage() {
     setError(null);
     setUploadProgress(0);
 
-    const pending = [...frames];
+    // On retry after a partial failure, don't re-upload/re-register frames
+    // that already succeeded — just pick up where we left off.
+    const alreadyUploaded = frames.filter(f => f.uploadStatus === 'done' && f.publicUrl);
+    const pending = frames.filter(f => !(f.uploadStatus === 'done' && f.publicUrl));
     let doneCount = 0;
 
     try {
@@ -341,7 +372,7 @@ export function GuidedCapturePage() {
                 tracking_quality: 'limited',
               },
               camera: {
-                resolution: [0, 0],
+                resolution: [frame.width, frame.height],
               },
             },
           });
@@ -386,7 +417,9 @@ export function GuidedCapturePage() {
         settings: DEFAULT_TOUR_SETTINGS,
       });
 
-      const uploaded = pending.filter(f => f.publicUrl);
+      const uploaded = [...alreadyUploaded, ...pending.filter(f => f.publicUrl)].sort(
+        (a, b) => a.yawDeg - b.yawDeg
+      );
       for (let i = 0; i < uploaded.length; i++) {
         const f = uploaded[i];
         await toursApi.createScene(tour.id, {
@@ -400,7 +433,16 @@ export function GuidedCapturePage() {
       setUploadProgress(100);
       setPhase('done');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload pipeline failed');
+      const message = err instanceof Error ? err.message : 'Upload pipeline failed';
+      setError(message);
+      try {
+        await captureApi.updateSession(session.id, {
+          status: 'failed',
+          error_message: message,
+        });
+      } catch {
+        // Best-effort — the user-facing error above already reflects the failure.
+      }
       setPhase('review');
     }
   };

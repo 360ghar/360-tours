@@ -8,7 +8,7 @@ browser, upload frames, and land in the existing tour editor.
 
 ## Pipeline
 
-```
+```text
 Create tour → Guided capture
   → POST /capture-sessions
   → Camera (getUserMedia) · 8 yaw targets

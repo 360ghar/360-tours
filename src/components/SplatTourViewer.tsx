@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Splat } from '@react-three/drei';
+import { Splat, useProgress } from '@react-three/drei';
 import * as THREE from 'three';
 import { ChevronLeft, ChevronRight, Crosshair, Home, Info } from 'lucide-react';
 import { Button } from '@/components/ui';
 import type { TourSpatialManifest } from '@/types/tourSpatial';
-import { alignManifest, type AlignedTour } from '@/lib/navigation/spatialMath';
+import {
+  alignManifest,
+  bfsOrder,
+  buildAdjacency,
+  quaternionToYawPitch,
+  shortestPath,
+  type AlignedTour,
+} from '@/lib/navigation/spatialMath';
 import { cn } from '@/utils';
 
 interface SplatTourViewerProps {
@@ -14,6 +21,9 @@ interface SplatTourViewerProps {
   /** Override splat URL (e.g. absolute CDN). Defaults to manifest.splat_url */
   splatUrl?: string;
 }
+
+/** Safety net only — real readiness comes from the splat loader via useProgress. */
+const LOAD_TIMEOUT_MS = 30000;
 
 /**
  * Phase A constrained GS tour player:
@@ -26,55 +36,99 @@ export function SplatTourViewer({ manifest, className, splatUrl }: SplatTourView
   const aligned = useMemo(() => alignManifest(manifest), [manifest]);
   const url = splatUrl ?? manifest.splat_url;
 
+  const adjacency = useMemo(() => buildAdjacency(manifest.graph.edges), [manifest.graph.edges]);
+  const orderedNodes = useMemo(() => {
+    const ids = bfsOrder(
+      adjacency,
+      aligned.spawnNodeId,
+      aligned.nodes.map((n) => n.id),
+    );
+    const byId = new Map(aligned.nodes.map((n) => [n.id, n]));
+    return ids.map((id) => byId.get(id)).filter((n): n is (typeof aligned.nodes)[number] => Boolean(n));
+  }, [adjacency, aligned]);
+
   const [nodeId, setNodeId] = useState(aligned.spawnNodeId);
-  const [ready, setReady] = useState(false);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [hint, setHint] = useState('Drag to look · use arrows or waypoints to move');
+  const pendingHopsRef = useRef<string[]>([]);
+
+  const { active: splatLoading } = useProgress();
+  // Derived during render (not an effect) per React's "adjusting state based
+  // on a prop change" pattern — avoids the extra render pass an effect would
+  // cause, and avoids reading a ref during render.
+  const [prevSplatLoading, setPrevSplatLoading] = useState(splatLoading);
+  const [hasStartedLoading, setHasStartedLoading] = useState(splatLoading);
+  if (splatLoading !== prevSplatLoading) {
+    setPrevSplatLoading(splatLoading);
+    if (splatLoading) {
+      setHasStartedLoading(true);
+    } else if (hasStartedLoading && loadState === 'loading') {
+      setLoadState('ready');
+    }
+  }
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setLoadState((current) => (current === 'loading' ? 'error' : current));
+    }, LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   const nodeIndex = Math.max(
     0,
-    aligned.nodes.findIndex((n) => n.id === nodeId),
+    orderedNodes.findIndex((n) => n.id === nodeId),
   );
 
-  const goToIndex = useCallback(
-    (idx: number) => {
-      const n = aligned.nodes[idx];
-      if (!n) return;
-      setNodeId(n.id);
-      setHint(`Viewpoint ${idx + 1} / ${aligned.nodes.length}`);
+  const goToId = useCallback(
+    (targetId: string) => {
+      if (targetId === nodeId) return;
+      const path = shortestPath(adjacency, nodeId, targetId);
+      const hops = path.slice(1);
+      if (hops.length === 0) return;
+      pendingHopsRef.current = hops.slice(1);
+      setNodeId(hops[0]);
+      const idx = orderedNodes.findIndex((n) => n.id === targetId);
+      setHint(idx >= 0 ? `Viewpoint ${idx + 1} / ${orderedNodes.length}` : 'Moving to waypoint');
     },
-    [aligned.nodes],
+    [adjacency, nodeId, orderedNodes],
   );
+
+  const handleNodeArrived = useCallback(() => {
+    const next = pendingHopsRef.current.shift();
+    if (next) setNodeId(next);
+  }, []);
 
   const reset = useCallback(() => {
+    pendingHopsRef.current = [];
     setNodeId(aligned.spawnNodeId);
     setHint('Reset to room spawn');
   }, [aligned.spawnNodeId]);
 
+  const goToIndex = (idx: number) => {
+    const n = orderedNodes[idx];
+    if (n) goToId(n.id);
+  };
   const prev = () => goToIndex(Math.max(0, nodeIndex - 1));
-  const next = () => goToIndex(Math.min(aligned.nodes.length - 1, nodeIndex + 1));
+  const next = () => goToIndex(Math.min(orderedNodes.length - 1, nodeIndex + 1));
 
   return (
     <div className={cn('relative w-full h-full min-h-[480px] bg-black rounded-lg overflow-hidden', className)}>
-      {!ready && (
+      {loadState !== 'ready' && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 text-white text-sm">
-          Loading tour…
+          {loadState === 'error' ? 'Could not load the tour — try reloading the page.' : 'Loading tour…'}
         </div>
       )}
 
       <Canvas
         camera={{ fov: aligned.fov, near: 0.01, far: 200, position: [0, 0, 0] }}
         gl={{ antialias: true, alpha: false }}
-        onCreated={() => {
-          // brief delay so splat can init before we claim ready
-          window.setTimeout(() => setReady(true), 400);
-        }}
       >
         <color attach="background" args={['#0a0a0c']} />
         <TourScene
           url={url}
           aligned={aligned}
           nodeId={nodeId}
-          onNodeArrived={() => {}}
+          onNodeArrived={handleNodeArrived}
         />
       </Canvas>
 
@@ -98,21 +152,21 @@ export function SplatTourViewer({ manifest, className, splatUrl }: SplatTourView
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-xs text-white/90 min-w-[5rem] text-center tabular-nums">
-            {nodeIndex + 1} / {aligned.nodes.length}
+            {nodeIndex + 1} / {orderedNodes.length}
           </span>
           <Button
             size="sm"
             variant="ghost"
             className="h-8 w-8 p-0 text-white hover:bg-white/10"
             onClick={next}
-            disabled={nodeIndex >= aligned.nodes.length - 1}
+            disabled={nodeIndex >= orderedNodes.length - 1}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
         <div className="pointer-events-auto max-w-full overflow-x-auto px-4">
           <div className="flex gap-1">
-            {aligned.nodes.map((n, i) => (
+            {orderedNodes.map((n, i) => (
               <button
                 key={n.id}
                 type="button"
@@ -151,6 +205,7 @@ function TourScene({
   const currentPos = useRef(aligned.spawnPosition.clone());
   const yaw = useRef(0);
   const pitch = useRef(0);
+  const arrivedRef = useRef(false);
   const dragging = useRef(false);
   const lastPtr = useRef({ x: 0, y: 0 });
   const { camera, gl } = useThree();
@@ -162,9 +217,15 @@ function TourScene({
     }
   }, [aligned.align]);
 
-  // When node changes, set target
+  // When node changes, set target position AND reset the look direction to
+  // the baked orientation for that waypoint (free-look then adjusts from there).
   useEffect(() => {
     const node = aligned.nodes.find((n) => n.id === nodeId);
+    const rotation = node?.alignedRotation ?? aligned.spawnRotation;
+    const { yaw: baseYaw, pitch: basePitch } = quaternionToYawPitch(rotation);
+    yaw.current = baseYaw;
+    pitch.current = basePitch;
+    arrivedRef.current = false;
     if (node) {
       targetPos.current.copy(node.alignedPosition);
     } else {
@@ -215,9 +276,13 @@ function TourScene({
     // Lerp position toward standpoint (no free translate)
     const speed = 1 / Math.max(aligned.lerpSeconds, 0.05);
     currentPos.current.lerp(targetPos.current, 1 - Math.exp(-speed * dt * 3));
-    if (currentPos.current.distanceTo(targetPos.current) < 1e-3) {
+    const arrived = currentPos.current.distanceTo(targetPos.current) < 1e-3;
+    if (arrived) {
       currentPos.current.copy(targetPos.current);
-      onNodeArrived();
+      if (!arrivedRef.current) {
+        arrivedRef.current = true;
+        onNodeArrived();
+      }
     }
 
     camera.position.copy(currentPos.current);

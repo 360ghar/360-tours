@@ -1,12 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { labApi } from '@/api/lab';
 import type { SplatJob, SplatJobStatus, CreateSplatJobRequest, SplatPipelineStage } from '@/types/lab';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-);
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -34,14 +28,23 @@ export const PIPELINE_STAGES: SplatPipelineStage[] = [
   { id: 'ready', label: 'Ready', description: 'Pipeline complete' },
 ];
 
+async function uploadToPresignedUrl(uploadUrl: string, file: File): Promise<void> {
+  const response = await fetch(uploadUrl, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to upload ${file.name}: ${response.status} ${response.statusText}`);
+  }
+}
+
 interface UseSplatPipelineReturn {
   job: SplatJob | null;
   jobs: SplatJob[];
   isPolling: boolean;
   isCreating: boolean;
-  stages: SplatPipelineStage[];
   createAndStart: (data: CreateSplatJobRequest, videoFiles: File[]) => Promise<void>;
-  cancelJob: () => void;
   selectJob: (job: SplatJob) => void;
   clearJob: () => void;
   error: string | null;
@@ -54,44 +57,62 @@ export function useSplatPipeline(): UseSplatPipelineReturn {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentJobIdRef = useRef<string | null>(null);
+  const pollInFlightRef = useRef(false);
 
   const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
     }
+    currentJobIdRef.current = null;
     setIsPolling(false);
   }, []);
 
-  const startPolling = useCallback(
-    (jobId: string) => {
-      stopPolling();
-      currentJobIdRef.current = jobId;
-      setIsPolling(true);
+  const startPolling = useCallback((jobId: string) => {
+    stopPolling();
+    currentJobIdRef.current = jobId;
+    setIsPolling(true);
 
-      const poll = async () => {
+    const scheduleNext = () => {
+      if (currentJobIdRef.current !== jobId) return;
+      pollTimeoutRef.current = setTimeout(poll, POLL_INTERVAL_MS);
+    };
+
+    const poll = async () => {
+      if (currentJobIdRef.current !== jobId || pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      try {
+        const updated = await labApi.getJob(jobId);
+        // The selected job may have changed while this request was in flight.
         if (currentJobIdRef.current !== jobId) return;
-        try {
-          const updated = await labApi.getJob(jobId);
-          setJob(updated);
-          if (TERMINAL_STATUSES.includes(updated.status)) {
-            stopPolling();
-            // Refresh jobs list
+        setJob(updated);
+        if (TERMINAL_STATUSES.includes(updated.status)) {
+          currentJobIdRef.current = null;
+          if (pollTimeoutRef.current) {
+            clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
+          }
+          setIsPolling(false);
+          try {
             const allJobs = await labApi.getJobs();
             setJobs(allJobs);
+          } catch {
+            // Best-effort refresh — the job itself already updated above.
           }
-        } catch {
-          // Silently ignore poll errors; will retry next cycle
+          return;
         }
-      };
+      } catch {
+        // Silently ignore poll errors; will retry next cycle.
+      } finally {
+        pollInFlightRef.current = false;
+      }
+      scheduleNext();
+    };
 
-      void poll();
-      pollIntervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    },
-    [stopPolling]
-  );
+    void poll();
+  }, [stopPolling]);
 
   // Load all jobs on mount
   useEffect(() => {
@@ -126,28 +147,27 @@ export function useSplatPipeline(): UseSplatPipelineReturn {
         const newJob = await labApi.createJob(dataWithFilenames);
         setJob({ ...newJob, status: 'uploading', progress: 0, stage_message: 'Preparing upload…' });
 
-        // 2 & 3. Get upload URLs and upload directly to Supabase storage in parallel
+        // 2 & 3. Get presigned upload URLs and PUT directly to storage in parallel
         await Promise.all(
           videoFiles.map(async (file) => {
-            const { storage_path } = await labApi.getUploadUrl(newJob.id, file.name);
-            const { error: uploadError } = await supabase.storage
-              .from('splat-jobs')
-              .upload(storage_path, file, { upsert: true });
-
-            if (uploadError) {
-              throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
-            }
+            const { upload_url } = await labApi.getUploadUrl(newJob.id, file.name);
+            await uploadToPresignedUrl(upload_url, file);
           })
         );
 
-        // 4. Kick off the pipeline
+        // 4. Kick off the pipeline, then start polling immediately — an
+        // unrelated failure refreshing the jobs list below must not stop us
+        // from tracking a pipeline that already started successfully.
         const started = await labApi.startPipeline(newJob.id);
         setJob(started);
-
-        // 5. Refresh jobs list and start polling
-        const allJobs = await labApi.getJobs();
-        setJobs(allJobs);
         startPolling(started.id);
+
+        try {
+          const allJobs = await labApi.getJobs();
+          setJobs(allJobs);
+        } catch {
+          // Best-effort — polling is already running for the new job.
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to start pipeline';
         setError(message);
@@ -159,25 +179,21 @@ export function useSplatPipeline(): UseSplatPipelineReturn {
     [startPolling]
   );
 
-  const cancelJob = useCallback(() => {
-    stopPolling();
-    currentJobIdRef.current = null;
-    setJob(null);
-  }, [stopPolling]);
-
   const selectJob = useCallback(
     (selected: SplatJob) => {
-      setJob(selected);
       if (ACTIVE_STATUSES.includes(selected.status)) {
+        setJob(selected);
         startPolling(selected.id);
+      } else {
+        stopPolling();
+        setJob(selected);
       }
     },
-    [startPolling]
+    [startPolling, stopPolling]
   );
 
   const clearJob = useCallback(() => {
     stopPolling();
-    currentJobIdRef.current = null;
     setJob(null);
   }, [stopPolling]);
 
@@ -186,9 +202,7 @@ export function useSplatPipeline(): UseSplatPipelineReturn {
     jobs,
     isPolling,
     isCreating,
-    stages: PIPELINE_STAGES,
     createAndStart,
-    cancelJob,
     selectJob,
     clearJob,
     error,
