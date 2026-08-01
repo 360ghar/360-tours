@@ -252,7 +252,12 @@ apiClient.interceptors.response.use(
       errorMessage = error.message;
     }
 
-    // Preserve the original error as the cause for debugging
+    // Keep the original axios message reachable for debugging: the normalized
+    // user-facing message replaces `message`, so preserve the raw one as
+    // `cause` unless axios already attached one (e.g. network errors).
+    if (error.cause === undefined && error.message !== errorMessage) {
+      error.cause = new Error(error.message);
+    }
     error.message = errorMessage;
     return Promise.reject(error);
   }

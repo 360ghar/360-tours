@@ -54,7 +54,10 @@ String generateEmbedUrl(
     if (branding != null) 'branding=${branding ? 'true' : 'false'}',
   ];
   final query = params.isEmpty ? '' : '?${params.join('&')}';
-  return '${Env.viewerBase}/embed/$tourId$query';
+  // URL-encode the tour id (mirrors web's encodeURIComponent in
+  // generateEmbedUrl); a no-op for server-minted UUIDs, so the byte-parity
+  // golden fixture is unaffected.
+  return '${Env.viewerBase}/embed/${Uri.encodeComponent(tourId)}$query';
 }
 
 /// Generates the full iframe embed snippet. Defaults mirror web's

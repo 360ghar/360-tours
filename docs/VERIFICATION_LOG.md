@@ -290,22 +290,23 @@ fixed several ranked items in the working tree; this pass re-verified each:
 
 | Ranked # | Status now | Evidence (working tree) |
 |---|---|---|
-| 1 (registration account overwrite) | **FIXED (partially)** — OTP send is gated on `checkIdentifierStatusSafe`; resend path re-checks too. Residual TOCTOU (identifier created between send and verify) needs a backend-side guard; client can't distinguish. | `RegisterPage.tsx:113-119` (gate), `:206-219` (resend re-check), `api/auth.ts:22-46` |
+| 1 (registration account overwrite) | **FIXED (partially)** — OTP send is gated on `checkIdentifierStatusSafe`; resend path re-checks too. Residual TOCTOU (identifier created between send and verify) needs a backend-side guard; client can't distinguish. | `RegisterPage.tsx:117-123` (gate), `:211-223` (resend re-check), `api/auth.ts:22-46` |
 | 2 (forgot-password enumeration) | **FIXED** — generic message regardless of existence | `ForgotPasswordPage.tsx:111-115` |
 | 3 (public 401 cascade) | **FIXED** — public paths skip Bearer + `_skipAuthExpiry` | `client.ts:100-106`, `:137-141` |
 | 4 (GlobalErrorHandler return path) | **FIXED** — preserves `next=` with auth-page blocklist | `GlobalErrorHandler.tsx:24-38` |
 | 5 (PublicTourPage 404 conflation) | **FIXED** — non-404 errors show retryable error screen | `PublicTourPage.tsx:399-412` |
 | 6 (like hydration) | **FIXED (client side)** — hydrates from `is_liked`/`like_count` in the public payload; backend must return them | `PublicTourPage.tsx:113-121` |
+| 8 (Demo360Viewer CDN fallback) | **FIXED** — `panorama-error` listener + `loadFailed` fallback UI with Retry | `Demo360Viewer.tsx:127-133`, `:162-183` |
 | 9 (/local in prod router) | **FIXED** — renders NotFoundPage outside DEV | `router.tsx:320-331` |
-| 10 (embed.js origin param unread) | **FIXED** — `parseEmbedOriginParam` validates and uses the param as postMessage targetOrigin + inbound origin gate | `types/embedMessages.ts:79-104`, `EmbedTourPage.tsx:182-207, 332-336` |
+| 10 (embed.js origin param unread) | **FIXED** — `parseEmbedOriginParam` validates and uses the param as postMessage targetOrigin + inbound origin gate | `types/embedMessages.ts:79-104`, `EmbedTourPage.tsx:187-207, 334` |
 | 11 (View3DPage iframe sandbox) | **FIXED** — sandbox + referrerPolicy added | `View3DPage.tsx:81-86` |
 | 12 (embed zero-scene signal) | **FIXED** — posts `tour_error` when content can't render | `EmbedTourPage.tsx:439-454` |
-| 18 (Register Google return path) | **FIXED** — stashes return path with auth-page blocklist | `RegisterPage.tsx:237-241` |
+| 13 (JSON-LD `@type`) | **FIXED** — `VirtualTourStructuredData` emits `type="VirtualTour"` | `MetaTags.tsx:228` |
+| 18 (Register Google return path) | **FIXED** — stashes return path with auth-page blocklist | `RegisterPage.tsx:237-246` |
 
 Still open (tracked in `docs/FEATURES_AND_USER_FLOWS.md`): #7 (AuthCallback
-StrictMode fragility — by design, guarded), #8 (Demo360Viewer CDN fallback),
-#13 (JSON-LD `@type`), #14 (Splat Lab upload progress), #15/#16/#17 (marketing
-content decisions).
+StrictMode fragility — by design, guarded), #14 (Splat Lab upload progress),
+#15/#16/#17 (marketing content decisions).
 
 ---
 

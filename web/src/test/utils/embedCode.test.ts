@@ -409,7 +409,10 @@ describe('embedCode utilities', () => {
 
     it('handles tour ID with special characters', () => {
       const url = generateEmbedUrl('tour/with spaces&special=chars');
-      expect(url).toContain('/embed/tour/with spaces&special=chars');
+      // The id is URL-encoded so it can never inject path/query content into
+      // the embed URL (regression: previously interpolated raw).
+      expect(url).toContain('/embed/tour%2Fwith%20spaces%26special%3Dchars');
+      expect(url).not.toContain('/embed/tour/with spaces&special=chars');
     });
 
     it('generates iframe code with only width override', () => {

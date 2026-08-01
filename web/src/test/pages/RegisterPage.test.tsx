@@ -22,6 +22,19 @@ vi.mock('@/api', () => ({
   checkIdentifierStatusSafe: vi.fn(),
 }));
 
+// The Resend control is gated on a 30s cooldown (`useResendTimer`); the resend
+// re-check test needs the button enabled immediately, so stub the timer hook
+// while keeping every other hook real.
+vi.mock('@/hooks', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/hooks')>()),
+  useResendTimer: () => ({
+    secondsLeft: 0,
+    isCoolingDown: false,
+    start: vi.fn(),
+    reset: vi.fn(),
+  }),
+}));
+
 const NEW_IDENTIFIER_STATUS = {
   exists: false,
   verified: false,
@@ -110,5 +123,43 @@ describe('RegisterPage identifier gate', () => {
       });
     });
     expect(await screen.findByText(/Enter the code sent to/)).toBeInTheDocument();
+  });
+
+  it('re-checks identifier status on resend and blocks when an account now exists', async () => {
+    // First send: identifier is free, OTP goes out.
+    vi.mocked(checkIdentifierStatusSafe).mockResolvedValue(NEW_IDENTIFIER_STATUS);
+
+    renderPage();
+    await fillIdentifierForm('new@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Send verification code' }));
+    await screen.findByText(/Enter the code sent to/);
+    expect(supabaseAuth.requestEmailOtp).toHaveBeenCalledTimes(1);
+
+    // TOCTOU: the identifier gained an account between send and resend. The
+    // resend must NOT send another shouldCreateUser OTP — verifying it would
+    // sign into the existing account and set-password would overwrite it.
+    vi.mocked(checkIdentifierStatusSafe).mockResolvedValue(EXISTING_IDENTIFIER_STATUS);
+    await userEvent.click(screen.getByRole('button', { name: 'Resend code' }));
+
+    expect(
+      await screen.findByText('An account already exists with this identifier — sign in instead.')
+    ).toBeInTheDocument();
+    expect(supabaseAuth.requestEmailOtp).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-checks identifier status on resend and blocks when the status service is down', async () => {
+    vi.mocked(checkIdentifierStatusSafe).mockResolvedValue(NEW_IDENTIFIER_STATUS);
+
+    renderPage();
+    await fillIdentifierForm('new@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Send verification code' }));
+    await screen.findByText(/Enter the code sent to/);
+
+    // Fail-closed: no OTP when the status service is unreachable.
+    vi.mocked(checkIdentifierStatusSafe).mockResolvedValue({ unavailable: true });
+    await userEvent.click(screen.getByRole('button', { name: 'Resend code' }));
+
+    expect(await screen.findByText(IDENTIFIER_STATUS_UNAVAILABLE_MESSAGE)).toBeInTheDocument();
+    expect(supabaseAuth.requestEmailOtp).toHaveBeenCalledTimes(1);
   });
 });

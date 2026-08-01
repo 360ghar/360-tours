@@ -116,12 +116,33 @@ function formatDimension(value: number | string): string {
 }
 
 /**
+ * Escape HTML-significant characters for safe interpolation into generated
+ * markup (attribute values, element ids). Tour ids are server-minted UUIDs
+ * today, but defense-in-depth: a non-UUID id must never break out of the
+ * attribute or inject markup into a customer's page.
+ */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, char => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return entities[char]!;
+  });
+}
+
+/**
  * Generate the embed URL for a tour
  */
 export function generateEmbedUrl(tourId: string, options: EmbedOptions = {}): string {
   const baseUrl = getBaseUrl();
   const queryParams = buildQueryParams(options);
-  return `${baseUrl}/embed/${tourId}${queryParams}`;
+  // URL-encode the tour id so it can never inject path/query content; a no-op
+  // for the server-minted UUIDs the golden-fixture parity tests use.
+  return `${baseUrl}/embed/${encodeURIComponent(tourId)}${queryParams}`;
 }
 
 /**
@@ -135,8 +156,8 @@ export function generateIframeCode(tourId: string, options: EmbedOptions = {}): 
 
   return `<iframe
   src="${embedUrl}"
-  width="${width}"
-  height="${height}"
+  width="${escapeHtml(width)}"
+  height="${escapeHtml(height)}"
   frameborder="0"
   allow="${EMBED_IFRAME_ALLOW}"
   allowfullscreen
@@ -172,10 +193,10 @@ export function generateJsCode(tourId: string, options: EmbedOptions = {}): stri
   );
 
   return `<!-- 360 Viewer Embed -->
-<div id="viewer-${tourId}"></div>
+<div id="viewer-${escapeHtml(tourId)}"></div>
 <script src="${getBaseUrl()}/embed.js"></script>
 <script>
-  Viewer360.create('#viewer-${tourId}', ${configJson});
+  Viewer360.create('#viewer-${escapeHtml(tourId)}', ${configJson});
 </script>`;
 }
 

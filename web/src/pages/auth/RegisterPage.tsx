@@ -22,6 +22,14 @@ import { ROUTES } from '@/constants';
 
 type Step = 'identifier' | 'otp' | 'set-password';
 
+// Auth pages must never be the OAuth return target (bounce loops).
+const OAUTH_RETURN_BLOCKLIST = [
+  ROUTES.LOGIN,
+  ROUTES.REGISTER,
+  ROUTES.FORGOT_PASSWORD,
+  ROUTES.AUTH_CALLBACK,
+];
+
 interface IdentifierFormData {
   identifier: string;
 }
@@ -35,8 +43,6 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const fetchCurrentUser = useAuthStore(s => s.fetchCurrentUser);
-  // Auth pages must never be the OAuth return target (bounce loops).
-  const OAUTH_RETURN_BLOCKLIST = [ROUTES.LOGIN, ROUTES.REGISTER, ROUTES.FORGOT_PASSWORD, ROUTES.AUTH_CALLBACK];
   const [step, setStep] = useState<Step>('identifier');
   const [channel, setChannel] = useState<IdentifierChannel>('phone');
   const [identifier, setIdentifier] = useState('');

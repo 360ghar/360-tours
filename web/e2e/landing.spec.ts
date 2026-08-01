@@ -31,19 +31,26 @@ test.describe('Landing Page', () => {
     await expect(signupLink.first()).toBeVisible();
   });
 
-  test('should be responsive', async ({ page }) => {
+  test('should be responsive without horizontal overflow', async ({ page }) => {
     await page.goto('/');
 
-    // Test desktop viewport
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await expect(page.locator('body')).toBeVisible();
-
-    // Test tablet viewport
-    await page.setViewportSize({ width: 768, height: 1024 });
-    await expect(page.locator('body')).toBeVisible();
-
-    // Test mobile viewport
-    await page.setViewportSize({ width: 375, height: 667 });
-    await expect(page.locator('body')).toBeVisible();
+    // A responsive layout must not overflow horizontally at any common
+    // viewport (previously asserted `body` visibility — always true, vacuous).
+    const viewports = [
+      { width: 1280, height: 720 },
+      { width: 768, height: 1024 },
+      { width: 375, height: 667 },
+    ];
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      const overflow = await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth - document.documentElement.clientWidth
+      );
+      expect(
+        overflow,
+        `horizontal overflow of ${overflow}px at ${viewport.width}x${viewport.height}`
+      ).toBeLessThanOrEqual(1);
+    }
   });
 });
