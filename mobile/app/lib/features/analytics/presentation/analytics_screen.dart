@@ -33,10 +33,37 @@ class AnalyticsScreen extends ConsumerWidget {
               : ref.watch(analyticsProvider(tourId)).when(
                     loading: () =>
                         const Center(child: CircularProgressIndicator()),
-                    error: (e, _) => Center(
-                      child: Text('Analytics unavailable\n$e',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.inkDim)),
+                    error: (_, _) => Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Could not load analytics.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: AppColors.inkDim,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Check your connection and try again.',
+                              textAlign: TextAlign.center,
+                              style:
+                                  TextStyle(color: AppColors.inkFaint),
+                            ),
+                            const SizedBox(height: 18),
+                            FilledButton.icon(
+                              onPressed: () =>
+                                  ref.invalidate(analyticsProvider(tourId)),
+                              icon: const Icon(Icons.refresh, size: 18),
+                              label: const Text('Try again'),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                     data: (a) => RefreshIndicator(
                       onRefresh: () async {

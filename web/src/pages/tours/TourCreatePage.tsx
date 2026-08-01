@@ -3,7 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, X, Images, ArrowLeft, Loader2, Sparkles, Camera } from 'lucide-react';
+import {
+  Upload,
+  X,
+  Images,
+  ArrowLeft,
+  Loader2,
+  Sparkles,
+  Camera,
+  RefreshCw,
+  AlertTriangle,
+} from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -30,6 +40,11 @@ interface UploadingFile {
   status: 'pending' | 'uploading' | 'completed' | 'error';
   error?: string;
   url?: string;
+  /**
+   * True only when the file failed DURING an upload attempt (transport or
+   * scene-creation error). Validation rejections are never retryable.
+   */
+  retryable?: boolean;
 }
 
 function createUploadId(): string {
@@ -179,6 +194,56 @@ export function TourCreatePage() {
     setUploadingFiles(prev => prev.filter(file => file.id !== id));
   };
 
+  // Upload a single file: POST /upload then POST /tours/:id/scenes. Used by the
+  // batch uploader and by per-row/per-batch retry. Never throws — failures are
+  // written back into the row's status so the UI can offer a retry.
+  const uploadOne = useCallback(
+    async (item: UploadingFile, tourId: string) => {
+      try {
+        const uploadResult = await uploadApi.uploadFile(item.file, {
+          folder: 'scenes',
+          visibility: 'public',
+          onProgress: progress => {
+            setUploadingFiles(prev => prev.map(f => (f.id === item.id ? { ...f, progress } : f)));
+          },
+        });
+
+        await addSceneMutation.mutateAsync({
+          tourId,
+          imageUrl: uploadResult.public_url,
+          title: item.file.name.replace(/\.[^/.]+$/, ''),
+        });
+
+        setUploadingFiles(prev =>
+          prev.map(f =>
+            f.id === item.id
+              ? {
+                  ...f,
+                  status: 'completed' as const,
+                  progress: 100,
+                  url: uploadResult.public_url,
+                }
+              : f
+          )
+        );
+      } catch (err) {
+        setUploadingFiles(prev =>
+          prev.map(f =>
+            f.id === item.id
+              ? {
+                  ...f,
+                  status: 'error' as const,
+                  retryable: true,
+                  error: err instanceof Error ? err.message : 'Upload failed',
+                }
+              : f
+          )
+        );
+      }
+    },
+    [addSceneMutation]
+  );
+
   const uploadFiles = async () => {
     if (!createdTour) return;
 
@@ -194,52 +259,46 @@ export function TourCreatePage() {
       )
     );
 
-    await Promise.allSettled(
-      pending.map(async item => {
-        try {
-          const uploadResult = await uploadApi.uploadFile(item.file, {
-            folder: 'scenes',
-            visibility: 'public',
-            onProgress: progress => {
-              setUploadingFiles(prev => prev.map(f => (f.id === item.id ? { ...f, progress } : f)));
-            },
-          });
-
-          await addSceneMutation.mutateAsync({
-            tourId: createdTour.id,
-            imageUrl: uploadResult.public_url,
-            title: item.file.name.replace(/\.[^/.]+$/, ''),
-          });
-
-          setUploadingFiles(prev =>
-            prev.map(f =>
-              f.id === item.id
-                ? {
-                    ...f,
-                    status: 'completed' as const,
-                    progress: 100,
-                    url: uploadResult.public_url,
-                  }
-                : f
-            )
-          );
-        } catch (err) {
-          setUploadingFiles(prev =>
-            prev.map(f =>
-              f.id === item.id
-                ? {
-                    ...f,
-                    status: 'error' as const,
-                    error: err instanceof Error ? err.message : 'Upload failed',
-                  }
-                : f
-            )
-          );
-        }
-      })
-    );
+    await Promise.allSettled(pending.map(item => uploadOne(item, createdTour.id)));
 
     // Refresh tour data
+    queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
+    queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, createdTour.id] });
+  };
+
+  // Retry a single failed upload row. The file object is captured before the
+  // status flip so the retry doesn't depend on (stale) component state.
+  const retryFile = (id: string) => {
+    if (!createdTour || isUploading) return;
+    const item = uploadingFiles.find(f => f.id === id);
+    if (!item || item.status !== 'error') return;
+
+    setUploadingFiles(prev =>
+      prev.map(f =>
+        f.id === id ? { ...f, status: 'uploading' as const, progress: 0, error: undefined } : f
+      )
+    );
+    void uploadOne({ ...item, status: 'uploading', error: undefined }, createdTour.id);
+  };
+
+  // Reset every upload-failed row to a fresh attempt (validation rejections are
+  // left as-is — retrying them would just fail again).
+  const retryFailedFiles = async () => {
+    if (!createdTour || isUploading) return;
+    const failed = uploadingFiles.filter(f => f.status === 'error' && f.retryable);
+    if (failed.length === 0) return;
+    const failedIds = new Set(failed.map(f => f.id));
+
+    setUploadingFiles(prev =>
+      prev.map(f =>
+        failedIds.has(f.id)
+          ? { ...f, status: 'uploading' as const, progress: 0, error: undefined }
+          : f
+      )
+    );
+
+    await Promise.allSettled(failed.map(item => uploadOne(item, createdTour.id)));
+
     queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
     queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, createdTour.id] });
   };
@@ -248,7 +307,13 @@ export function TourCreatePage() {
   const completedCount = uploadingFiles.filter(f => f.status === 'completed').length;
   const errorCount = uploadingFiles.filter(f => f.status === 'error').length;
   const isUploading = uploadingFiles.some(f => f.status === 'uploading');
+  const hasRetryableErrors = uploadingFiles.some(f => f.status === 'error' && f.retryable);
   const formError = createMutation.error || updateTourMutation.error;
+
+  // Every added file failed (no scene was created) → block "Continue to Editor"
+  // until at least one upload succeeds or the failed rows are removed.
+  const allUploadsFailed =
+    uploadingFiles.length > 0 && completedCount === 0 && errorCount === uploadingFiles.length;
 
   const totalUploadBytes = uploadingFiles
     .filter(f => f.status === 'pending' || f.status === 'uploading' || f.status === 'completed')
@@ -497,6 +562,27 @@ export function TourCreatePage() {
                       </div>
                       {file.status === 'uploading' ? (
                         <Loader2 className="h-5 w-5 animate-spin text-[var(--color-primary-600)]" />
+                      ) : file.status === 'error' && file.retryable ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-label={`Retry ${file.file.name}`}
+                            onClick={() => retryFile(file.id)}
+                            disabled={isUploading}
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            Retry
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Remove ${file.file.name}`}
+                            onClick={() => removeFile(file.id)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       ) : file.status !== 'completed' ? (
                         <Button
                           variant="ghost"
@@ -543,13 +629,53 @@ export function TourCreatePage() {
                   Uploading
                 </Button>
               )}
-              {!isUploading && pendingCount === 0 && (
-                <Button onClick={() => navigate(`/tours/${createdTour.id}/edit`)}>
-                  Continue to Editor
-                </Button>
+              {!isUploading && pendingCount === 0 && !allUploadsFailed && (
+                <div className="flex flex-col items-end gap-1.5">
+                  {completedCount > 0 && errorCount > 0 && (
+                    <span className="text-xs text-[var(--color-text-muted)]">
+                      {errorCount} failed upload{errorCount === 1 ? '' : 's'} skipped — you can
+                      retry them or continue without them.
+                    </span>
+                  )}
+                  <Button onClick={() => navigate(`/tours/${createdTour.id}/edit`)}>
+                    Continue to Editor
+                  </Button>
+                </div>
               )}
             </div>
           </div>
+
+          {/* All uploads failed — block Continue until at least one scene exists. */}
+          {allUploadsFailed && (
+            <div
+              role="alert"
+              className="flex flex-col gap-3 rounded-lg border border-[var(--color-error-200)] bg-[var(--color-error-50)] p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-error-600)]" />
+                <div>
+                  <p className="font-medium text-[var(--color-error-800)]">
+                    No scenes were uploaded
+                  </p>
+                  <p className="mt-0.5 text-sm text-[var(--color-error-700)]">
+                    Every file failed to upload, so the tour has no scenes yet. Retry the failed
+                    uploads or remove them before continuing to the editor.
+                  </p>
+                </div>
+              </div>
+              {hasRetryableErrors && (
+                <Button
+                  variant="outline"
+                  onClick={() => void retryFailedFiles()}
+                  disabled={isUploading}
+                  className="shrink-0"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Retry failed uploads
+                </Button>
+              )}
+            </div>
+          )}
         </>
       )}
 

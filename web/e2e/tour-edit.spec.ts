@@ -1,271 +1,65 @@
 /**
- * E2E tests for tour editing functionality.
+ * E2E tests for tour editing.
  *
- * Tests scene reordering, hotspot management, and floor plan integration.
+ * Runs hermetically in the `chromium` project with mocked auth + API: the
+ * editor mounts against mocked tour/scenes data and the scene panel behaviors
+ * are asserted against real DOM. The unauthenticated test asserts the real
+ * redirect behavior.
  */
 import { test, expect } from '@playwright/test';
-import { TourEditorPage } from './page-objects/TourEditorPage';
+import { installMockAuth, MOCK_TOUR, MOCK_SCENES } from './fixtures/mockAuth';
 
-test.describe('Tour Editing', () => {
-  const testTourId = 'test-tour-id';
+const TOUR_ID = 'test-tour-id';
 
-  test.describe('Scene Management', () => {
-    test('should display list of scenes', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
+test.describe('Tour Editor — unauthenticated', () => {
+  test('redirects unauthenticated visitors to /login', async ({ page }) => {
+    await page.goto(`/tours/${TOUR_ID}/edit`);
+    await expect(page).toHaveURL(/\/login$/);
+  });
+});
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-        await expect(editorPage.scenePanel.or(page.locator('body'))).toBeVisible();
-      }
-    });
-
-    test('should select scene on click', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-        const sceneCount = await editorPage.getSceneCount();
-
-        if (sceneCount > 0) {
-          await editorPage.selectScene(0);
-          // Scene should have selected state
-          const firstScene = editorPage.sceneCards.first();
-          const classList = await firstScene.getAttribute('class');
-          // Check for selected indicator (varies by implementation)
-          expect(classList).not.toBeNull();
-          await expect(firstScene).toBeVisible();
-        }
-      }
-    });
-
-    test('should support drag-and-drop reordering', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-        const sceneCount = await editorPage.getSceneCount();
-
-        if (sceneCount >= 2) {
-          // Get initial order
-          const firstSceneText = await editorPage.sceneCards.first().textContent();
-          expect(firstSceneText).not.toBeNull();
-
-          // Attempt reorder
-          await editorPage.reorderScene(0, 1);
-
-          // Verify reorder happened (or page is still functional)
-          await expect(editorPage.sceneCards.first()).toBeVisible();
-        }
-      }
-    });
-
-    test('should show scene details on selection', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-        const sceneCount = await editorPage.getSceneCount();
-
-        if (sceneCount > 0) {
-          await editorPage.selectScene(0);
-
-          // Settings panel or details should be visible
-          const detailsVisible =
-            (await editorPage.settingsPanel.isVisible()) ||
-            (await page.locator('[data-testid="scene-details"]').isVisible());
-
-          expect(detailsVisible || (await page.locator('body').isVisible())).toBe(true);
-        }
-      }
-    });
+test.describe('Tour Editor — hermetic (mocked auth + API)', () => {
+  test.beforeEach(async ({ page }) => {
+    await installMockAuth(page);
+    await page.route('**/api/v1/tours/test-tour-id', route =>
+      route.fulfill({ json: { ...MOCK_TOUR, id: TOUR_ID }, status: 200 })
+    );
+    await page.route('**/api/v1/tours/test-tour-id/scenes', route =>
+      route.fulfill({ json: MOCK_SCENES, status: 200 })
+    );
   });
 
-  test.describe('Hotspot Management', () => {
-    test('should display hotspots on panorama', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-      await page.waitForURL(/\/login/, { timeout: 5000 }).catch(() => undefined);
+  test('loads the editor toolbar and the mocked scenes in the scene panel', async ({ page }) => {
+    await page.goto(`/tours/${TOUR_ID}/edit`);
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
+    await expect(page.locator('[data-testid="toolbar"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="scene-panel"]')).toBeVisible();
 
-        // Wait for panorama viewer to load
-        await expect(editorPage.panoramaViewer.or(page.locator('canvas'))).toBeVisible({
-          timeout: 10000,
-        });
-
-        // Hotspots may or may not be present depending on tour data
-        const hotspotCount = await editorPage.getHotspotCount();
-        expect(hotspotCount).toBeGreaterThanOrEqual(0);
-      }
-    });
-
-    test('should open hotspot editor on click', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-        const hotspotCount = await editorPage.getHotspotCount();
-
-        if (hotspotCount > 0) {
-          await editorPage.clickHotspot(0);
-
-          // Editor modal should appear
-          await expect(
-            editorPage.hotspotEditorModal.or(page.locator('[role="dialog"]'))
-          ).toBeVisible({ timeout: 5000 });
-        }
-      }
-    });
-
-    test('should allow adding new hotspot', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-
-        // Look for add hotspot button
-        const addButton = editorPage.addHotspotButton;
-        if (await addButton.isVisible()) {
-          await addButton.click();
-
-          // Should enter hotspot creation mode or show modal
-          await expect(page.locator('body')).toBeVisible();
-        }
-      }
-    });
-
-    test('should allow editing hotspot properties', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-        const hotspotCount = await editorPage.getHotspotCount();
-
-        if (hotspotCount > 0) {
-          await editorPage.clickHotspot(0);
-
-          if (await editorPage.hotspotEditorModal.isVisible()) {
-            // Should have editable fields
-            const titleInput = editorPage.hotspotEditorModal.locator('input[name="title"]');
-            if (await titleInput.isVisible()) {
-              await titleInput.fill('Updated Hotspot Title');
-              await expect(titleInput).toHaveValue('Updated Hotspot Title');
-            }
-          }
-        }
-      }
-    });
-
-    test('should support different hotspot types', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-
-        // Look for hotspot type selector
-        const typeSelector = page.locator(
-          '[name="hotspotType"], [data-testid="hotspot-type"], input[type="radio"][name="type"]'
-        );
-
-        // Type selector may be in modal or panel
-        await expect(typeSelector.or(editorPage.hotspotEditorModal).or(page.locator('body')).first()).toBeVisible();
-      }
-    });
+    const sceneCards = page.locator('[data-testid="scene-card"]');
+    await expect(sceneCards).toHaveCount(2);
+    await expect(sceneCards.first()).toContainText('Living Room');
+    await expect(sceneCards.nth(1)).toContainText('Kitchen');
   });
 
-  test.describe('Floor Plan Integration', () => {
-    test('should display floor plan overlay if available', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
+  test('selecting a scene marks it as the selected scene', async ({ page }) => {
+    await page.goto(`/tours/${TOUR_ID}/edit`);
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
+    const sceneCards = page.locator('[data-testid="scene-card"]');
+    await expect(sceneCards).toHaveCount(2, { timeout: 15000 });
+    // The first scene is auto-selected on load.
+    await expect(sceneCards.first()).toHaveAttribute('aria-pressed', 'true');
+    await expect(sceneCards.nth(1)).toHaveAttribute('aria-pressed', 'false');
 
-        // Floor plan may or may not be present
-        const floorPlanVisible = await editorPage.floorPlanOverlay.isVisible();
-
-        // Either floor plan is visible or we're on a valid page
-        expect(floorPlanVisible || (await page.locator('body').isVisible())).toBe(true);
-      }
-    });
-
-    test('should allow uploading floor plan', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for floor plan upload option
-        const floorPlanButton = page.locator(
-          'button:has-text("Floor Plan"), [data-testid="add-floor-plan"]'
-        );
-
-        if (await floorPlanButton.isVisible()) {
-          await floorPlanButton.click();
-          // Should show upload interface or modal
-          await expect(page.locator('body')).toBeVisible();
-        }
-      }
-    });
-
-    test('should show scene markers on floor plan', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-
-        if (await editorPage.floorPlanOverlay.isVisible()) {
-          // Look for scene markers on floor plan
-          const markers = editorPage.floorPlanOverlay.locator(
-            '[data-testid="floor-plan-marker"], .scene-marker'
-          );
-          const markerCount = await markers.count();
-          expect(markerCount).toBeGreaterThanOrEqual(0);
-        }
-      }
-    });
+    await sceneCards.nth(1).click();
+    await expect(sceneCards.first()).toHaveAttribute('aria-pressed', 'false');
+    await expect(sceneCards.nth(1)).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test.describe('Save and Publish', () => {
-    test('should save tour changes', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
+  test('Save is disabled until there are unsaved changes', async ({ page }) => {
+    await page.goto(`/tours/${TOUR_ID}/edit`);
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-
-        if (await editorPage.saveButton.isVisible()) {
-          // Save should be enabled (or disabled if no changes)
-          await expect(editorPage.saveButton).toBeVisible();
-        }
-      }
-    });
-
-    test('should publish tour', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-
-        if (await editorPage.publishButton.isVisible()) {
-          await expect(editorPage.publishButton).toBeVisible();
-        }
-      }
-    });
-
-    test('should show confirmation on publish', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const editorPage = new TourEditorPage(page);
-
-        if (await editorPage.publishButton.isVisible()) {
-          await editorPage.publishButton.click();
-
-          // Should show confirmation dialog or success message
-          const dialog = page.locator('[role="alertdialog"], [role="dialog"]');
-          const successMessage = page.locator('.toast, [role="alert"]');
-
-          // Either dialog or success should appear (or error)
-          await expect(dialog.or(successMessage).or(page.locator('body')).first()).toBeVisible();
-        }
-      }
-    });
+    await expect(page.locator('[data-testid="toolbar"]')).toBeVisible({ timeout: 15000 });
+    const saveButton = page.getByRole('button', { name: 'Save' });
+    await expect(saveButton).toBeDisabled();
   });
 });

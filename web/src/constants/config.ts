@@ -12,11 +12,6 @@ export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_PUBLISHABLE_KEY =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
 
-// Feature Flags
-export const ENABLE_ANALYTICS = import.meta.env.VITE_ENABLE_ANALYTICS === 'true';
-export const ENABLE_VR_MODE = import.meta.env.VITE_ENABLE_VR_MODE === 'true';
-export const ENABLE_AI_FEATURES = import.meta.env.VITE_ENABLE_AI_FEATURES === 'true';
-
 // Upload Configuration
 export const MAX_UPLOAD_SIZE_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB) || 50;
 export const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;

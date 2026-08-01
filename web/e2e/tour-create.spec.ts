@@ -1,187 +1,154 @@
 /**
- * E2E tests for tour creation workflow.
+ * E2E tests for the tour creation workflow.
  *
- * Tests the tour creation wizard, scene upload, and initial settings.
+ * Runs hermetically in the `chromium` project: a fake Supabase session +
+ * `page.route()` mocks stand in for auth and the backend, so the three-step
+ * wizard and the upload pipeline actually complete. The unauthenticated test
+ * asserts the real redirect behavior.
  */
 import { test, expect } from '@playwright/test';
-import { TourEditorPage } from './page-objects/TourEditorPage';
+import {
+  installMockAuth,
+  MOCK_TOUR,
+  MOCK_UPLOAD_RESPONSE,
+  TINY_PNG,
+} from './fixtures/mockAuth';
 
-async function waitForTourCreateOrLogin(page: import('@playwright/test').Page) {
-  await Promise.race([
-    page.waitForURL(/\/login/, { timeout: 5000 }).catch(() => undefined),
-    page
-      .locator('input[name="title"], [placeholder*="title" i], input[type="file"], [data-testid="upload-zone"], .dropzone')
-      .first()
-      .waitFor({ state: 'visible', timeout: 5000 })
-      .catch(() => undefined),
-  ]);
-}
-
-test.describe('Tour Creation', () => {
-  test.describe('Tour Creation Wizard', () => {
-    test('should display the tour creation form', async ({ page }) => {
-      // First login (mock or skip if no backend)
-      await page.goto('/login');
-
-      // Check if login page loads
-      await expect(page.locator('body')).toBeVisible();
-
-      // Try to navigate to create page (will redirect to login if not authenticated)
-      await page.goto('/tours/create');
-      await waitForTourCreateOrLogin(page);
-
-      // Either see the create form or get redirected to login
-      const isOnCreate = await page.url().includes('/tours/create');
-      const isOnLogin = await page.url().includes('/login');
-
-      expect(isOnCreate || isOnLogin).toBe(true);
-    });
-
-    test('should have required form fields for new tour', async ({ page }) => {
-      await page.goto('/tours/create');
-      await waitForTourCreateOrLogin(page);
-
-      // Check for tour creation elements (if authenticated)
-      if (!page.url().includes('/login')) {
-        // Look for title input
-        const titleInput = page.locator('input[name="title"], [placeholder*="title" i]');
-        const submitButton = page.locator('button[type="submit"], button:has-text("Create")');
-
-        // At least one form element should exist
-        const hasFormElements = (await titleInput.count()) > 0 || (await submitButton.count()) > 0;
-        expect(hasFormElements || page.url().includes('/login')).toBe(true);
-      }
-    });
-
-    test('should validate required fields', async ({ page }) => {
-      await page.goto('/tours/create');
-      await waitForTourCreateOrLogin(page);
-
-      if (!page.url().includes('/login')) {
-        // Try to submit empty form
-        const submitButton = page.locator('button[type="submit"], button:has-text("Create")');
-        if (await submitButton.isVisible()) {
-          await submitButton.click();
-
-          // Should show validation error
-          const errorMessage = page.locator('[role="alert"], .error, .text-red');
-          const hasError = (await errorMessage.count()) > 0;
-          expect(hasError).toBe(true);
-        }
-      }
-    });
-  });
-
-  test.describe('Scene Upload', () => {
-    test('should support file upload interface', async ({ page }) => {
-      await page.goto('/tours/create');
-      await waitForTourCreateOrLogin(page);
-
-      if (!page.url().includes('/login')) {
-        // Look for file upload elements
-        const fileInput = page.locator('input[type="file"]');
-        const uploadZone = page.locator('[data-testid="upload-zone"], .upload-zone, .dropzone');
-
-        const hasUploadElements = (await fileInput.count()) > 0 || (await uploadZone.count()) > 0;
-        expect(hasUploadElements).toBe(true);
-      }
-    });
-
-    test('should accept 360 panorama images', async ({ page }) => {
-      await page.goto('/tours/create');
-      await waitForTourCreateOrLogin(page);
-
-      if (!page.url().includes('/login')) {
-        const fileInput = page.locator('input[type="file"]');
-        if (await fileInput.count() > 0) {
-          // Check accept attribute includes image types
-          const acceptAttr = await fileInput.getAttribute('accept');
-          if (acceptAttr) {
-            expect(acceptAttr).toMatch(/image/);
-          }
-        }
-      }
-    });
-
-    test('should show upload progress indicator', async ({ page }) => {
-      await page.goto('/tours/create');
-      await waitForTourCreateOrLogin(page);
-
-      if (!page.url().includes('/login')) {
-        // Look for progress indicator elements (may be hidden until upload starts)
-        const progressElements = page.locator(
-          '[role="progressbar"], .progress, [data-testid="upload-progress"]'
-        );
-        // Just verify the page structure, not actual upload
-        await expect(progressElements.or(page.locator('body')).first()).toBeVisible();
-      }
-    });
-  });
-
-  test.describe('Tour Settings', () => {
-    test('should allow setting tour title and description', async ({ page }) => {
-      await page.goto('/tours/create');
-      await waitForTourCreateOrLogin(page);
-
-      if (!page.url().includes('/login')) {
-        const titleInput = page.locator('input[name="title"]');
-        const descriptionInput = page.locator('textarea[name="description"]');
-
-        if (await titleInput.isVisible()) {
-          await titleInput.fill('Test Tour Title');
-          await expect(titleInput).toHaveValue('Test Tour Title');
-        }
-
-        if (await descriptionInput.isVisible()) {
-          await descriptionInput.fill('Test description for the tour');
-          await expect(descriptionInput).toHaveValue('Test description for the tour');
-        }
-      }
-    });
-
-    test('should have visibility options', async ({ page }) => {
-      await page.goto('/tours/create');
-      await waitForTourCreateOrLogin(page);
-
-      if (!page.url().includes('/login')) {
-        // Look for visibility selector
-        const visibilitySelector = page.locator(
-          '[name="visibility"], [data-testid="visibility-select"], input[type="radio"]'
-        );
-        const hasVisibilityOptions = (await visibilitySelector.count()) > 0;
-
-        // Visibility options may be on a separate settings page
-        expect(hasVisibilityOptions || (await page.locator('body').isVisible())).toBe(true);
-      }
-    });
+test.describe('Tour Creation — unauthenticated', () => {
+  test('redirects unauthenticated visitors to /login', async ({ page }) => {
+    await page.goto('/tours/create');
+    await expect(page).toHaveURL(/\/login$/);
   });
 });
 
-test.describe('Tour Editor Access', () => {
-  test('should load tour editor for existing tour', async ({ page }) => {
-    // This test would need a valid tour ID
-    const testTourId = 'test-tour-id';
-    await page.goto(`/tours/${testTourId}/edit`);
-
-    // Either loads editor or redirects to login/404
-    const currentUrl = page.url();
-    const isValidState =
-      currentUrl.includes('/edit') ||
-      currentUrl.includes('/login') ||
-      currentUrl.includes('/tours') ||
-      currentUrl.includes('/404');
-
-    expect(isValidState).toBe(true);
+test.describe('Tour Creation — hermetic (mocked auth + API)', () => {
+  test.beforeEach(async ({ page }) => {
+    await installMockAuth(page);
+    await page.route('**/api/v1/tours', async route => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({ json: { ...MOCK_TOUR, id: 'new-tour-id' }, status: 201 });
+      } else {
+        await route.fulfill({
+          json: { items: [], total: 0, next_cursor: null, has_more: false, limit: 12 },
+        });
+      }
+    });
+    // Upload succeeds by default; individual tests override this route.
+    await page.route('**/api/v1/upload', route =>
+      route.fulfill({ json: MOCK_UPLOAD_RESPONSE, status: 200 })
+    );
+    await page.route('**/api/v1/tours/*/scenes', async route => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          json: {
+            id: 'scene-1',
+            tour_id: 'new-tour-id',
+            title: 'living-room',
+            image_url: MOCK_UPLOAD_RESPONSE.public_url,
+            order_index: 0,
+            hotspots: [],
+          },
+          status: 201,
+        });
+      } else {
+        await route.fulfill({ json: [] });
+      }
+    });
   });
 
-  test('should display scene panel in editor', async ({ page }) => {
-    const testTourId = 'test-tour-id';
-    await page.goto(`/tours/${testTourId}/edit`);
+  test('walks the three-step wizard: chooser → info → upload', async ({ page }) => {
+    await page.goto('/tours/create');
 
-    if (!page.url().includes('/login') && !page.url().includes('/404')) {
-      const editorPage = new TourEditorPage(page);
-      // Editor elements should be present
-      await expect(editorPage.scenePanel.or(page.locator('body')).first()).toBeVisible();
-    }
+    // Step 0 — chooser with the three creation paths.
+    await expect(page.getByRole('heading', { name: 'Create New Tour' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Guided capture' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Upload panoramas' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'AI generate' })).toBeVisible();
+
+    // Step 1 — tour info.
+    await page.getByRole('button', { name: 'Upload panoramas' }).click();
+    const titleInput = page.locator('input[name="title"]');
+    await expect(titleInput).toBeVisible();
+    await titleInput.fill('E2E Create Test');
+
+    // Step 2 — upload scenes (POST /tours is mocked).
+    await page.getByRole('button', { name: 'Continue to Upload' }).click();
+    await expect(page.getByRole('heading', { name: 'Upload 360° Images' })).toBeVisible();
+  });
+
+  test('uploads a file end-to-end and reaches Continue to Editor', async ({ page }) => {
+    await page.goto('/tours/create');
+    await page.getByRole('button', { name: 'Upload panoramas' }).click();
+    await page.locator('input[name="title"]').fill('E2E Create Test');
+    await page.getByRole('button', { name: 'Continue to Upload' }).click();
+    await expect(page.getByRole('heading', { name: 'Upload 360° Images' })).toBeVisible();
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({ name: 'living-room.png', mimeType: 'image/png', buffer: TINY_PNG });
+    await expect(page.getByText('living-room.png')).toBeVisible();
+
+    // POST /upload + POST /tours/:id/scenes are mocked → the row completes.
+    await page.getByRole('button', { name: 'Upload 1 Files' }).click();
+    await expect(page.getByText('Uploaded')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Continue to Editor' })).toBeVisible();
+  });
+
+  test('blocks Continue to Editor when every upload fails, then recovers via Retry', async ({
+    page,
+  }) => {
+    // 422 is not retried by the Axios interceptor, so the row errors instantly.
+    let failUpload = true;
+    await page.route('**/api/v1/upload', route => {
+      if (failUpload) {
+        return route.fulfill({ status: 422, json: { detail: 'Mocked upload failure' } });
+      }
+      return route.fulfill({ json: MOCK_UPLOAD_RESPONSE, status: 200 });
+    });
+
+    await page.goto('/tours/create');
+    await page.getByRole('button', { name: 'Upload panoramas' }).click();
+    await page.locator('input[name="title"]').fill('E2E Create Test');
+    await page.getByRole('button', { name: 'Continue to Upload' }).click();
+    await expect(page.getByRole('heading', { name: 'Upload 360° Images' })).toBeVisible();
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({ name: 'living-room.png', mimeType: 'image/png', buffer: TINY_PNG });
+    await page.getByRole('button', { name: 'Upload 1 Files' }).click();
+
+    // All files failed → Continue is blocked with an inline warning + retry.
+    await expect(page.getByText('Mocked upload failure')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('No scenes were uploaded')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue to Editor' })).toHaveCount(0);
+
+    // Per-row Retry re-runs the upload for that file and unblocks Continue.
+    failUpload = false;
+    await page.getByRole('button', { name: 'Retry living-room.png' }).click();
+    await expect(page.getByText('Uploaded')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Continue to Editor' })).toBeVisible();
+  });
+
+  test('rejects invalid file types; removing them unblocks Continue', async ({ page }) => {
+    await page.goto('/tours/create');
+    await page.getByRole('button', { name: 'Upload panoramas' }).click();
+    await page.locator('input[name="title"]').fill('E2E Create Test');
+    await page.getByRole('button', { name: 'Continue to Upload' }).click();
+    await expect(page.getByRole('heading', { name: 'Upload 360° Images' })).toBeVisible();
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
+    await expect(page.getByText(/Invalid file type/)).toBeVisible();
+
+    // A rejected file is never uploaded and cannot be retried; with zero
+    // scenes the Continue button stays blocked.
+    await expect(page.getByRole('button', { name: /Upload \d+ Files/ })).toHaveCount(0);
+    await expect(page.getByText('No scenes were uploaded')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue to Editor' })).toHaveCount(0);
+
+    // Removing the invalid file leaves the tour shell creatable again.
+    await page.getByRole('button', { name: 'Remove notes.txt' }).click();
+    await expect(page.getByRole('button', { name: 'Continue to Editor' })).toBeVisible();
   });
 });

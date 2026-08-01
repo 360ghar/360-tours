@@ -36,28 +36,52 @@ class LocalStore {
       return _cache[collection] = [];
     }
     try {
-      final raw = jsonDecode(await file.readAsString()) as List;
-      final after = _cache[collection];
-      if (after != null) return after;
-      return _cache[collection] =
-          raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } on FormatException {
-      final after = _cache[collection];
-      if (after != null) return after;
-      // Quarantine the corrupt file so it can be recovered instead of
-      // silently dropping the data.
-      try {
-        final ts = DateTime.now().millisecondsSinceEpoch;
-        await file.rename('${file.path}.corrupt-$ts');
-        debugPrint(
-            'LocalStore: quarantined corrupt $collection.json -> '
-            '${file.path}.corrupt-$ts');
-      } catch (e) {
-        debugPrint('LocalStore: failed to quarantine corrupt '
-            '$collection.json: $e');
+      final raw = jsonDecode(await file.readAsString());
+      if (raw is! List) {
+        throw const FormatException('expected a JSON list at the top level');
       }
-      return _cache[collection] = [];
+      final items = <Map<String, dynamic>>[];
+      for (final e in raw) {
+        if (e is Map<String, dynamic>) {
+          items.add(e);
+        } else if (e is Map) {
+          // jsonDecode produces Map<String, dynamic>; be lenient with other
+          // Map implementations but never thread non-object entries through.
+          items.add(Map<String, dynamic>.from(e));
+        } else {
+          throw const FormatException('expected a list of JSON objects');
+        }
+      }
+      final after = _cache[collection];
+      if (after != null) return after;
+      return _cache[collection] = items;
+    } on FormatException catch (e) {
+      return _quarantineAndReset(collection, file, e);
+    } on TypeError catch (e) {
+      // Valid-JSON-wrong-shape files (e.g. `[1, 2]` or `{"a": 1}`) used to
+      // throw an uncaught TypeError here, breaking the assets stream and the
+      // queue pump. Quarantine like any other corrupt file.
+      return _quarantineAndReset(collection, file, e);
     }
+  }
+
+  /// Renames a corrupt collection file aside (`.corrupt-<ts>`) so the data
+  /// can be recovered instead of being silently dropped, then resets the
+  /// in-memory state to an empty list and keeps serving reads/writes.
+  Future<List<Map<String, dynamic>>> _quarantineAndReset(
+      String collection, File file, Object error) async {
+    final after = _cache[collection];
+    if (after != null) return after;
+    try {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      await file.rename('${file.path}.corrupt-$ts');
+      debugPrint('LocalStore: quarantined corrupt $collection.json '
+          '($error) -> ${file.path}.corrupt-$ts');
+    } catch (e) {
+      debugPrint('LocalStore: failed to quarantine corrupt '
+          '$collection.json: $e');
+    }
+    return _cache[collection] = [];
   }
 
   Future<void> writeAll(

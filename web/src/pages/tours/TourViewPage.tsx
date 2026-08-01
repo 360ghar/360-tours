@@ -18,12 +18,18 @@ import { QUERY_KEYS, ROUTES } from '@/constants';
 import { formatCompactNumber, formatDate } from '@/utils/format';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { ShareModal } from '@/components/features/ShareModal';
+import { HotspotContentModal } from '@/components/features/HotspotContentModal';
 import { ReelGeneratorModal } from '@/components/features/ai';
+import type { Hotspot } from '@/types';
 
 export function TourViewPage() {
   const { id } = useParams<{ id: string }>();
   const [shareOpen, setShareOpen] = useState(false);
   const [reelOpen, setReelOpen] = useState(false);
+  // The scene currently shown in the hero preview (navigation hotspots switch
+  // it); defaults to the first scene. Info hotspots open the content modal.
+  const [previewSceneId, setPreviewSceneId] = useState<string | undefined>(undefined);
+  const [previewHotspot, setPreviewHotspot] = useState<Hotspot | null>(null);
 
   const { data: tour, isLoading: isLoadingTour } = useQuery({
     queryKey: [QUERY_KEYS.TOUR, id],
@@ -60,6 +66,15 @@ export function TourViewPage() {
   }
 
   const firstScene = sortedScenes?.[0];
+  const previewScene = sortedScenes?.find(s => s.id === previewSceneId) ?? firstScene;
+
+  // Navigation hotspots are handled by the viewer via onSceneChange; the other
+  // types (info/audio/video/link/custom) open the content modal.
+  const handlePreviewHotspotClick = (hotspot: Hotspot) => {
+    if (hotspot.type !== 'navigation') {
+      setPreviewHotspot(hotspot);
+    }
+  };
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -132,8 +147,13 @@ export function TourViewPage() {
       <Card>
         <CardContent className="p-0">
           <div className="aspect-video overflow-hidden rounded-t-xl">
-            {firstScene ? (
-              <PanoramaViewer scene={firstScene} hotspots={firstScene.hotspots || []} />
+            {previewScene ? (
+              <PanoramaViewer
+                scene={previewScene}
+                hotspots={previewScene.hotspots || []}
+                onSceneChange={sceneId => setPreviewSceneId(sceneId)}
+                onHotspotClick={handlePreviewHotspotClick}
+              />
             ) : (
               <div className="flex h-full min-h-[400px] items-center justify-center bg-[var(--color-surface)]">
                 <p className="text-[var(--color-text-muted)]">
@@ -267,6 +287,15 @@ export function TourViewPage() {
         tourId={id!}
         tourTitle={tour.title}
         tourDescription={tour.description || undefined}
+      />
+
+      {/* Hotspot content modal (info/audio/video/link/custom hotspots in the preview) */}
+      <HotspotContentModal
+        hotspot={previewHotspot}
+        open={previewHotspot !== null}
+        onOpenChange={open => {
+          if (!open) setPreviewHotspot(null);
+        }}
       />
 
       {/* Reel Generator Modal */}

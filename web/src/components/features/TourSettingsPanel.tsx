@@ -95,12 +95,19 @@ export function TourSettingsPanel({
   const [copiedEmbed, setCopiedEmbed] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Re-sync local form state whenever the dialog opens (so Cancel truly
+  // discards edits — reopening shows the persisted values) and whenever a
+  // persisted field actually changes. Deps are the field values themselves,
+  // not the `tour` object reference: the editor store re-creates the tour
+  // object on every scenes refetch, and object-identity deps would clobber
+  // in-progress edits mid-typing.
   useEffect(() => {
+    if (!open) return;
     setTitle(tour.title);
     setDescription(tour.description || '');
     setVisibility(tour.visibility || 'private');
     setSettings(tour.settings || DEFAULT_TOUR_SETTINGS);
-  }, [tour]);
+  }, [open, tour.title, tour.description, tour.visibility, tour.settings]);
 
   useEffect(() => {
     setEmbedOptions(prev => ({

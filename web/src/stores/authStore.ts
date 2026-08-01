@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { User, AuthTokens } from '@/types';
 import { authApi } from '@/api';
 import type { IdentifierChannel } from '@/api/auth';
-import { supabaseAuth, type SupabaseSession } from '@/lib/supabaseAuth';
+import { sessionReady, supabaseAuth, type SupabaseSession } from '@/lib/supabaseAuth';
 import { setLastAuthMethod, type AuthMethod } from '@/lib/lastAuthMethod';
 import { ERROR_MESSAGES } from '@/constants';
 import { mapSupabaseAuthError } from '@/lib/authErrors';
@@ -45,8 +45,8 @@ interface AuthState {
 
 interface AuthActions {
   setUser: (user: User | null) => void;
-  setTokens: (tokens: AuthTokens | null) => void;
-  setLoading: (isLoading: boolean) => void;
+  /** Local error override used by the auth pages' state machines (cleared by
+   *  every action that starts a request). */
   setError: (error: string | null) => void;
   login: (phone: string, password: string) => Promise<void>;
   /** Password login for the identifier state-machine (email or phone channel). */
@@ -67,12 +67,6 @@ interface AuthActions {
     identifier: string,
     password: string
   ) => Promise<void>;
-  register: (data: {
-    phone: string;
-    password: string;
-    full_name?: string;
-    email?: string;
-  }) => Promise<void>;
   logout: () => Promise<void>;
   fetchCurrentUser: () => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -118,22 +112,18 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     user: null,
     tokens: null,
     isAuthenticated: false,
-    isLoading: false,
+    // Boot starts in the "checking" state: AuthInitializer gates the whole
+    // router on isLoading, so the first render must not mount the router (and
+    // let ProtectedRoute redirect to /login) before checkAuth has settled the
+    // restored session. Initial false here caused a cold-load race that
+    // dumped users with valid sessions on the login page.
+    isLoading: true,
     error: null,
 
     setUser: user => {
       set({ user, isAuthenticated: !!user });
     },
-
-    setTokens: tokens => {
-      set({ tokens });
-    },
-
-    setLoading: isLoading => {
-      set({ isLoading });
-    },
-
-    setError: error => {
+    setError: (error: string | null) => {
       set({ error });
     },
 
@@ -204,29 +194,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         recordSuccessfulAuthMethod(passwordMethodFor(channel), identifier);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to set password';
-        set({ isLoading: false, error: message });
-        throw error;
-      }
-    },
-
-    register: async data => {
-      set({ isLoading: true, error: null });
-      try {
-        const { user, tokens } = await authApi.register(data);
-        if (!tokens?.access_token || !tokens?.refresh_token || !user) {
-          set({
-            user: null,
-            tokens: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: 'Account created. Please verify your account and log in.',
-          });
-          throw new Error('Account created. Please verify your account and log in.');
-        }
-
-        set({ user, tokens, isAuthenticated: true, isLoading: false, error: null });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Registration failed';
         set({ isLoading: false, error: message });
         throw error;
       }
@@ -360,12 +327,18 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
 
       set({ isLoading: true, error: null });
 
-      if (!tokens) {
+      // Wait for the boot-time session restore to settle before reading the
+      // tokens: the restore is async and losing this race silently signs a
+      // stored-session user out on every cold load.
+      await sessionReady;
+
+      const restoredTokens = supabaseAuth.getTokens();
+      if (!restoredTokens) {
         set({ isLoading: false, isAuthenticated: false, user: null, tokens: null });
         return;
       }
 
-      set({ tokens });
+      set({ tokens: restoredTokens });
 
       try {
         const user = await authApi.getCurrentUser();
@@ -407,11 +380,3 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     },
   };
 });
-
-export function resetAuthListener() {
-  if (authListenerUnsubscribe) {
-    authListenerUnsubscribe();
-    authListenerUnsubscribe = null;
-  }
-  authListenerInitialized = false;
-}

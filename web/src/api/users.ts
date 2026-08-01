@@ -12,14 +12,6 @@ export interface UpdateProfileData {
 
 export const usersApi = {
   /**
-   * Get the current user's profile
-   */
-  async getProfile(): Promise<User> {
-    const response = await apiClient.get<User>('/users/me');
-    return extractData(response);
-  },
-
-  /**
    * Update the current user's profile
    */
   async updateProfile(data: UpdateProfileData): Promise<User> {

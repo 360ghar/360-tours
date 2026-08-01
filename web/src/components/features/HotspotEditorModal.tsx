@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Info, Volume2, Play, Link, Code } from 'lucide-react';
+import { ArrowRight, Info, Volume2, Play, Link, Code, Upload } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -25,9 +25,11 @@ import {
 } from '@/components/ui';
 import { HotspotIconPicker, type HotspotIconConfig } from './HotspotIconPicker';
 import { HOTSPOT_ICON_BY_NAME, getHotspotIconForeground } from './hotspotIcons';
+import { VideoUploader } from './VideoUploader';
 import { toursApi } from '@/api';
 import { QUERY_KEYS } from '@/constants';
 import { useToast } from '@/hooks/useToast';
+import { useTourEditorStore } from '@/stores';
 import { cn } from '@/utils';
 import { parseVideoUrl } from '@/utils/videoUrl';
 import {
@@ -271,6 +273,7 @@ function HotspotEditorModalForm({
     if (content?.target) return content.target === '_blank';
     return content?.link_new_tab !== false;
   });
+  const [videoUploaderOpen, setVideoUploaderOpen] = useState(false);
   const [customHtml, setCustomHtml] = useState(() => {
     if (!isEdit || !hotspot) return '';
     const content = parseCustomHotspotContent(hotspot.content);
@@ -281,8 +284,11 @@ function HotspotEditorModalForm({
   const createMutation = useMutation({
     mutationFn: (data: Parameters<typeof toursApi.createHotspot>[1]) =>
       toursApi.createHotspot(sceneId, data),
-    onSuccess: () => {
+    onSuccess: createdHotspot => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES] });
+      // Select the new hotspot so the user sees it highlighted in the viewer
+      // and in the HotspotPanel immediately after saving.
+      useTourEditorStore.getState().selectHotspot(createdHotspot.id);
       toast('success', 'The hotspot has been added to the scene.', { title: 'Hotspot created' });
       onOpenChange(false);
     },
@@ -297,8 +303,10 @@ function HotspotEditorModalForm({
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: HotspotUpdateInput }) =>
       toursApi.updateHotspot(id, data),
-    onSuccess: () => {
+    onSuccess: (updatedHotspot, variables) => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES] });
+      // Keep the edited hotspot selected after saving.
+      useTourEditorStore.getState().selectHotspot(variables.id || updatedHotspot.id);
       toast('success', 'Your changes have been saved.', { title: 'Hotspot updated' });
       onOpenChange(false);
     },
@@ -538,6 +546,21 @@ function HotspotEditorModalForm({
                 <p className="text-xs text-[var(--color-text-muted)]">
                   Supports YouTube, Vimeo, or direct video file links.
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setVideoUploaderOpen(true)}
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload video
+                </Button>
+                <VideoUploader
+                  open={videoUploaderOpen}
+                  onOpenChange={setVideoUploaderOpen}
+                  onUploadComplete={({ url }) => setVideoUrl(url)}
+                />
               </div>
             )}
 
@@ -577,12 +600,6 @@ function HotspotEditorModalForm({
                   Enter custom HTML that will be rendered when the hotspot is clicked.
                 </p>
               </div>
-            )}
-
-            {validationError && (
-              <p id="hotspot-validation-error" className="text-sm text-[var(--color-error-600)]">
-                {validationError}
-              </p>
             )}
           </TabsContent>
 
@@ -674,6 +691,18 @@ function HotspotEditorModalForm({
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Persistent validation reason: shown regardless of the active tab so
+          Save is never disabled without a visible explanation. */}
+      {validationError && (
+        <p
+          id="hotspot-validation-error"
+          role="alert"
+          className="px-6 pb-2 text-sm text-[var(--color-error-600)]"
+        >
+          {validationError}
+        </p>
+      )}
 
       <DialogFooter className="border-t border-[var(--color-border)] pt-4">
         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>

@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { AIProcessingJob, Scene, Hotspot, HotspotPosition, CursorPaginatedResponse } from '@/types';
+import type { AIProcessingJob, Scene, HotspotPosition } from '@/types';
 
 // AI Job creation response
 interface AIJobResponse {
@@ -126,26 +126,10 @@ export async function analyzeScenes(tourId: string): Promise<AIJobResponse> {
 }
 
 /**
- * Analyze a single scene
- */
-export async function analyzeScene(sceneId: string): Promise<AIJobResponse> {
-  const response = await apiClient.post<AIJobResponse>(`/ai/scenes/${sceneId}/analyze`);
-  return response.data;
-}
-
-/**
  * Get AI-suggested hotspots for a scene
  */
 export async function suggestHotspots(sceneId: string): Promise<AIJobResponse> {
   const response = await apiClient.post<AIJobResponse>(`/ai/scenes/${sceneId}/hotspots`);
-  return response.data;
-}
-
-/**
- * Get AI-suggested hotspots for all scenes in a tour
- */
-export async function suggestTourHotspots(tourId: string): Promise<AIJobResponse> {
-  const response = await apiClient.post<AIJobResponse>(`/ai/tours/${tourId}/hotspots`);
   return response.data;
 }
 
@@ -157,17 +141,6 @@ export async function generateDescriptions(
   options?: DescriptionOptions
 ): Promise<AIJobResponse> {
   const response = await apiClient.post<AIJobResponse>(`/ai/tours/${tourId}/descriptions`, options);
-  return response.data;
-}
-
-/**
- * Generate AI description for a single scene
- */
-export async function generateSceneDescription(
-  sceneId: string,
-  options?: DescriptionOptions
-): Promise<AIJobResponse> {
-  const response = await apiClient.post<AIJobResponse>(`/ai/scenes/${sceneId}/description`, options);
   return response.data;
 }
 
@@ -198,64 +171,13 @@ export async function cancelJob(jobId: string): Promise<{ success: boolean }> {
   return response.data;
 }
 
-/**
- * Get all AI jobs for the current user (cursor pagination)
- */
-export async function getJobs(options?: {
-  status?: 'pending' | 'processing' | 'completed' | 'failed';
-  cursor?: string | null;
-  limit?: number;
-}): Promise<CursorPaginatedResponse<AIProcessingJob>> {
-  const response = await apiClient.get<CursorPaginatedResponse<AIProcessingJob>>('/ai/jobs', {
-    params: options,
-  });
-  return response.data;
-}
-
-/**
- * Apply AI scene analysis suggestions to scenes
- */
-export async function applySceneAnalysis(
-  tourId: string,
-  suggestions: Array<{
-    scene_id: string;
-    apply_title?: boolean;
-    apply_description?: boolean;
-  }>
-): Promise<{ updated: number }> {
-  const response = await apiClient.post<{ updated: number }>(`/ai/tours/${tourId}/apply-analysis`, {
-    suggestions,
-  });
-  return response.data;
-}
-
-/**
- * Apply AI hotspot suggestions to a scene
- */
-export async function applyHotspotSuggestions(
-  sceneId: string,
-  suggestionIds: string[]
-): Promise<{ hotspots: Hotspot[] }> {
-  const response = await apiClient.post<{ hotspots: Hotspot[] }>(
-    `/ai/scenes/${sceneId}/apply-hotspots`,
-    { suggestion_ids: suggestionIds }
-  );
-  return response.data;
-}
-
 // Export all AI API functions
 export const aiApi = {
   generateTour,
   analyzeScenes,
-  analyzeScene,
   suggestHotspots,
-  suggestTourHotspots,
   generateDescriptions,
-  generateSceneDescription,
   generateReel,
   getJobStatus,
   cancelJob,
-  getJobs,
-  applySceneAnalysis,
-  applyHotspotSuggestions,
 };

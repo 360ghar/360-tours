@@ -159,59 +159,88 @@ describe('tourEditorStore', () => {
     });
   });
 
-  describe('scene and hotspot compatibility mutations', () => {
-    it('keeps scene draft helpers local-only and outside the Save payload', () => {
+  describe('mergeScenes', () => {
+    it('replaces the scenes array with a new reference and preserves other tour fields', () => {
       useTourEditorStore.getState().setCurrentTour(createMockTour());
-      const newScene = createMockScene({ id: 'scene-3', order_index: 2, title: 'Scene 3' });
+      const previousTour = useTourEditorStore.getState().currentTour;
+      const nextScenes = [
+        createMockScene({ id: 'scene-2', order_index: 0, title: 'Scene 2' }),
+        createMockScene({ id: 'scene-1', order_index: 1, title: 'Scene 1' }),
+      ];
 
-      useTourEditorStore.getState().addSceneDraft(newScene);
-      useTourEditorStore.getState().updateSceneDraft('scene-3', { title: 'Updated Scene 3' });
-      useTourEditorStore.getState().removeSceneDraft('scene-1');
+      useTourEditorStore.getState().mergeScenes(nextScenes);
 
       const state = useTourEditorStore.getState();
-      expect(state.currentTour?.scenes?.map(scene => scene.id)).toEqual(['scene-2', 'scene-3']);
-      expect(state.currentTour?.scenes?.find(scene => scene.id === 'scene-3')?.title).toBe(
-        'Updated Scene 3'
-      );
-      expect(state.currentSceneId).toBe('scene-2');
-      expect(state.pendingChanges).toEqual({});
-      expect(state.hasUnsavedChanges).toBe(false);
+      expect(state.currentTour?.scenes).toBe(nextScenes);
+      expect(state.currentTour?.scenes).not.toBe(previousTour?.scenes);
+      // All other tour fields are preserved untouched.
+      expect(state.currentTour?.title).toBe('Test Tour');
+      expect(state.currentTour?.status).toBe('draft');
+      expect(state.currentTour?.visibility).toBe('private');
+      expect(state.currentTour?.settings).toBeNull();
     });
 
-    it('keeps scene reordering local-only and outside the Save payload', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
+    it('updates hotspot arrays inside the merged scenes so viewer markers re-render', () => {
+      const tour = createMockTour({
+        scenes: [
+          createMockScene({
+            id: 'scene-1',
+            hotspots: [createMockHotspot({ id: 'hotspot-1' })],
+          }),
+        ],
+      });
+      useTourEditorStore.getState().setCurrentTour(tour);
 
-      useTourEditorStore.getState().reorderScenes(['scene-2', 'scene-1']);
+      const before = useTourEditorStore.getState().currentTour?.scenes?.[0]?.hotspots;
+      const refetched = [
+        createMockScene({
+          id: 'scene-1',
+          hotspots: [createMockHotspot({ id: 'hotspot-1' }), createMockHotspot({ id: 'hotspot-2' })],
+        }),
+      ];
+      useTourEditorStore.getState().mergeScenes(refetched);
 
-      const state = useTourEditorStore.getState();
-      expect(state.currentTour?.scenes?.map(scene => scene.id)).toEqual(['scene-2', 'scene-1']);
-      expect(state.currentTour?.scenes?.map(scene => scene.order_index)).toEqual([0, 1]);
-      expect(state.pendingChanges).toEqual({});
-      expect(state.hasUnsavedChanges).toBe(false);
+      const after = useTourEditorStore.getState().currentTour?.scenes?.[0]?.hotspots;
+      expect(after).not.toBe(before);
+      expect(after?.map(h => h.id)).toEqual(['hotspot-1', 'hotspot-2']);
     });
 
-    it('keeps hotspot draft helpers local-only and outside the Save payload', () => {
+    it('does not touch draft/unsaved state', () => {
       useTourEditorStore.getState().setCurrentTour(createMockTour());
-      const hotspot = createMockHotspot({ id: 'hotspot-1' });
+      useTourEditorStore.getState().updateTourDraft({ title: 'Unsaved Title' });
+      expect(useTourEditorStore.getState().hasUnsavedChanges).toBe(true);
 
-      useTourEditorStore.getState().addHotspotDraft('scene-1', hotspot);
-      useTourEditorStore.getState().updateHotspotDraft('hotspot-1', { title: 'Updated Hotspot' });
-
-      let state = useTourEditorStore.getState();
-      expect(state.currentTour?.scenes?.[0]?.hotspots).toEqual([
-        { ...hotspot, title: 'Updated Hotspot' },
+      useTourEditorStore.getState().mergeScenes([
+        createMockScene({ id: 'scene-2', order_index: 0, title: 'Scene 2' }),
       ]);
+
+      const state = useTourEditorStore.getState();
+      expect(state.hasUnsavedChanges).toBe(true);
+      expect(state.pendingChanges.tour).toEqual({ title: 'Unsaved Title' });
+      expect(state.currentTour?.title).toBe('Unsaved Title');
+      expect(state.currentTour?.scenes?.map(s => s.id)).toEqual(['scene-2']);
+    });
+
+    it('is a no-op when no tour is loaded', () => {
+      useTourEditorStore.getState().mergeScenes([
+        createMockScene({ id: 'scene-1', order_index: 0, title: 'Scene 1' }),
+      ]);
+      expect(useTourEditorStore.getState().currentTour).toBeNull();
+    });
+
+    it('keeps currentSceneId and selection untouched', () => {
+      useTourEditorStore.getState().setCurrentTour(createMockTour());
+      useTourEditorStore.getState().setCurrentScene('scene-2');
+      useTourEditorStore.getState().selectHotspot('hotspot-1');
+
+      useTourEditorStore.getState().mergeScenes([
+        createMockScene({ id: 'scene-1', order_index: 0, title: 'Scene 1' }),
+        createMockScene({ id: 'scene-2', order_index: 1, title: 'Scene 2' }),
+      ]);
+
+      const state = useTourEditorStore.getState();
+      expect(state.currentSceneId).toBe('scene-2');
       expect(state.selectedHotspotId).toBe('hotspot-1');
-      expect(state.pendingChanges).toEqual({});
-      expect(state.hasUnsavedChanges).toBe(false);
-
-      useTourEditorStore.getState().removeHotspotDraft('hotspot-1');
-
-      state = useTourEditorStore.getState();
-      expect(state.currentTour?.scenes?.[0]?.hotspots).toEqual([]);
-      expect(state.selectedHotspotId).toBeNull();
-      expect(state.pendingChanges).toEqual({});
-      expect(state.hasUnsavedChanges).toBe(false);
     });
   });
 
@@ -284,15 +313,6 @@ describe('tourEditorStore', () => {
       expect(useTourEditorStore.getState().hasUnsavedChanges).toBe(false);
       expect(useTourEditorStore.getState().pendingChanges).toEqual({});
     });
-
-    it('discardChanges clears unsaved state', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateTourDraft({ title: 'Changed' });
-
-      useTourEditorStore.getState().discardChanges();
-      expect(useTourEditorStore.getState().hasUnsavedChanges).toBe(false);
-      expect(useTourEditorStore.getState().pendingChanges).toEqual({});
-    });
   });
 
   describe('reset', () => {
@@ -318,96 +338,6 @@ describe('tourEditorStore', () => {
       expect(state.showSettingsPanel).toBe(false);
       expect(state.hasUnsavedChanges).toBe(false);
       expect(state.pendingChanges).toEqual({});
-    });
-  });
-
-  describe('undo/redo', () => {
-    it('canUndo/canRedo are false initially', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      expect(useTourEditorStore.getState().canUndo()).toBe(false);
-      expect(useTourEditorStore.getState().canRedo()).toBe(false);
-    });
-
-    it('undo restores the previous state after updateTourDraft', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateTourDraft({ title: 'Changed' });
-      expect(useTourEditorStore.getState().pendingChanges.tour).toEqual({ title: 'Changed' });
-      expect(useTourEditorStore.getState().canUndo()).toBe(true);
-
-      useTourEditorStore.getState().undo();
-
-      const state = useTourEditorStore.getState();
-      expect(state.pendingChanges.tour).toBeUndefined();
-      expect(state.hasUnsavedChanges).toBe(false);
-    });
-
-    it('redo re-applies the state after undo', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateTourDraft({ title: 'Changed' });
-      useTourEditorStore.getState().undo();
-      expect(useTourEditorStore.getState().pendingChanges.tour).toBeUndefined();
-      expect(useTourEditorStore.getState().canRedo()).toBe(true);
-
-      useTourEditorStore.getState().redo();
-
-      const state = useTourEditorStore.getState();
-      expect(state.pendingChanges.tour).toEqual({ title: 'Changed' });
-      expect(state.hasUnsavedChanges).toBe(true);
-    });
-
-    it('canUndo/canRedo return correct booleans through a sequence', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      expect(useTourEditorStore.getState().canUndo()).toBe(false);
-
-      useTourEditorStore.getState().updateTourDraft({ title: 'A' });
-      expect(useTourEditorStore.getState().canUndo()).toBe(true);
-      expect(useTourEditorStore.getState().canRedo()).toBe(false);
-
-      useTourEditorStore.getState().undo();
-      expect(useTourEditorStore.getState().canUndo()).toBe(false);
-      expect(useTourEditorStore.getState().canRedo()).toBe(true);
-
-      useTourEditorStore.getState().redo();
-      expect(useTourEditorStore.getState().canUndo()).toBe(true);
-      expect(useTourEditorStore.getState().canRedo()).toBe(false);
-    });
-
-    it('setCurrentTour clears history', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateTourDraft({ title: 'Changed' });
-      expect(useTourEditorStore.getState().canUndo()).toBe(true);
-
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-
-      expect(useTourEditorStore.getState().canUndo()).toBe(false);
-      expect(useTourEditorStore.getState().canRedo()).toBe(false);
-      expect(useTourEditorStore.getState().past).toHaveLength(0);
-      expect(useTourEditorStore.getState().future).toHaveLength(0);
-    });
-
-    it('a new data mutation clears the redo stack after an undo', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateTourDraft({ title: 'A' });
-      useTourEditorStore.getState().undo();
-
-      // New mutation should clear future
-      useTourEditorStore.getState().updateTourDraft({ title: 'B' });
-
-      expect(useTourEditorStore.getState().canRedo()).toBe(false);
-      expect(useTourEditorStore.getState().pendingChanges.tour).toEqual({ title: 'B' });
-    });
-
-    it('undo is a no-op when history is empty', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().undo();
-      expect(useTourEditorStore.getState().canUndo()).toBe(false);
-    });
-
-    it('redo is a no-op when future is empty', () => {
-      useTourEditorStore.getState().setCurrentTour(createMockTour());
-      useTourEditorStore.getState().updateTourDraft({ title: 'A' });
-      useTourEditorStore.getState().redo();
-      expect(useTourEditorStore.getState().canRedo()).toBe(false);
     });
   });
 });

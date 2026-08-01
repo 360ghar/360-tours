@@ -1,7 +1,19 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../env.dart';
+
+/// Broadcast signal fired when the single 401 refresh fails — the session
+/// can no longer be refreshed and the user must sign in again. UI listens
+/// to surface a "Session expired" state; the upload queue holds jobs in
+/// `waiting-auth` instead of burning retry attempts.
+final StreamController<void> _authExpired = StreamController<void>.broadcast();
+
+Stream<void> get authExpiredStream => _authExpired.stream;
+
+bool _authExpiredSignaled = false;
 
 /// Dio client for api.360ghar.com with the Supabase JWT attached.
 /// The Supabase SDK refreshes sessions itself; on a 401 we force one refresh
@@ -35,6 +47,14 @@ Dio createApiClient({SupabaseClient? supabase}) {
       }
       handler.next(options);
     },
+    onResponse: (response, handler) {
+      // A successful authed request means the session is healthy again;
+      // allow the next expiry episode to signal once more.
+      if (response.requestOptions.headers.containsKey('Authorization')) {
+        _authExpiredSignaled = false;
+      }
+      handler.next(response);
+    },
     onError: (error, handler) async {
       final auth = client()?.auth;
       final alreadyRetried = error.requestOptions.extra['retried'] == true;
@@ -59,6 +79,13 @@ Dio createApiClient({SupabaseClient? supabase}) {
             return handler.resolve(response);
           }
         } catch (_) {
+          // Refresh failed (network or expired refresh token): the session
+          // is dead. Signal once per expiry episode so the UI can prompt
+          // re-auth and the queue can pause retrying.
+          if (!_authExpiredSignaled) {
+            _authExpiredSignaled = true;
+            _authExpired.add(null);
+          }
           // fall through to the original 401
         }
       }

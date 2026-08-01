@@ -114,6 +114,10 @@ describe('View3DPage', () => {
     const iframe = await screen.findByTitle('3D world');
     expect(iframe).toHaveAttribute('src', 'https://example.com/splat-viewer');
     expect(iframe).toHaveAttribute('allow', 'fullscreen; xr-spatial-tracking');
+    // Hardening: sandbox the hosted viewer (JS apps need scripts + same-origin)
+    // and downgrade the referrer on https→http hops.
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin');
+    expect(iframe).toHaveAttribute('referrerpolicy', 'no-referrer-when-downgrade');
   });
 
   it('renders the empty state with a link to the 360 tour when world_3d is missing', async () => {

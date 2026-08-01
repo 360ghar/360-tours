@@ -27,6 +27,7 @@ import {
 } from '@/components/ui';
 import { cn } from '@/utils';
 import { useToast } from '@/hooks';
+import { confirm } from '@/stores';
 import { AIJobStatus } from './AIJobStatus';
 import { aiApi } from '@/api';
 import {
@@ -49,6 +50,21 @@ interface UploadedImage {
   id: string;
   file: File;
   preview: string;
+}
+
+/**
+ * sessionStorage key for the in-flight AI job id. Closing the wizard while a
+ * job runs keeps the job alive server-side (it is not cancellable by closing
+ * the dialog); the id is persisted so reopening offers to resume monitoring it.
+ */
+const PENDING_JOB_KEY = '360viewer_ai_pending_job';
+
+function persistPendingJob(jobId: string | null): void {
+  if (jobId) {
+    sessionStorage.setItem(PENDING_JOB_KEY, jobId);
+  } else {
+    sessionStorage.removeItem(PENDING_JOB_KEY);
+  }
 }
 
 export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardProps) {
@@ -191,6 +207,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
         setUploadProgress
       );
       setJobId(response.job.id);
+      persistPendingJob(response.job.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start tour generation');
       setStep('options');
@@ -199,6 +216,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
 
   const handleJobComplete = (job: unknown, jobResult: unknown) => {
     setJobId(null);
+    persistPendingJob(null);
     if (jobResult && typeof jobResult === 'object') {
       const data = jobResult as { tour?: Tour; scenes?: Scene[] };
       if (!data.tour || !Array.isArray(data.scenes)) {
@@ -221,6 +239,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
 
   const handleJobError = (job: unknown, errorMessage: string) => {
     setJobId(null);
+    persistPendingJob(null);
     setError(errorMessage);
     setStep('options');
     toastError(errorMessage, { title: 'Tour generation failed' });
@@ -233,7 +252,23 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     }
   };
 
-  const handleClose = () => {
+  const handleClose = async () => {
+    // A running job is not cancelled by closing the dialog — it keeps
+    // processing server-side. Confirm the user really wants to close, and keep
+    // the job id persisted so reopening offers to resume monitoring it.
+    if (jobId) {
+      const shouldClose = await confirm({
+        title: 'AI job in progress',
+        message:
+          'The AI job keeps running in the background. You can close this and check later.',
+        confirmLabel: 'Close anyway',
+        cancelLabel: 'Keep waiting',
+      });
+      if (!shouldClose) {
+        return;
+      }
+    }
+
     // Cleanup
     images.forEach((img) => URL.revokeObjectURL(img.preview));
     setImages([]);
@@ -249,6 +284,9 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     setResult(null);
     setError(null);
     setUploadProgress(0);
+    // Persist (or clear) the in-flight job id — done last so an async close
+    // never races the resume effect on the next open.
+    persistPendingJob(jobId);
     onOpenChange(false);
   };
 
@@ -278,8 +316,67 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
       return;
     }
 
-    handleClose();
+    void handleClose();
   };
+
+  // On reopen, look for a persisted in-flight job (closed-while-running) and
+  // offer to resume: jump back to the processing step for live status, or
+  // collect the result/error if it finished while the dialog was closed.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const saved = sessionStorage.getItem(PENDING_JOB_KEY);
+    if (!saved) return;
+
+    (async () => {
+      try {
+        const response = await aiApi.getJobStatus(saved);
+        if (cancelled) return;
+        const status = response.job.status;
+        if (status === 'completed') {
+          const data = response.result ?? response.job.output_data;
+          if (
+            data &&
+            typeof data === 'object' &&
+            (data as { tour?: Tour }).tour &&
+            Array.isArray((data as { scenes?: Scene[] }).scenes)
+          ) {
+            setResult(data as { tour?: Tour; scenes?: Scene[] });
+            setJobId(null);
+            persistPendingJob(null);
+            setStep('review');
+          } else {
+            persistPendingJob(null);
+            setError('Tour generation finished without usable results.');
+            setStep('options');
+          }
+        } else if (status === 'failed' || status === 'canceled') {
+          persistPendingJob(null);
+          setError(
+            response.job.error_message ||
+              (status === 'canceled' ? 'Processing was canceled' : 'Processing failed')
+          );
+          setStep('options');
+        } else {
+          // Still running — resume live monitoring.
+          setJobId(saved);
+          setStep('processing');
+        }
+      } catch {
+        // Status check failed (network/backend down). Keep the persisted id so
+        // the user can reopen and try again.
+        if (!cancelled) {
+          setError(
+            'Could not check the status of your previous AI job. Reopen the wizard to try again.'
+          );
+          setStep('options');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
@@ -545,6 +642,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   showCancelButton={true}
                   onCancel={() => {
                     setJobId(null);
+                    persistPendingJob(null);
                     setStep('options');
                   }}
                 />

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 
 import '../api/backend_api.dart';
 import '../models/models.dart';
@@ -37,6 +38,10 @@ class UploadQueue {
   static const _collection = 'upload_queue';
   static const _maxAttempts = 8;
 
+  /// Cloudinary presigned signatures are valid for ~1h; re-sign when the
+  /// stored one is older than this (crash-restart / long backoff resume).
+  static const _presignMaxAge = Duration(minutes: 55);
+
   final LocalStore _store;
   final BackendApi _api;
   final Future<ScanAsset?> Function(String id) _getAsset;
@@ -46,6 +51,15 @@ class UploadQueue {
 
   Future<void>? _inFlight;
   bool _rerun = false;
+
+  /// Live view of one asset's queue job (`null` when none). Emits on every
+  /// queue write, so the UI can surface backoff, errors and auth-holds
+  /// without polling. Backed by LocalStore's broadcast watcher.
+  Stream<Map<String, dynamic>?> watchJob(String assetId) =>
+      _store.watch(_collection).map((jobs) => jobs
+          .where((j) => j['assetId'] == assetId)
+          .map(Map<String, dynamic>.from)
+          .firstOrNull);
 
   /// Re-reads the asset and applies [apply] to the FRESH copy before saving,
   /// so fields changed concurrently (a user rename, etc.) are not clobbered
@@ -84,7 +98,10 @@ class UploadQueue {
       'id': asset.id, // one active job per asset
       'kind': 'asset',
       'assetId': asset.id,
-      'step': 'createTour',
+      // A tour that already exists (e.g. a ready asset re-enqueued after a
+      // post-publish failure) must never be re-created — resume at presign.
+      'step': asset.remoteTourId != null ? 'presign' : 'createTour',
+      'tourId': asset.remoteTourId,
       'attempts': 0,
     });
     pump();
@@ -118,6 +135,16 @@ class UploadQueue {
   Future<void> _drain() async {
     do {
       _rerun = false;
+      // Jobs held on auth expiry may retry now (app start, connectivity
+      // return, re-auth): reset them to their resume step. A still-expired
+      // session re-holds them without burning attempts.
+      final held = await _store.readAll(_collection);
+      for (final j in held.where((j) => j['step'] == 'waiting-auth')) {
+        final fresh = Map<String, dynamic>.from(j);
+        fresh['step'] = _resumeStep(fresh);
+        fresh['attempts'] = 0;
+        await _store.upsert(_collection, fresh);
+      }
       // Jobs that errored this pass: their backoff Timer owns the retry, so
       // skip them on later inner iterations instead of hammering them while
       // another job keeps progressing. Cleared each outer pass to allow re-pumps.
@@ -127,7 +154,10 @@ class UploadQueue {
         progressed = false;
         final jobs = await _store.readAll(_collection);
         final pending = jobs
-            .where((j) => j['step'] != 'done' && j['step'] != 'failed')
+            .where((j) =>
+                j['step'] != 'done' &&
+                j['step'] != 'failed' &&
+                j['step'] != 'waiting-auth')
             .map(Map<String, dynamic>.from)
             .toList();
         if (pending.isEmpty) break;
@@ -159,6 +189,15 @@ class UploadQueue {
     }
     if (job['kind'] == 'room') return _advanceRoom(job, asset);
     try {
+      // Resume path (crash-restart, backoff, re-pump): a Cloudinary
+      // signature persisted at putCloudinary/confirm is only valid ~1h.
+      // Re-sign instead of replaying a stale signature and burning attempts.
+      if ((job['step'] == 'putCloudinary' || job['step'] == 'confirm') &&
+          _presignStale(job)) {
+        job['step'] = 'presign';
+        job.remove('presigned');
+        job.remove('presignedAt');
+      }
       switch (job['step'] as String) {
         case 'createTour':
           final tour = await _api.createTour(title: asset.name);
@@ -169,7 +208,11 @@ class UploadQueue {
         case 'presign':
           final pano = asset.panoramaPath;
           if (pano == null || !File(pano).existsSync()) {
-            throw StateError('panorama file missing');
+            // StateError stays internal; the message IS the user-facing
+            // lastError surfaced by the detail screen.
+            throw StateError(
+                'The panorama file is missing from this device (stitching '
+                'did not complete). Delete this scan and re-capture it.');
           }
           final presigned = await _api.createPresignedUpload(
             filename: 'panorama.jpg',
@@ -178,6 +221,7 @@ class UploadQueue {
             fileSize: File(pano).lengthSync(),
           );
           job['presigned'] = presigned;
+          job['presignedAt'] = DateTime.now().millisecondsSinceEpoch;
           job['step'] = 'putCloudinary';
         case 'putCloudinary':
           await _api.uploadToCloudinary(
@@ -220,6 +264,7 @@ class UploadQueue {
           if (needsCloudStitch) {
             job['frameIndex'] = 0;
             job['frameUrls'] = <String>[];
+            job['missingFrames'] = 0;
             job['step'] = 'uploadFrames';
           } else {
             job['step'] = 'done';
@@ -245,23 +290,46 @@ class UploadQueue {
                   presigned: presigned, file: file);
               await _api.confirmUpload(presigned['upload_id'] as String);
               (job['frameUrls'] as List).add(presigned['public_url']);
+            } else {
+              // Frame vanished (deleted / never written): count it so the
+              // cloud re-stitch step can warn instead of silently skipping.
+              job['missingFrames'] = (job['missingFrames'] as int? ?? 0) + 1;
             }
             job['frameIndex'] = i + 1;
           }
         case 'requestStitch':
           final urls = List<String>.from(job['frameUrls'] as List? ?? []);
+          final missing = job['missingFrames'] as int? ?? 0;
           if (urls.length >= 2) {
             await _api.requestCloudStitch(
               sceneId: job['sceneId'] as String,
               frameUrls: urls,
             );
+            // The naive pano stays until the server swaps in the OpenCV one.
+            await _saveIfAlive(
+                asset.id, (c) => c.copyWith(status: AssetStatus.ready));
+            job['lastError'] = null;
+          } else if (missing > 0) {
+            // Real frames were missing at upload time — never claim "ready"
+            // with a silent quality loss; surface a re-capture warning.
+            job['lastError'] =
+                'Only ${urls.length} of ${asset.framePaths.length} frames '
+                'uploaded — please re-capture';
+            await _saveIfAlive(
+                asset.id, (c) => c.copyWith(status: AssetStatus.failed));
+          } else {
+            // Too few frames to cloud re-stitch, but nothing was lost: the
+            // naive pano stays and the asset is genuinely ready. Log the
+            // skip reason for observability.
+            job['lastError'] =
+                'Cloud re-stitch skipped: fewer than 2 frames were captured';
+            await _saveIfAlive(
+                asset.id, (c) => c.copyWith(status: AssetStatus.ready));
           }
-          // The naive pano stays until the server swaps in the OpenCV one.
-          await _saveIfAlive(
-              asset.id, (c) => c.copyWith(status: AssetStatus.ready));
           job['step'] = 'done';
       }
       job['attempts'] = 0;
+      job.remove('nextRetryAt');
       await _store.upsert(_collection, job);
       return _Step.progressed;
     } catch (e) {
@@ -292,11 +360,20 @@ class UploadQueue {
       return _Step.progressed;
     }
     try {
+      // Same stale-signature resume rule as the asset pipeline (focus b).
+      if ((job['step'] == 'putCloudinary' || job['step'] == 'confirm') &&
+          _presignStale(job)) {
+        job['step'] = 'presign';
+        job.remove('presigned');
+        job.remove('presignedAt');
+      }
       switch (job['step'] as String) {
         case 'presign':
           final pano = room.panoramaPath;
           if (pano == null || !File(pano).existsSync()) {
-            throw StateError('room panorama missing');
+            throw StateError(
+                'The room panorama is missing from this device (stitching '
+                'did not complete). Delete this room and re-capture it.');
           }
           job['presigned'] = await _api.createPresignedUpload(
             filename: 'panorama.jpg',
@@ -304,6 +381,7 @@ class UploadQueue {
             tourId: tourId,
             fileSize: File(pano).lengthSync(),
           );
+          job['presignedAt'] = DateTime.now().millisecondsSinceEpoch;
           job['step'] = 'putCloudinary';
         case 'putCloudinary':
           await _api.uploadToCloudinary(
@@ -326,14 +404,27 @@ class UploadQueue {
           await saveRoom(room.copyWith(
             remoteSceneId: scene['id'] as String,
             panoramaUrl: job['panoramaUrl'] as String?,
+            status: 'ready',
           ));
           job['step'] = 'done';
       }
       job['attempts'] = 0;
+      job.remove('nextRetryAt');
       await _store.upsert(_collection, job);
       return _Step.progressed;
     } catch (e) {
-      final gaveUp = await _failWithBackoff(job, e);
+      final gaveUp = await _failWithBackoff(
+        job,
+        e,
+        // Terminal failure must surface on the room, not leave it stuck at
+        // "Uploading…" forever (focus g).
+        onGiveUp: () async {
+          await saveRoom(room.copyWith(
+            status: 'failed',
+            lastError: e.toString(),
+          ));
+        },
+      );
       return gaveUp ? _Step.progressed : _Step.errored;
     }
   }
@@ -348,6 +439,17 @@ class UploadQueue {
     Object e, {
     Future<void> Function()? onGiveUp,
   }) async {
+    // Auth expiry (focus d): the single 401 refresh failed and the session
+    // is dead. Hold the job instead of burning retry attempts; it resumes
+    // from its last step on the next pump (app start, connectivity, re-auth).
+    if (_isAuthExpired(e)) {
+      job['lastStep'] = job['step'];
+      job['step'] = 'waiting-auth';
+      job['lastError'] = 'Session expired — please sign in again';
+      job.remove('nextRetryAt');
+      await _store.upsert(_collection, job);
+      return true; // move on to other jobs
+    }
     final attempts = (job['attempts'] as int? ?? 0) + 1;
     job['attempts'] = attempts;
     job['lastError'] = e.toString();
@@ -358,11 +460,34 @@ class UploadQueue {
       await onGiveUp?.call();
       return true; // move on to other jobs
     }
-    await _store.upsert(_collection, job);
-    // Exponential backoff capped at 5 minutes, then re-pump.
+    // Exponential backoff capped at 5 minutes, then re-pump. Persist when
+    // the next retry fires so the UI can show a live countdown (focus c).
     final delay = Duration(seconds: min(300, pow(2, attempts).toInt() * 5));
+    job['nextRetryAt'] =
+        DateTime.now().add(delay).millisecondsSinceEpoch;
+    await _store.upsert(_collection, job);
     Timer(delay, pump);
     return false;
+  }
+
+  /// True when [e] is a 401 — i.e. the single-flight refresh already failed
+  /// and the session can no longer be repaired from inside the queue.
+  ///
+  /// Typed check only: string-matching `e.toString()` for 'status code of 401'
+  /// was brittle across Dio versions/error shapes (a format change would
+  /// silently convert an auth-hold into 8 burned backoff attempts). Every
+  /// network call in the queue goes through Dio (BackendApi / the bare
+  /// Cloudinary client), so a 401 always arrives as a `DioException`.
+  bool _isAuthExpired(Object e) => e is DioException && e.response?.statusCode == 401;
+
+  /// True when the stored Cloudinary signature is missing or likely expired.
+  bool _presignStale(Map<String, dynamic> job) {
+    final at = job['presignedAt'];
+    if (at is! int) return true; // absent → stale
+    return DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(at))
+        .compareTo(_presignMaxAge) >
+        0;
   }
 
   /// Computes the step a failed job should resume from. Never restarts before
@@ -377,6 +502,7 @@ class UploadQueue {
     if (step == 'putCloudinary' || step == 'confirm') {
       step = 'presign';
       job.remove('presigned');
+      job.remove('presignedAt');
     }
     return step;
   }

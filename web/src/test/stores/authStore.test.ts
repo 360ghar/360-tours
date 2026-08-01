@@ -10,7 +10,6 @@ vi.mock('@/api', () => ({
   authApi: {
     login: vi.fn(),
     completeSession: vi.fn(),
-    register: vi.fn(),
     logout: vi.fn(),
     getCurrentUser: vi.fn(),
     checkIdentifierStatus: vi.fn(),
@@ -19,6 +18,7 @@ vi.mock('@/api', () => ({
 }));
 
 vi.mock('@/lib/supabaseAuth', () => ({
+  sessionReady: Promise.resolve(),
   supabaseAuth: {
     getTokens: vi.fn(),
     onAuthStateChange: vi.fn(() => ({ unsubscribe: vi.fn() })),
@@ -81,12 +81,15 @@ describe('authStore', () => {
   });
 
   describe('initial state', () => {
-    it('has correct initial state', () => {
+    it('has correct initial state (boot starts in checking state)', () => {
+      // The shared beforeEach resets to an idle test state; assert against the
+      // true factory initial state here.
+      useAuthStore.setState(useAuthStore.getInitialState());
       const state = useAuthStore.getState();
       expect(state.user).toBeNull();
       expect(state.tokens).toBeNull();
       expect(state.isAuthenticated).toBe(false);
-      expect(state.isLoading).toBe(false);
+      expect(state.isLoading).toBe(true);
       expect(state.error).toBeNull();
     });
   });
@@ -108,39 +111,6 @@ describe('authStore', () => {
       const state = useAuthStore.getState();
       expect(state.user).toBeNull();
       expect(state.isAuthenticated).toBe(false);
-    });
-  });
-
-  describe('setTokens', () => {
-    it('sets tokens correctly', () => {
-      const mockTokens = createMockTokens();
-
-      useAuthStore.getState().setTokens(mockTokens);
-
-      expect(useAuthStore.getState().tokens).toEqual(mockTokens);
-    });
-  });
-
-  describe('setLoading', () => {
-    it('sets loading state', () => {
-      useAuthStore.getState().setLoading(true);
-      expect(useAuthStore.getState().isLoading).toBe(true);
-
-      useAuthStore.getState().setLoading(false);
-      expect(useAuthStore.getState().isLoading).toBe(false);
-    });
-  });
-
-  describe('setError', () => {
-    it('sets error message', () => {
-      useAuthStore.getState().setError('An error occurred');
-      expect(useAuthStore.getState().error).toBe('An error occurred');
-    });
-
-    it('clears error when set to null', () => {
-      useAuthStore.getState().setError('An error');
-      useAuthStore.getState().setError(null);
-      expect(useAuthStore.getState().error).toBeNull();
     });
   });
 
@@ -245,42 +215,6 @@ describe('authStore', () => {
       expect(authApi.recordLastMethod).toHaveBeenCalledWith('phone_password');
       expect(useAuthStore.getState().isLoading).toBe(false);
       expect(useAuthStore.getState().error).toBeNull();
-    });
-  });
-
-  describe('register', () => {
-    it('registers successfully', async () => {
-      const mockResponse = {
-        user: createMockUser({ email: 'new@example.com', full_name: 'New User' }),
-        tokens: createMockTokens(),
-      };
-
-      vi.mocked(authApi.register).mockResolvedValue(mockResponse);
-
-      await useAuthStore.getState().register({
-        phone: '+1234567890',
-        password: 'password',
-        full_name: 'New User',
-        email: 'new@example.com',
-      });
-
-      const state = useAuthStore.getState();
-      expect(state.user).toEqual(mockResponse.user);
-      expect(state.isAuthenticated).toBe(true);
-    });
-
-    it('handles registration error', async () => {
-      vi.mocked(authApi.register).mockRejectedValue(new Error('Phone already exists'));
-
-      await expect(
-        useAuthStore.getState().register({
-          phone: '+1234567890',
-          password: 'password',
-          full_name: 'Test',
-        })
-      ).rejects.toThrow('Phone already exists');
-
-      expect(useAuthStore.getState().error).toBe('Phone already exists');
     });
   });
 

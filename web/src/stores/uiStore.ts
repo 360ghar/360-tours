@@ -22,7 +22,6 @@ export interface Toast {
 interface UIActions {
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
-  setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
   setSidebarMobileOpen: (open: boolean) => void;
   addToast: (toast: Omit<Toast, 'id'>) => void;
@@ -59,10 +58,6 @@ export const useUIStore = create<UIStore>()(
       },
 
       // Sidebar actions
-      setSidebarCollapsed: collapsed => {
-        set({ sidebarCollapsed: collapsed });
-      },
-
       toggleSidebar: () => {
         set(state => ({ sidebarCollapsed: !state.sidebarCollapsed }));
       },

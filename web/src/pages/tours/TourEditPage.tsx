@@ -118,6 +118,9 @@ export function TourEditPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'editor' | 'viewer'>('viewer');
   const [isInviting, setIsInviting] = useState(false);
+  // True while any settings-style save (settings dialog, branding, floor
+  // plans) is in flight; surfaces a saving state on the panel's Save button.
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const {
     collaborators,
@@ -140,8 +143,6 @@ export function TourEditPage() {
     selectHotspot,
     updateTourDraft,
     markAsSaved,
-    undo,
-    redo,
     reset,
   } = useTourEditorStore();
   const currentScene = currentTour?.scenes?.find(s => s.id === currentSceneId);
@@ -206,7 +207,7 @@ export function TourEditPage() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Save and undo/redo should work even inside input fields.
+      // Save should work even inside input fields.
       // Ctrl/Cmd + S to save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
@@ -214,19 +215,6 @@ export function TourEditPage() {
           updateMutation.mutate();
         }
         return;
-      }
-      // Undo / redo (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z)
-      if (e.ctrlKey || e.metaKey) {
-        const k = e.key.toLowerCase();
-        if (k === 'z' && !e.shiftKey) {
-          e.preventDefault();
-          undo();
-          return;
-        } else if (k === 'y' || (k === 'z' && e.shiftKey)) {
-          e.preventDefault();
-          redo();
-          return;
-        }
       }
 
       // Ignore remaining shortcuts if user is typing in an input field
@@ -253,21 +241,22 @@ export function TourEditPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    currentSceneId,
-    hasUnsavedChanges,
-    isPlacingHotspot,
-    setCurrentScene,
-    updateMutation,
-    undo,
-    redo,
-  ]);
+  }, [currentSceneId, hasUnsavedChanges, isPlacingHotspot, setCurrentScene, updateMutation]);
 
   // Publish tour mutation
   const publishMutation = useMutation({
     mutationFn: () => toursApi.publishTour(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+      // Sync the toolbar immediately instead of waiting for the refetch:
+      // publish only succeeds from a clean state (blocked while unsaved
+      // changes exist), so patch the store's status without dirtying the
+      // draft, then mark as saved so the badge stays accurate.
+      const editorState = useTourEditorStore.getState();
+      if (editorState.currentTour?.id === id && !editorState.hasUnsavedChanges) {
+        editorState.updateTourDraft({ status: 'published' });
+        editorState.markAsSaved();
+      }
       toast('success', 'Your tour is now live and can be shared.', { title: 'Tour published' });
     },
     onError: () => {
@@ -280,7 +269,17 @@ export function TourEditPage() {
     mutationFn: () => toursApi.unpublishTour(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+      // Same immediate toolbar sync as publish; skipped when the user has
+      // local draft edits so the save flow stays authoritative.
+      const editorState = useTourEditorStore.getState();
+      if (editorState.currentTour?.id === id && !editorState.hasUnsavedChanges) {
+        editorState.updateTourDraft({ status: 'draft' });
+        editorState.markAsSaved();
+      }
       toast('success', 'Your tour has been set to draft.', { title: 'Tour unpublished' });
+    },
+    onError: () => {
+      toast('error', 'Something went wrong. Please try again.', { title: 'Failed to unpublish' });
     },
   });
 
@@ -309,12 +308,13 @@ export function TourEditPage() {
 
   // Handle settings save
   const handleSettingsSave = useCallback(
-    (updates: Partial<Tour>) => {
+    async (updates: Partial<Tour>) => {
       if (!currentTour) return;
 
       // Track the draft as an unsaved change so the editor's unsaved-changes
       // guard (navigation blocker + beforeunload) stays accurate.
       updateTourDraft(updates);
+      setIsSavingSettings(true);
 
       // Save to server - handle null values for description
       const updatePayload = {
@@ -322,20 +322,23 @@ export function TourEditPage() {
         description: updates.description ?? undefined,
       };
 
-      toursApi
-        .updateTour(currentTour.id, updatePayload as Parameters<typeof toursApi.updateTour>[1])
-        .then(() => {
-          markAsSaved();
-          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
-          toast('success', 'Tour settings have been updated.', { title: 'Settings saved' });
-          setShowSettings(false);
-        })
-        .catch(() => {
-          // Leave hasUnsavedChanges true so the user can retry.
-          toast('error', 'Something went wrong. Please try again.', {
-            title: 'Failed to save settings',
-          });
+      try {
+        await toursApi.updateTour(
+          currentTour.id,
+          updatePayload as Parameters<typeof toursApi.updateTour>[1]
+        );
+        markAsSaved();
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+        toast('success', 'Tour settings have been updated.', { title: 'Settings saved' });
+        setShowSettings(false);
+      } catch {
+        // Leave hasUnsavedChanges true so the user can retry.
+        toast('error', 'Something went wrong. Please try again.', {
+          title: 'Failed to save settings',
         });
+      } finally {
+        setIsSavingSettings(false);
+      }
     },
     [currentTour, id, queryClient, updateTourDraft, markAsSaved, toast]
   );
@@ -385,11 +388,16 @@ export function TourEditPage() {
       if (!currentTour || !settings) return;
 
       updateTourDraft({ settings });
+      setIsSavingSettings(true);
 
-      await toursApi.updateTour(currentTour.id, { settings });
-      markAsSaved();
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
-      toast('success', successMessage, { title: successTitle });
+      try {
+        await toursApi.updateTour(currentTour.id, { settings });
+        markAsSaved();
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+        toast('success', successMessage, { title: successTitle });
+      } finally {
+        setIsSavingSettings(false);
+      }
     },
     [currentTour, id, queryClient, updateTourDraft, markAsSaved, toast]
   );
@@ -441,60 +449,93 @@ export function TourEditPage() {
   );
 
   const handleApplySceneAnalysis = useCallback(
-    (updates: Array<{ scene_id: string; title?: string; description?: string }>) => {
-      Promise.all(
+    async (updates: Array<{ scene_id: string; title?: string; description?: string }>) => {
+      if (updates.length === 0) return;
+
+      const results = await Promise.allSettled(
         updates.map(update =>
           toursApi.updateScene(update.scene_id, {
             title: update.title,
             description: update.description,
           })
         )
-      )
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-          toast('success', `${updates.length} scene${updates.length === 1 ? '' : 's'} updated.`, {
-            title: 'AI suggestions applied',
-          });
-        })
-        .catch(() => {
-          toast('error', 'Could not apply AI scene suggestions.', {
-            title: 'Failed to update scenes',
-          });
+      );
+
+      // Always refresh the scenes query so the successful updates are
+      // reflected in the UI even when some updates failed.
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+
+      if (failed === 0) {
+        toast('success', `${updates.length} scene${updates.length === 1 ? '' : 's'} updated.`, {
+          title: 'AI suggestions applied',
         });
+      } else if (succeeded === 0) {
+        toast('error', 'Could not apply AI scene suggestions.', {
+          title: 'Failed to update scenes',
+        });
+      } else {
+        toast(
+          'warning',
+          `${succeeded} of ${updates.length} scenes updated, ${failed} failed.`,
+          {
+            title: 'Partially applied',
+          }
+        );
+      }
     },
     [id, queryClient, toast]
   );
 
   const handleApplyDescriptions = useCallback(
-    (descriptions: Record<string, string>) => {
+    async (descriptions: Record<string, string>) => {
       const entries = Object.entries(descriptions);
-      Promise.all(
+      if (entries.length === 0) return;
+
+      const results = await Promise.allSettled(
         entries.map(([sceneId, description]) => toursApi.updateScene(sceneId, { description }))
-      )
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-          toast(
-            'success',
-            `${entries.length} description${entries.length === 1 ? '' : 's'} applied.`,
-            {
-              title: 'Descriptions updated',
-            }
-          );
-        })
-        .catch(() => {
-          toast('error', 'Could not apply AI descriptions.', {
-            title: 'Failed to update descriptions',
-          });
+      );
+
+      // Always refresh the scenes query so successful descriptions persist in
+      // the UI even when some updates failed.
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+
+      if (failed === 0) {
+        toast(
+          'success',
+          `${entries.length} description${entries.length === 1 ? '' : 's'} applied.`,
+          {
+            title: 'Descriptions updated',
+          }
+        );
+      } else if (succeeded === 0) {
+        toast('error', 'Could not apply AI descriptions.', {
+          title: 'Failed to update descriptions',
         });
+      } else {
+        toast(
+          'warning',
+          `${succeeded} of ${entries.length} descriptions applied, ${failed} failed.`,
+          {
+            title: 'Partially applied',
+          }
+        );
+      }
     },
     [id, queryClient, toast]
   );
 
   const handleApplyHotspotSuggestions = useCallback(
-    (suggestions: HotspotSuggestion[]) => {
+    async (suggestions: HotspotSuggestion[]) => {
       if (!currentScene) return;
+      if (suggestions.length === 0) return;
 
-      Promise.all(
+      const results = await Promise.allSettled(
         suggestions.map(suggestion => {
           const payload: HotspotCreateInput = {
             type: suggestion.type,
@@ -512,22 +553,36 @@ export function TourEditPage() {
 
           return toursApi.createHotspot(currentScene.id, payload);
         })
-      )
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-          toast(
-            'success',
-            `${suggestions.length} hotspot${suggestions.length === 1 ? '' : 's'} added.`,
-            {
-              title: 'AI hotspots applied',
-            }
-          );
-        })
-        .catch(() => {
-          toast('error', 'Could not add AI hotspot suggestions.', {
-            title: 'Failed to add hotspots',
-          });
+      );
+
+      // Always refresh the scenes query so successfully added hotspots appear
+      // in the viewer and panels even when some suggestions failed.
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+
+      if (failed === 0) {
+        toast(
+          'success',
+          `${suggestions.length} hotspot${suggestions.length === 1 ? '' : 's'} added.`,
+          {
+            title: 'AI hotspots applied',
+          }
+        );
+      } else if (succeeded === 0) {
+        toast('error', 'Could not add AI hotspot suggestions.', {
+          title: 'Failed to add hotspots',
         });
+      } else {
+        toast(
+          'warning',
+          `${succeeded} of ${suggestions.length} hotspots added, ${failed} failed.`,
+          {
+            title: 'Partially applied',
+          }
+        );
+      }
     },
     [currentScene, id, queryClient, toast]
   );
@@ -547,6 +602,47 @@ export function TourEditPage() {
       }
     }
   }, [id, tour, scenes, setCurrentTour]);
+
+  // Keep the store's scenes array in sync with the [SCENES, tourId] query.
+  // Scene/hotspot mutations (create/update/delete/reorder, drag, AI applies)
+  // persist through toursApi and only invalidate this query, so without this
+  // merge the editor UI (viewer markers, ScenePanel, HotspotPanel, scene-delete
+  // recovery) would stay stale until a full reload. Scenes are a separate
+  // array from tour-level draft edits, so a plain replacement is safe even
+  // while unsaved tour changes exist.
+  useEffect(() => {
+    if (!scenes) return;
+    const editorState = useTourEditorStore.getState();
+    if (!editorState.currentTour || editorState.currentTour.id !== id) return;
+    editorState.mergeScenes(scenes);
+  }, [id, scenes]);
+
+  // Sync server-confirmed tour fields (publish/unpublish/settings saves) into
+  // the store once no draft edits are in flight, so the toolbar status badge
+  // and Publish/Unpublish button never go stale — including the edge case of
+  // unpublishing while dirty and saving afterwards. Draft edits and the scene
+  // selection are never clobbered (the guard above plus scene-scoped merges).
+  useEffect(() => {
+    if (!tour || hasUnsavedChanges) return;
+    const editorState = useTourEditorStore.getState();
+    const storeTour = editorState.currentTour;
+    if (!storeTour || storeTour.id !== tour.id) return;
+    const changed =
+      storeTour.status !== tour.status ||
+      storeTour.visibility !== tour.visibility ||
+      storeTour.title !== tour.title ||
+      storeTour.description !== tour.description ||
+      storeTour.settings !== tour.settings;
+    if (!changed) return;
+    editorState.updateTourDraft({
+      status: tour.status,
+      visibility: tour.visibility,
+      title: tour.title,
+      description: tour.description,
+      settings: tour.settings,
+    });
+    editorState.markAsSaved();
+  }, [tour, hasUnsavedChanges]);
 
   // Recover from a stale scene selection (e.g. the selected scene was deleted).
   // Initial auto-selection is handled by setCurrentTour in the store, and a null
@@ -1123,6 +1219,7 @@ export function TourEditPage() {
             tour={currentTour}
             scenes={currentTour.scenes || []}
             onSave={handleSettingsSave}
+            isLoading={isSavingSettings}
           />
         )}
 
@@ -1134,6 +1231,7 @@ export function TourEditPage() {
           onOpenChange={setShowBranding}
           settings={currentTour?.settings?.branding ?? DEFAULT_TOUR_SETTINGS.branding ?? {}}
           onSave={handleBrandingSave}
+          isLoading={isSavingSettings}
         />
 
         <FloorPlanEditor
@@ -1142,6 +1240,7 @@ export function TourEditPage() {
           floorPlans={currentTour?.settings?.floor_plans ?? []}
           scenes={currentTour?.scenes ?? []}
           onSave={handleFloorPlansSave}
+          isLoading={isSavingSettings}
         />
 
         {currentTour && (

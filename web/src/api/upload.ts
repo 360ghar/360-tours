@@ -29,36 +29,6 @@ export const uploadApi = {
     return extractData(response);
   },
 
-  async uploadFiles(
-    files: File[],
-    options: UploadOptions = {}
-  ): Promise<FileUploadResponse[]> {
-    const formData = new FormData();
-    files.forEach(file => {
-      formData.append('files', file);
-    });
-    if (options.folder) {
-      formData.append('folder', options.folder);
-    }
-    if (options.visibility) {
-      formData.append('visibility', options.visibility);
-    }
-
-    const response = await apiClient.post<{ items: FileUploadResponse[] }>(
-      '/upload/batch',
-      formData,
-      {
-        onUploadProgress: progressEvent => {
-          if (options.onProgress && progressEvent.total) {
-            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            options.onProgress(progress);
-          }
-        },
-      }
-    );
-    return extractData(response).items;
-  },
-
   async getMediaFiles(params?: {
     cursor?: string | null;
     limit?: number;
@@ -69,11 +39,6 @@ export const uploadApi = {
     const response = await apiClient.get<CursorPaginatedResponse<MediaFile>>('/upload/media', {
       params,
     });
-    return extractData(response);
-  },
-
-  async getMediaFile(id: string): Promise<MediaFile> {
-    const response = await apiClient.get<MediaFile>(`/upload/media/${id}`);
     return extractData(response);
   },
 

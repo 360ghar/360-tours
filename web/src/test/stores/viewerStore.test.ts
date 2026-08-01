@@ -30,51 +30,14 @@ vi.mock('@/lib/supabaseAuth', () => ({
 describe('viewerStore', () => {
   beforeEach(() => {
     // Reset store to initial state before each test
-    useViewerStore.setState({ currentSceneId: null, currentSceneIdsByScope: {} });
+    useViewerStore.setState({ currentSceneIdsByScope: {} });
     vi.clearAllMocks();
   });
 
   describe('initial state', () => {
-    it('has currentSceneId set to null', () => {
+    it('starts with no scoped scene selections', () => {
       const state = useViewerStore.getState();
-      expect(state.currentSceneId).toBeNull();
       expect(state.currentSceneIdsByScope).toEqual({});
-    });
-  });
-
-  describe('setCurrentScene', () => {
-    it('sets the scene ID', () => {
-      useViewerStore.getState().setCurrentScene('scene-123');
-      expect(useViewerStore.getState().currentSceneId).toBe('scene-123');
-    });
-
-    it('can change the scene ID to a different value', () => {
-      useViewerStore.getState().setCurrentScene('scene-1');
-      useViewerStore.getState().setCurrentScene('scene-2');
-      expect(useViewerStore.getState().currentSceneId).toBe('scene-2');
-    });
-
-    it('can set the scene ID to null', () => {
-      useViewerStore.getState().setCurrentScene('scene-1');
-      useViewerStore.getState().setCurrentScene(null);
-      expect(useViewerStore.getState().currentSceneId).toBeNull();
-    });
-  });
-
-  describe('reset', () => {
-    it('clears currentSceneId back to null', () => {
-      useViewerStore.getState().setCurrentScene('scene-abc');
-      expect(useViewerStore.getState().currentSceneId).toBe('scene-abc');
-
-      useViewerStore.getState().reset();
-      expect(useViewerStore.getState().currentSceneId).toBeNull();
-      expect(useViewerStore.getState().currentSceneIdsByScope).toEqual({});
-    });
-
-    it('is idempotent when state is already initial', () => {
-      useViewerStore.getState().reset();
-      expect(useViewerStore.getState().currentSceneId).toBeNull();
-      expect(useViewerStore.getState().currentSceneIdsByScope).toEqual({});
     });
   });
 

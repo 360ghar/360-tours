@@ -109,9 +109,10 @@ export function ForgotPasswordPage() {
         return;
       }
       if (!status.exists) {
-        setError(
-          'No account found with this email or phone. Check the address or sign up.'
-        );
+        // Neutral copy: never reveal whether the identifier has an account.
+        // The OTP is only dispatched for existing identifiers (backend
+        // contract), but both branches present the same message.
+        setError('If an account exists for this identifier, a reset code has been sent.');
         return;
       }
       if (channel === 'email') {

@@ -7,7 +7,7 @@ function mappedError(error: unknown, context: AuthErrorContext = 'login'): Error
   return new Error(mapSupabaseAuthError(error, context));
 }
 
-export type SupabaseAuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED';
+export type SupabaseAuthEvent = 'INITIAL_SESSION' | 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED';
 
 export interface SupabaseSession extends AuthTokens {
   expires_at: number;
@@ -38,11 +38,22 @@ const supabase =
 
 let cachedSession: SupabaseSession | null = null;
 
-if (supabase) {
-  void supabase.auth.getSession().then(({ data }) => {
-    cachedSession = normalizeSession(data.session);
-  });
-}
+/**
+ * Resolves once the persisted session (if any) has been restored from
+ * storage on boot. Auth bootstrap (`authStore.checkAuth`) must await this
+ * before reading {@link getTokens} — otherwise the async restore can lose
+ * the race and a user with a valid stored session is silently treated as
+ * signed out on cold load.
+ */
+export const sessionReady: Promise<void> = supabase
+  ? supabase.auth.getSession().then(({ data }) => {
+      cachedSession = normalizeSession(data.session);
+    }).catch(() => {
+      // Storage/boot failure (e.g. privacy mode): treat as signed out rather
+      // than rejecting, which would strand checkAuth on an infinite spinner.
+      cachedSession = null;
+    })
+  : Promise.resolve();
 
 function nowEpochSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -125,6 +136,7 @@ export function consumeOAuthNext(urlNext?: string | null, fallback = '/'): strin
 }
 
 function mapEvent(event: AuthChangeEvent): SupabaseAuthEvent {
+  if (event === 'INITIAL_SESSION') return 'INITIAL_SESSION';
   if (event === 'SIGNED_OUT') return 'SIGNED_OUT';
   if (event === 'TOKEN_REFRESHED') return 'TOKEN_REFRESHED';
   return 'SIGNED_IN';

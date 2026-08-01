@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { EmbedTourPage } from '@/pages/EmbedTourPage';
@@ -130,5 +131,74 @@ describe('EmbedTourPage postMessage', () => {
         current_scene_id: 'scene-1',
       },
     });
+  });
+
+  it('posts tour_error when the tour exists but has zero scenes', async () => {
+    vi.mocked(toursApi.getPublicTour).mockResolvedValue({ ...mockTour, scenes: [] });
+
+    renderPage();
+
+    await screen.findByText('Tour not available');
+
+    await waitFor(() => {
+      const errorCall = messageListener.mock.calls.find(call => {
+        const event = call[0] as MessageEvent;
+        return event?.data?.type === 'tour_error';
+      });
+      expect(errorCall).toBeDefined();
+    });
+
+    // No `ready` is posted when there is nothing to render.
+    const readyCall = messageListener.mock.calls.find(call => {
+      const event = call[0] as MessageEvent;
+      return event?.data?.type === 'ready';
+    });
+    expect(readyCall).toBeUndefined();
+  });
+
+  it('posts tour_error when the tour is missing entirely', async () => {
+    vi.mocked(toursApi.getPublicTour).mockResolvedValue({
+      ...mockTour,
+      scenes: undefined,
+    } as unknown as Tour);
+
+    renderPage();
+
+    await waitFor(() => {
+      const errorCall = messageListener.mock.calls.find(call => {
+        const event = call[0] as MessageEvent;
+        return event?.data?.type === 'tour_error';
+      });
+      expect(errorCall).toBeDefined();
+    });
+  });
+
+  it('posts error on fetch failure and recovers via the Retry button', async () => {
+    vi.mocked(toursApi.getPublicTour)
+      .mockRejectedValueOnce(new Error('network fail'))
+      .mockResolvedValueOnce(mockTour);
+
+    renderPage();
+
+    await screen.findByText('Failed to load tour');
+
+    await waitFor(() => {
+      const errorCall = messageListener.mock.calls.find(call => {
+        const event = call[0] as MessageEvent;
+        return event?.data?.type === 'error';
+      });
+      expect(errorCall).toBeDefined();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      const readyCall = messageListener.mock.calls.find(call => {
+        const event = call[0] as MessageEvent;
+        return event?.data?.type === 'ready';
+      });
+      expect(readyCall).toBeDefined();
+    });
+    expect(screen.queryByText('Failed to load tour')).not.toBeInTheDocument();
   });
 });

@@ -39,6 +39,14 @@ interface CapturedRequest {
 
 const captured: CapturedRequest[] = [];
 
+// The axios client targets `API_BASE_URL` (env-dependent: CI default
+// http://localhost:3600/api/v1, but local shells may export a different
+// VITE_API_BASE_URL — e.g. http://localhost:8000 with no /api/v1 prefix).
+// The msw handlers above pin the exact full URL against API_BASE_URL, so the
+// pathname assertions below derive the expected base path from it instead of
+// hardcoding '/api/v1' (which broke local runs where the base has no suffix).
+const apiBasePath = new URL(API_BASE_URL).pathname.replace(/\/$/, '');
+
 async function capture(request: Request): Promise<CapturedRequest> {
   const entry: CapturedRequest = {
     method: request.method,
@@ -98,7 +106,7 @@ describe('toursApi backend method contract', () => {
 
     expect(captured).toHaveLength(1);
     expect(captured[0].method).toBe('PATCH');
-    expect(captured[0].pathname).toBe('/api/v1/tours/tour-1');
+    expect(captured[0].pathname).toBe(`${apiBasePath}/tours/tour-1`);
     expect(captured[0].body).toEqual({ title: 'Patched Tour' });
   });
 
@@ -110,7 +118,7 @@ describe('toursApi backend method contract', () => {
 
     expect(captured).toHaveLength(1);
     expect(captured[0].method).toBe('PATCH');
-    expect(captured[0].pathname).toBe('/api/v1/scenes/scene-1');
+    expect(captured[0].pathname).toBe(`${apiBasePath}/scenes/scene-1`);
     expect(captured[0].body).toEqual({ title: 'Patched Scene' });
   });
 
@@ -125,7 +133,7 @@ describe('toursApi backend method contract', () => {
 
     expect(captured).toHaveLength(1);
     expect(captured[0].method).toBe('POST');
-    expect(captured[0].pathname).toBe('/api/v1/tours/tour-1/scenes/reorder');
+    expect(captured[0].pathname).toBe(`${apiBasePath}/tours/tour-1/scenes/reorder`);
     expect(captured[0].body).toEqual({ scene_ids: ['scene-2', 'scene-1'] });
   });
 });

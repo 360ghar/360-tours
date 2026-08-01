@@ -12,6 +12,7 @@ import '../../../core/env.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../assets/data/local_asset_repository.dart';
 import '../../assets/presentation/asset_providers.dart';
 
 /// "Generate 3D World": kicks the backend job (equirect → textured skybox
@@ -111,9 +112,47 @@ class _Generate3dScreenState extends ConsumerState<Generate3dScreen> {
   static const _maxConsecutiveFailures = 5;
 
   @override
+  void initState() {
+    super.initState();
+    _resumePersistedJob();
+  }
+
+  /// The local repository provides 3D job persistence; the interface does
+  /// not declare it (kept off the contract until Room/asset job state lands
+  /// in the model).
+  LocalAssetRepository? get _repo {
+    final repo = ref.read(assetRepositoryProvider);
+    return repo is LocalAssetRepository ? repo : null;
+  }
+
+  @override
   void dispose() {
     _poll?.cancel();
     super.dispose();
+  }
+
+  /// Re-entering the screen must not spawn a duplicate backend job: if the
+  /// last session left a running job, resume polling it. Completed jobs are
+  /// already reflected in `model3dUrl` (persisted at completion), so the
+  /// button flips to "View 3D world" without a stored record.
+  Future<void> _resumePersistedJob() async {
+    final repo = _repo;
+    if (repo == null) return;
+    final job = await repo.get3dJob(widget.assetId);
+    if (!mounted || job == null) return;
+    switch (job.status) {
+      case 'completed':
+        setState(() => _done = true);
+      case 'failed':
+        setState(() => _error = job.error ?? 'Generation failed.');
+      default:
+        setState(() {
+          _jobId = job.jobId;
+          _progress = job.progress.clamp(0, 99);
+        });
+        _poll = Timer.periodic(
+            const Duration(seconds: 5), (_) => _check());
+    }
   }
 
   Future<void> _start(ScanAsset asset) async {
@@ -128,24 +167,40 @@ class _Generate3dScreenState extends ConsumerState<Generate3dScreen> {
       _progress = 5;
       _pollCount = 0;
       _failCount = 0;
+      _done = false;
     });
     try {
       final job = await ref
           .read(backendApiProvider)
           .generate3dWorld(asset.remoteTourId!);
       if (!mounted) return;
-      _jobId = (job['id'] ?? job['job_id']) as String?;
+      final jobId = (job['id'] ?? job['job_id']) as String?;
+      _jobId = jobId;
+      final repo = _repo;
+      if (repo == null) return;
+      // Mark the asset as processing so badges/status lines show progress;
+      // re-read first so a concurrent save is not clobbered.
+      final fresh = await repo.getAsset(asset.id);
+      if (fresh != null) {
+        await repo.saveAsset(fresh.copyWith(status: AssetStatus.processing3d));
+      }
+      if (jobId != null) {
+        await repo.save3dJob(
+          assetId: asset.id,
+          job: PersistedAiJob(jobId: jobId, status: 'running'),
+        );
+      }
       // ponytail: 5s polling instead of the /ws/jobs websocket — the job
       // takes minutes, sub-second latency buys nothing.
       _poll = Timer.periodic(
-          const Duration(seconds: 5), (_) => _check(asset));
+          const Duration(seconds: 5), (_) => _check());
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = 'Could not start the job.\n$e');
     }
   }
 
-  Future<void> _check(ScanAsset asset) async {
+  Future<void> _check() async {
     final jobId = _jobId;
     if (jobId == null) return;
     _pollCount++;
@@ -164,21 +219,28 @@ class _Generate3dScreenState extends ConsumerState<Generate3dScreen> {
       _failCount = 0;
       final status = (job['status'] ?? '') as String;
       final progress = (job['progress'] as num?)?.toInt() ?? _progress;
+      final repo = _repo;
+      if (repo == null) return;
       if (status == 'completed') {
         _poll?.cancel();
-        final fresh =
-            await ref.read(assetRepositoryProvider).getAsset(asset.id);
+        final fresh = await repo.getAsset(widget.assetId);
         if (!mounted) return;
-        if (fresh == null) {
+        final tourId = fresh?.remoteTourId;
+        if (fresh == null || tourId == null) {
           setState(() => _error =
               'Generation finished but the scan record was not found. '
               'Reopen this screen to retry.');
           return;
         }
-        final url = '${Env.viewerBase}/view3d/${fresh.remoteTourId}';
-        await ref.read(assetRepositoryProvider).saveAsset(
-              fresh.copyWith(model3dUrl: url, type: AssetType.model3d),
-            );
+        final url = '${Env.viewerBase}/view3d/$tourId';
+        await repo.saveAsset(fresh.copyWith(
+          model3dUrl: url,
+          type: AssetType.model3d,
+          status: AssetStatus.ready,
+        ));
+        // model3dUrl is the durable completion marker — drop the job record
+        // so a later visit shows "View 3D world", not a second Generate.
+        await repo.clear3dJob(widget.assetId);
         if (mounted) {
           setState(() {
             _done = true;
@@ -187,12 +249,29 @@ class _Generate3dScreenState extends ConsumerState<Generate3dScreen> {
         }
       } else if (status == 'failed') {
         _poll?.cancel();
+        final message =
+            (job['error_message'] as String?) ?? 'Generation failed.';
+        // The 3D job failed; the panorama itself is fine — revert the asset
+        // status so it is not stuck in "Building 3D…".
+        final fresh = await repo.getAsset(widget.assetId);
+        if (fresh != null && fresh.status == AssetStatus.processing3d) {
+          await repo.saveAsset(fresh.copyWith(status: AssetStatus.ready));
+        }
+        await repo.save3dJob(
+          assetId: widget.assetId,
+          job: PersistedAiJob(
+              jobId: jobId, status: 'failed', error: message),
+        );
         if (mounted) {
-          setState(() => _error =
-              (job['error_message'] as String?) ?? 'Generation failed.');
+          setState(() => _error = message);
         }
       } else if (mounted) {
         setState(() => _progress = progress.clamp(5, 99));
+        await repo.save3dJob(
+          assetId: widget.assetId,
+          job: PersistedAiJob(
+              jobId: jobId, status: 'running', progress: _progress),
+        );
       }
     } catch (_) {
       // Transient poll error — a few retries are fine; a sustained outage

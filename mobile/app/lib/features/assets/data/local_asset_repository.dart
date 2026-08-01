@@ -7,6 +7,66 @@ import '../../../core/storage/local_store.dart';
 typedef EnqueueUpload = Future<void> Function(ScanAsset asset);
 typedef RemoteDelete = Future<void> Function(ScanAsset asset);
 typedef RemoteDeleteScene = Future<void> Function(String sceneId);
+typedef EnqueueRoomUpload = Future<void> Function(ScanAsset asset, Room room);
+
+/// Upload-queue record for a room job, surfaced so the UI can show real
+/// per-room progress/failure instead of an eternal "Uploading…". Until the
+/// Room model carries its own status field (W3e), the queue record is the
+/// source of truth for failed rooms.
+class RoomUploadJob {
+  const RoomUploadJob({
+    required this.roomId,
+    required this.step,
+    this.lastError,
+  });
+
+  final String roomId;
+
+  /// Queue step: 'presign'…'done' or 'failed'.
+  final String step;
+  final String? lastError;
+
+  bool get failed => step == 'failed';
+  bool get done => step == 'done';
+
+  factory RoomUploadJob.fromJson(Map<String, dynamic> json) => RoomUploadJob(
+        roomId: json['roomId'] as String? ?? '',
+        step: json['step'] as String? ?? '',
+        lastError: json['lastError'] as String?,
+      );
+}
+
+/// Persisted 3D-generation job state for an asset (job id + status), so a
+/// killed app resumes polling instead of starting a duplicate backend job.
+class PersistedAiJob {
+  const PersistedAiJob({
+    required this.jobId,
+    required this.status,
+    this.progress = 0,
+    this.error,
+  });
+
+  final String jobId;
+
+  /// 'running' | 'completed' | 'failed'
+  final String status;
+  final int progress;
+  final String? error;
+
+  Map<String, dynamic> toJson() => {
+        'jobId': jobId,
+        'status': status,
+        'progress': progress,
+        'error': error,
+      };
+
+  factory PersistedAiJob.fromJson(Map<String, dynamic> json) => PersistedAiJob(
+        jobId: json['jobId'] as String? ?? '',
+        status: json['status'] as String? ?? 'running',
+        progress: (json['progress'] as num?)?.toInt() ?? 0,
+        error: json['error'] as String?,
+      );
+}
 
 /// Local-first asset repository over [LocalStore]. Uploads are delegated to
 /// the upload queue; remote deletion is best-effort.
@@ -14,6 +74,7 @@ class LocalAssetRepository implements AssetRepository {
   LocalAssetRepository(
     this._store, {
     this._enqueue,
+    this._enqueueRoom,
     this._remoteDelete,
     this._remoteDeleteScene,
   });
@@ -23,9 +84,12 @@ class LocalAssetRepository implements AssetRepository {
   // Collection owned by UploadQueue; cleaned here so a deleted asset's
   // in-flight job does not linger and read now-deleted files.
   static const _uploadQueue = 'upload_queue';
+  // 3D-generation job state keyed by asset id (see PersistedAiJob).
+  static const _aiJobs = 'ai_jobs';
 
   final LocalStore _store;
   final EnqueueUpload? _enqueue;
+  final EnqueueRoomUpload? _enqueueRoom;
   final RemoteDelete? _remoteDelete;
   final RemoteDeleteScene? _remoteDeleteScene;
 
@@ -65,6 +129,7 @@ class LocalAssetRepository implements AssetRepository {
     for (final r in rooms.where((e) => e['assetId'] == id).toList()) {
       await _store.delete(_rooms, r['id'] as String);
     }
+    await _store.delete(_aiJobs, id);
     if (asset == null) return;
     // Best-effort local file + remote cleanup; never block the UI on it.
     for (final path in [
@@ -135,4 +200,46 @@ class LocalAssetRepository implements AssetRepository {
     if (_enqueue == null) return;
     await _enqueue(asset);
   }
+
+  // ---- Room upload jobs ----------------------------------------------------
+
+  /// Watch queue records for this asset's room jobs. A room whose record
+  /// reaches `failed` is terminally failed (the queue gives up after 8
+  /// attempts) — surfaces the forever-"Uploading…" state as a real failure.
+  Stream<List<RoomUploadJob>> watchRoomUploadJobs(String assetId) =>
+      _store.watch(_uploadQueue).map((jobs) => jobs
+          .where((j) => j['kind'] == 'room' && j['assetId'] == assetId)
+          .map(RoomUploadJob.fromJson)
+          .toList());
+
+  /// Re-enqueue a room's upload: resets its queue job to a fresh `presign`
+  /// (the existing tour is reused — the room job never recreates it) and
+  /// re-pumps the queue. Safe to call for rooms that are not failed (the
+  /// queue upserts the same job id and keeps a single record).
+  Future<void> retryRoomUpload(String assetId, String roomId) async {
+    final enqueueRoom = _enqueueRoom;
+    if (enqueueRoom == null) return;
+    final asset = await getAsset(assetId);
+    if (asset == null) return;
+    final rooms = await getRooms(assetId);
+    final room = rooms.where((r) => r.id == roomId).firstOrNull;
+    if (room == null) return;
+    await enqueueRoom(asset, room);
+  }
+
+  // ---- 3D-generation job persistence ---------------------------------------
+
+  Future<void> save3dJob({
+    required String assetId,
+    required PersistedAiJob job,
+  }) =>
+      _store.upsert(_aiJobs, {'id': assetId, ...job.toJson()});
+
+  Future<PersistedAiJob?> get3dJob(String assetId) async {
+    final items = await _store.readAll(_aiJobs);
+    final json = items.where((e) => e['id'] == assetId).firstOrNull;
+    return json == null ? null : PersistedAiJob.fromJson(json);
+  }
+
+  Future<void> clear3dJob(String assetId) => _store.delete(_aiJobs, assetId);
 }

@@ -9,6 +9,13 @@ interface ApiError {
   code?: string;
 }
 
+// Auth flows that must never receive a `next=` return path.
+const AUTH_REDIRECT_BLOCKLIST: readonly string[] = [
+  ROUTES.LOGIN,
+  ROUTES.REGISTER,
+  ROUTES.AUTH_CALLBACK,
+];
+
 export function GlobalErrorHandler() {
   const { addToast } = useUIStore();
   const { logout } = useAuthStore();
@@ -28,7 +35,20 @@ export function GlobalErrorHandler() {
           message: ERROR_MESSAGES.SESSION_EXPIRED,
         });
         logout();
-        window.location.href = ROUTES.LOGIN;
+        // Mirror App.tsx AuthInitializer: keep the return path so the user
+        // lands back where they were after signing in again. Auth pages are
+        // blocklisted to avoid bounce loops.
+        const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        const loginUrl = new URL(ROUTES.LOGIN, window.location.origin);
+        if (
+          returnPath.startsWith('/') &&
+          !returnPath.startsWith('//') &&
+          !AUTH_REDIRECT_BLOCKLIST.includes(window.location.pathname)
+        ) {
+          loginUrl.searchParams.set('next', returnPath);
+        }
+        // Use replace so back-button doesn't re-enter a dying session.
+        window.location.replace(loginUrl.toString());
         return;
       }
 

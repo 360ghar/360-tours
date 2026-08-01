@@ -6,6 +6,25 @@ import { supabaseAuth } from '@/lib/supabaseAuth';
 const MAX_RETRY_ATTEMPTS = 3;
 const MAX_TOKEN_RETRY_ATTEMPTS = 1;
 
+/**
+ * Only these HTTP methods are safe to replay automatically. A 5xx or network
+ * failure is ambiguous — the server may have processed a mutating request
+ * (e.g. POST /tours created the row but the response was lost), so replaying
+ * it can create duplicates (duplicate tours/scenes/hotspots). 429 and 401 are
+ * excluded from this rule: rate-limited and unauthenticated requests are
+ * rejected BEFORE processing, so a replay with backoff / a fresh token is safe.
+ */
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * True when a request method is safe to replay automatically after an
+ * ambiguous failure (5xx / network error). Exportable for unit tests — the
+ * interceptor's retry branch is disabled under `import.meta.env.TEST`.
+ */
+export function isIdempotentMethod(method: string | undefined): boolean {
+  return IDEMPOTENT_METHODS.has((method ?? 'GET').toUpperCase());
+}
+
 let isRefreshingToken = false;
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -29,6 +48,12 @@ function notifyAuthExpired() {
   }
 }
 
+type ExtendedRequestConfig = InternalAxiosRequestConfig & {
+  _tokenRetryCount?: number;
+  _retryCount?: number;
+  _skipAuthExpiry?: boolean;
+};
+
 function getBearerToken(headers: InternalAxiosRequestConfig['headers'] | undefined): string | null {
   const raw =
     (headers as { Authorization?: string } | undefined)?.Authorization ??
@@ -36,6 +61,19 @@ function getBearerToken(headers: InternalAxiosRequestConfig['headers'] | undefin
   if (!raw) return null;
   const match = /^Bearer\s+(.+)$/i.exec(raw);
   return match ? match[1] : null;
+}
+
+/**
+ * True for backend paths that are anonymous by design (`/public/*`, e.g.
+ * `/public/tours/:id`, `/public/tours/:id/events`, like endpoints). These
+ * requests must never carry a Bearer token and a 401/403 on them is a content
+ * problem, not a session-expiry problem — otherwise a signed-in visitor on a
+ * public tour could be force-logged-out by a stale session.
+ */
+function isPublicApiPath(url: string | undefined): boolean {
+  if (!url) return false;
+  const path = url.split(/[?#]/, 1)[0];
+  return path.startsWith('/public/');
 }
 
 /**
@@ -76,6 +114,17 @@ const apiClient: AxiosInstance = axios.create({
 
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    const extendedRequest = config as ExtendedRequestConfig;
+
+    // Public endpoints are anonymous by contract: never attach a Bearer token
+    // and never treat a 401/403 there as session expiry. Without this, a stale
+    // session would get attached to a public tour request and a 401 would
+    // trigger the refresh → sign-out → hard-redirect cascade on a public page.
+    if (isPublicApiPath(config.url)) {
+      extendedRequest._skipAuthExpiry = true;
+      return config;
+    }
+
     // Prefer the in-memory session first so concurrent login/hydration
     // requests don't race getSession() and go out without a Bearer token.
     let accessToken = supabaseAuth.getTokens()?.access_token ?? null;
@@ -98,11 +147,7 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config;
 
     if (originalRequest) {
-      const extendedRequest = originalRequest as InternalAxiosRequestConfig & {
-        _tokenRetryCount?: number;
-        _retryCount?: number;
-        _skipAuthExpiry?: boolean;
-      };
+      const extendedRequest = originalRequest as ExtendedRequestConfig;
 
       if (error.response?.status === 401) {
         // Non-critical requests (e.g. recordLastMethod) should not trigger the
@@ -167,10 +212,17 @@ apiClient.interceptors.response.use(
       }
 
       // Retry 5xx server errors and network failures (with exponential backoff).
+      // Only idempotent methods (GET/HEAD/OPTIONS) are replayed: a lost-response
+      // 500 on a mutating request must not be resent (duplicate-tour risk).
       // Disabled in test environment to prevent interceptor re-entry in unit tests.
       const isNetworkError = !error.response;
       const isServerError = error.response?.status !== undefined && error.response.status >= 500;
-      if ((isNetworkError || isServerError) && !import.meta.env?.TEST) {
+      const method = (originalRequest.method ?? 'GET').toUpperCase();
+      if (
+        (isNetworkError || isServerError) &&
+        !import.meta.env?.TEST &&
+        isIdempotentMethod(method)
+      ) {
         const retryCount = extendedRequest._retryCount || 0;
         if (retryCount < MAX_RETRY_ATTEMPTS) {
           extendedRequest._retryCount = retryCount + 1;

@@ -15,9 +15,6 @@ import type {
   TourHeatmapData,
   CursorPaginatedResponse,
   FloorPlanResponse,
-  FloorPlanCreateInput,
-  FloorPlanUpdateInput,
-  FloorPlanMarker,
 } from '@/types';
 
 export const toursApi = {
@@ -142,14 +139,6 @@ export const toursApi = {
   },
 
   /**
-   * Get a single scene
-   */
-  async getScene(id: string): Promise<Scene> {
-    const response = await apiClient.get<Scene>(`/scenes/${id}`);
-    return extractData(response);
-  },
-
-  /**
    * Add a scene to a tour
    */
   async createScene(tourId: string, data: SceneCreateInput): Promise<Scene> {
@@ -183,22 +172,6 @@ export const toursApi = {
   },
 
   // Hotspot Management
-  /**
-   * Get all hotspots for a scene
-   */
-  async getHotspots(sceneId: string): Promise<Hotspot[]> {
-    const response = await apiClient.get<Hotspot[]>(`/scenes/${sceneId}/hotspots`);
-    return extractData(response);
-  },
-
-  /**
-   * Get a single hotspot
-   */
-  async getHotspot(id: string): Promise<Hotspot> {
-    const response = await apiClient.get<Hotspot>(`/hotspots/${id}`);
-    return extractData(response);
-  },
-
   /**
    * Create a hotspot
    */
@@ -242,14 +215,6 @@ export const toursApi = {
   },
 
   /**
-   * Get scenes for a public tour
-   */
-  async getPublicTourScenes(tourId: string): Promise<Scene[]> {
-    const response = await apiClient.get<Scene[]>(`/public/tours/${tourId}/scenes`);
-    return extractData(response);
-  },
-
-  /**
    * Get floor plans for a public tour (fallback when not embedded in tour settings)
    */
   async getPublicFloorPlans(tourId: string): Promise<FloorPlanResponse[]> {
@@ -286,53 +251,5 @@ export const toursApi = {
       headers: sessionId ? { 'x-session-id': sessionId } : undefined,
     });
     return extractData(response);
-  },
-
-  // Floor Plan Management
-  /**
-   * Get all floor plans for a tour
-   */
-  async getFloorPlans(tourId: string): Promise<FloorPlanResponse[]> {
-    const response = await apiClient.get<FloorPlanResponse[]>(`/tours/${tourId}/floor-plans`);
-    return extractData(response);
-  },
-
-  /**
-   * Get a single floor plan
-   */
-  async getFloorPlan(tourId: string, floorPlanId: string): Promise<FloorPlanResponse> {
-    const response = await apiClient.get<FloorPlanResponse>(`/tours/${tourId}/floor-plans/${floorPlanId}`);
-    return extractData(response);
-  },
-
-  /**
-   * Create a floor plan
-   */
-  async createFloorPlan(tourId: string, data: FloorPlanCreateInput): Promise<FloorPlanResponse> {
-    const response = await apiClient.post<FloorPlanResponse>(`/tours/${tourId}/floor-plans`, data);
-    return extractData(response);
-  },
-
-  /**
-   * Update a floor plan
-   */
-  async updateFloorPlan(tourId: string, floorPlanId: string, data: FloorPlanUpdateInput): Promise<FloorPlanResponse> {
-    const response = await apiClient.put<FloorPlanResponse>(`/tours/${tourId}/floor-plans/${floorPlanId}`, data);
-    return extractData(response);
-  },
-
-  /**
-   * Update floor plan markers only
-   */
-  async updateFloorPlanMarkers(tourId: string, floorPlanId: string, markers: FloorPlanMarker[]): Promise<FloorPlanResponse> {
-    const response = await apiClient.put<FloorPlanResponse>(`/tours/${tourId}/floor-plans/${floorPlanId}/markers`, markers);
-    return extractData(response);
-  },
-
-  /**
-   * Delete a floor plan
-   */
-  async deleteFloorPlan(tourId: string, floorPlanId: string): Promise<void> {
-    await apiClient.delete(`/tours/${tourId}/floor-plans/${floorPlanId}`);
   },
 };

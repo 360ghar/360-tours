@@ -4,24 +4,12 @@ import type {
   CaptureFrameCreateInput,
   CaptureSession,
   CaptureSessionCreateInput,
-  CaptureSessionList,
-  CaptureSessionStatus,
-  CaptureSessionStatusResponse,
   CaptureSessionUpdateInput,
 } from '@/types/capture';
 
 export const captureApi = {
   async createSession(data: CaptureSessionCreateInput): Promise<CaptureSession> {
     const response = await apiClient.post<CaptureSession>('/capture-sessions', data);
-    return extractData(response);
-  },
-
-  async listSessions(params?: {
-    status?: CaptureSessionStatus;
-    limit?: number;
-    offset?: number;
-  }): Promise<CaptureSessionList> {
-    const response = await apiClient.get<CaptureSessionList>('/capture-sessions', { params });
     return extractData(response);
   },
 
@@ -32,13 +20,6 @@ export const captureApi = {
 
   async updateSession(id: string, data: CaptureSessionUpdateInput): Promise<CaptureSession> {
     const response = await apiClient.patch<CaptureSession>(`/capture-sessions/${id}`, data);
-    return extractData(response);
-  },
-
-  async getStatus(id: string): Promise<CaptureSessionStatusResponse> {
-    const response = await apiClient.get<CaptureSessionStatusResponse>(
-      `/capture-sessions/${id}/status`
-    );
     return extractData(response);
   },
 

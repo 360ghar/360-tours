@@ -14,13 +14,15 @@ Versioned list of known debt. Prefer entries here over silent `TODO` comments. A
 | TD-008 | stitch | Naive stitch quality ceiling | Low | By design fallback; cloud re-stitch for quality |
 | TD-009 | architecture | Shared providers lived on detail screen | Done | Extracted to `asset_providers.dart`; list screen migrated 2026-07-25 |
 | TD-010 | architecture | `settings/domain/processing_preference.dart` hosts a Riverpod notifier | Low | Prefer pure enum/helpers in domain; move blocked by capture_controller import |
-| TD-011 | tours | `Room` model has no status field | Medium | Cannot represent stitching/uploading/failed per room; blocks failure surfacing |
+| TD-011 | tours | `Room` model has no status field | Done | `Room.status`/`lastError` added 2026-08 (W3e); queue marks rooms `failed` on give-up and `ready` on scene creation; room-list rendering of the failed state is W3f's to wire |
 | TD-012 | tours | No hotspot list/delete/edit UI; orphaned hotspots on room delete | Medium | `deleteHotspot` API exists but is never called; misplaced hotspots are permanent |
 | TD-013 | threed | 3D job state not persisted across navigation | Low | Polling is in-memory; job lost on navigate-away; timeout + bounds added 2026-07-25 |
 | TD-014 | deep links | `/view3d/{id}` deep link navigates to detail, not 3D viewer | Low | Should route to `/asset/{id}/view?mode=3d` |
-| TD-015 | viewer/share | `ShareLink.embedCode` getter in models.dart is dead code | Low | Inferior duplicate of `generateEmbedCode`; remove when models.dart is next touched |
-| TD-016 | upload | Failing step + `lastError` not surfaced in UI | Medium | Queue persists `lastStep`/`lastError` but no widget watches `upload_queue`; user only sees "Something went wrong" |
-| TD-017 | capture | Asset stuck in `stitching`/`pendingCloudStitch` if app killed mid-stitch | Medium | No startup reconciliation; needs a boot sweep to re-drive or mark failed |
+| TD-015 | viewer/share | `ShareLink.embedCode` getter in models.dart is dead code | Done | Removed 2026-08 (W3e); embed generation lives solely in `share/domain/embed_code.dart` |
+| TD-016 | upload | Failing step + `lastError` not surfaced in UI | Done | 2026-08 (W3e): `UploadQueue.watchJob(assetId)` stream + asset detail shows backoff countdown (`nextRetryAt`), last error (truncated), terminal failure reason, and `waiting-auth` hold with Sign in |
+| TD-017 | capture | Asset stuck in `stitching`/`pendingCloudStitch` if app killed mid-stitch | Medium | No startup reconciliation to re-drive or mark failed; 2026-08 (W3e) added the manual recovery path (`retryStitch` re-runs the ladder and enqueues) and `sweepOrphanedCaptures` (startup call still pending in main.dart); an automatic boot re-drive remains open |
+| TD-018 | threed | `AssetStatus.processing3d` read by UIs but never written | Low | generate_3d_screen should `saveAsset(fresh.copyWith(status: AssetStatus.processing3d))` while the job is `processing`, then `ready`/`failed` on completion — contract documented in VERIFICATION_LOG "Fixed by W3e" for W3f |
+| TD-019 | upload | Retry on an already-published failed asset can duplicate a scene in the same tour | Low | 2026-08 (W3e) `enqueue` now seeds `presign`+`tourId` when `remoteTourId` exists (no duplicate tour); re-upload still creates a duplicate scene — ideally the detail screen should route such retries to delete/re-capture |
 
 ## How to add
 

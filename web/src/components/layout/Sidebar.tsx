@@ -31,9 +31,21 @@ const navItems = [
   { label: 'Settings', path: ROUTES.SETTINGS, icon: Settings },
 ];
 
+// No hosted help/FAQ URL exists in config or the landing footer yet, so both
+// items route to the company support inbox (domain from RegisterPage policy
+// links, https://360ghar.com).
+const SUPPORT_EMAIL = 'support@360ghar.com';
 const bottomNavItems = [
-  { label: 'Help & Support', icon: HelpCircle },
-  { label: 'Feedback', icon: MessageSquare },
+  {
+    label: 'Help & Support',
+    icon: HelpCircle,
+    href: `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Help & Support request')}`,
+  },
+  {
+    label: 'Feedback',
+    icon: MessageSquare,
+    href: `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Feedback on 360 Viewer')}`,
+  },
 ];
 
 export function Sidebar({ className }: SidebarProps) {
@@ -137,19 +149,18 @@ export function Sidebar({ className }: SidebarProps) {
           {/* Bottom Nav Items */}
           <div className="mb-3 space-y-1">
             {bottomNavItems.map(item => (
-              <button
+              <a
                 key={item.label}
-                type="button"
-                disabled
+                href={item.href}
                 title={sidebarCollapsed ? item.label : undefined}
                 className={cn(
-                  'flex w-full cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-[var(--color-text-muted)] opacity-60',
+                  'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-primary)]',
                   sidebarCollapsed && 'lg:justify-center lg:px-0'
                 )}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
                 <span className={cn(sidebarCollapsed && 'lg:hidden')}>{item.label}</span>
-              </button>
+              </a>
             ))}
           </div>
 

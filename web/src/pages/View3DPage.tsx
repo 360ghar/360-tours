@@ -78,6 +78,12 @@ export function View3DPage() {
         <iframe
           src={world3d.viewer_url}
           allow="fullscreen; xr-spatial-tracking"
+          // The hosted viewers are JS apps: allow-scripts + allow-same-origin is
+          // the minimum they need (no popups/forms required). referrerpolicy
+          // downgrades the referrer on https->http hops without breaking same-
+          // scheme loading like 'no-referrer' would.
+          sandbox="allow-scripts allow-same-origin"
+          referrerPolicy="no-referrer-when-downgrade"
           title="3D world"
           className="h-full w-full border-0"
         />

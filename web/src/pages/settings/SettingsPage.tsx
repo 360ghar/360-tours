@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import { useMutation } from '@tanstack/react-query';
-import { Eye, EyeOff, Bell, Shield, Palette, Trash2 } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Eye, EyeOff, Bell, Shield, Palette, Trash2, Globe } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -11,9 +11,11 @@ import {
   Button,
   Input,
 } from '@/components/ui';
-import { authApi, usersApi } from '@/api';
+import { CustomDomainSetup } from '@/components/features';
+import { authApi, usersApi, toursApi } from '@/api';
 import { useAuthStore, useUIStore } from '@/stores';
 import { useToast } from '@/hooks/useToast';
+import { QUERY_KEYS } from '@/constants';
 import { cn } from '@/utils';
 
 export function SettingsPage() {
@@ -22,6 +24,14 @@ export function SettingsPage() {
   const { toast } = useToast();
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [domainSetupOpen, setDomainSetupOpen] = useState(false);
+
+  // Published tours that a custom domain would serve (empty/loading states).
+  const { data: publishedTours, isLoading: isLoadingTours } = useQuery({
+    queryKey: [QUERY_KEYS.TOURS, { status: 'published', scope: 'custom-domains' }],
+    queryFn: () => toursApi.getTours({ status: 'published', limit: 50 }),
+  });
+  const publishedTourCount = publishedTours?.total ?? publishedTours?.items.length ?? 0;
 
   // Notification settings state
   const [notifications, setNotifications] = useState({
@@ -148,6 +158,41 @@ export function SettingsPage() {
                 ))}
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Custom Domains */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-[var(--color-text-muted)]" />
+            <CardTitle>Custom Domains</CardTitle>
+          </div>
+          <CardDescription>Serve your tours from your own branded URL</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {isLoadingTours ? (
+              <p className="text-sm text-[var(--color-text-muted)]" role="status">
+                Loading your published tours...
+              </p>
+            ) : publishedTourCount > 0 ? (
+              <p className="text-sm text-[var(--color-text-muted)]">
+                Your custom domain applies to{' '}
+                <span className="font-medium text-[var(--color-text-primary)]">
+                  {publishedTourCount} published tour{publishedTourCount === 1 ? '' : 's'}
+                </span>
+                .
+              </p>
+            ) : (
+              <p className="text-sm text-[var(--color-text-muted)]">
+                You have no published tours yet. Publish a tour first, then connect a custom
+                domain.
+              </p>
+            )}
+            <Button onClick={() => setDomainSetupOpen(true)}>Set up custom domain</Button>
+            <CustomDomainSetup open={domainSetupOpen} onOpenChange={setDomainSetupOpen} />
           </div>
         </CardContent>
       </Card>

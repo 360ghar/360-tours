@@ -316,13 +316,18 @@ export const router = createBrowserRouter([
     ),
   },
 
-  // Local spatial-tour harness (DEV ONLY) — renders properties/<id>/tour.json
+  // Local spatial-tour harness (DEV ONLY) — renders properties/<id>/tour.json.
+  // The Vite dev plugin that serves /seed_properties/* is not in production
+  // builds (import.meta.env.DEV is also true under vitest), so in prod this
+  // route is replaced by the 404 page.
   {
     path: ROUTES.LOCAL_TOUR,
-    element: (
+    element: import.meta.env.DEV ? (
       <LazyPage>
         <LocalTourPage />
       </LazyPage>
+    ) : (
+      <NotFoundPage />
     ),
   },
 

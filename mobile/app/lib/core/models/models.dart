@@ -7,7 +7,7 @@ import '../env.dart';
 /// (distinguishing "not passed" from "explicitly null").
 const _sentinel = Object();
 
-enum AssetType { pano360, model3d, lidar }
+enum AssetType { pano360, model3d }
 
 /// Device orientation recorded with each captured frame (degrees). Feeds the
 /// fallback stitchers and cloud re-stitch.
@@ -214,6 +214,15 @@ class Room {
   /// Backend Scene id once the room has been created remotely.
   final String? remoteSceneId;
 
+  /// Upload pipeline state: `null` = not started, `'uploading'` while the
+  /// stitch/upload pipeline runs, `'ready'` once the scene exists remotely,
+  /// `'failed'` after a terminal stitch/upload failure (see [lastError]).
+  /// The room list renders this instead of guessing from [remoteSceneId].
+  final String? status;
+
+  /// Human-readable reason when [status] is `'failed'`.
+  final String? lastError;
+
   const Room({
     required this.id,
     required this.assetId,
@@ -222,6 +231,8 @@ class Room {
     this.panoramaUrl,
     this.hotspots = const [],
     this.remoteSceneId,
+    this.status,
+    this.lastError,
   });
 
   Room copyWith({
@@ -230,6 +241,8 @@ class Room {
     Object? panoramaUrl = _sentinel,
     List<Hotspot>? hotspots,
     Object? remoteSceneId = _sentinel,
+    Object? status = _sentinel,
+    Object? lastError = _sentinel,
   }) =>
       Room(
         id: id,
@@ -245,6 +258,10 @@ class Room {
         remoteSceneId: identical(remoteSceneId, _sentinel)
             ? this.remoteSceneId
             : remoteSceneId as String?,
+        status: identical(status, _sentinel) ? this.status : status as String?,
+        lastError: identical(lastError, _sentinel)
+            ? this.lastError
+            : lastError as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -255,6 +272,8 @@ class Room {
         'panoramaUrl': panoramaUrl,
         'hotspots': hotspots.map((h) => h.toJson()).toList(),
         'remoteSceneId': remoteSceneId,
+        'status': status,
+        'lastError': lastError,
       };
 
   factory Room.fromJson(Map<String, dynamic> json) => Room(
@@ -268,6 +287,8 @@ class Room {
                 .toList() ??
             const [],
         remoteSceneId: json['remoteSceneId'] as String?,
+        status: json['status'] as String?,
+        lastError: json['lastError'] as String?,
       );
 }
 
@@ -330,10 +351,6 @@ class ShareLink {
   /// Public viewer URL, e.g. https://api.360ghar.com/v/abc12 (OG page that
   /// redirects to the web viewer).
   String get url => overrideUrl ?? '${Env.apiRoot}/v/$code';
-
-  String get embedCode =>
-      '<iframe src="$url?embed=1" width="800" height="450" '
-      'frameborder="0" allowfullscreen></iframe>';
 
   Map<String, dynamic> toJson() => {
         'code': code,

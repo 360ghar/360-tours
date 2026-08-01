@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
@@ -33,12 +33,28 @@ export function ToursPage() {
   const queryClient = useQueryClient();
   const addToast = useUIStore(s => s.addToast);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Seed the search box from the `?search=` query param (header search submits
+  // `/tours?search=<query>`). Local typing never rewrites the URL, so the sync
+  // effect below only fires when the param actually changes.
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') ?? '');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cursor, setCursor] = useState<string | null>(null);
   // Stack of cursors used for previous pages, enabling a "Prev" navigation.
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
   const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Keep local search state in sync with the URL param without clobbering
+  // in-page typing (which never changes the URL).
+  const lastSearchParamRef = useRef(searchParams.get('search') ?? '');
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') ?? '';
+    if (urlSearch !== lastSearchParamRef.current) {
+      lastSearchParamRef.current = urlSearch;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSearchQuery(urlSearch);
+    }
+  }, [searchParams]);
 
   // Fetch tours (cursor pagination)
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -64,6 +80,11 @@ export function ToursPage() {
     mutationFn: (id: string) => toursApi.deleteTour(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
+      addToast({
+        type: 'success',
+        message: 'Your tour has been permanently deleted.',
+        title: 'Tour deleted',
+      });
     },
     onError: (error: Error) => {
       addToast({ type: 'error', message: error.message || 'Action failed' });
@@ -75,6 +96,11 @@ export function ToursPage() {
     mutationFn: (id: string) => toursApi.duplicateTour(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
+      addToast({
+        type: 'success',
+        message: 'A copy of your tour has been created.',
+        title: 'Tour duplicated',
+      });
     },
     onError: (error: Error) => {
       addToast({ type: 'error', message: error.message || 'Action failed' });
@@ -85,8 +111,15 @@ export function ToursPage() {
   const archiveMutation = useMutation({
     mutationFn: ({ id, archive }: { id: string; archive: boolean }) =>
       toursApi.updateTour(id, { status: archive ? 'archived' : 'draft' }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
+      addToast({
+        type: 'success',
+        message: variables.archive
+          ? 'Your tour has been archived and hidden from the active list.'
+          : 'Your tour has been unarchived and is active again.',
+        title: variables.archive ? 'Tour archived' : 'Tour unarchived',
+      });
     },
     onError: (error: Error) => {
       addToast({ type: 'error', message: error.message || 'Action failed' });

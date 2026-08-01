@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/repositories/repositories.dart';
+import '../../../core/storage/local_store.dart';
 import '../../../core/upload/upload_queue.dart';
 import '../../settings/domain/processing_preference.dart';
 import '../domain/capture_targets.dart';
@@ -17,6 +18,99 @@ import '../domain/orientation_engine.dart';
 import '../domain/stitcher_service.dart';
 
 enum CapturePhase { initializing, aiming, shooting, review, error }
+
+/// Re-runs the stitch ladder for a failed asset that still has raw frames but
+/// no panorama (focus-path (a) in docs/VERIFICATION_LOG.md) and enqueues the
+/// upload once a panorama exists. Keeps the layers clean: UI calls this one
+/// function; no Dio or queue internals reach widgets.
+///
+/// Returns `null` on success, or a user-facing error message on failure
+/// ("Stitching failed: `reason` — try re-capturing").
+Future<String?> retryStitch({
+  required ScanAsset asset,
+  required AssetRepository assets,
+  required UploadQueue queue,
+  String? outDir,
+  bool preferDevice = true,
+  StitcherService stitcher = const StitcherService(),
+}) async {
+  if (asset.framePaths.isEmpty) {
+    return 'No captured frames to stitch — delete this scan and re-capture';
+  }
+  try {
+    final dir = outDir ??
+        '${(await getApplicationDocumentsDirectory()).path}/'
+            'stitch_retry/${DateTime.now().millisecondsSinceEpoch}';
+    await Directory(dir).create(recursive: true);
+    final result = await stitcher.stitch(
+      framePaths: asset.framePaths,
+      orientations: asset.frameOrientations,
+      outDir: dir,
+      preferDevice: preferDevice,
+    );
+    final stitched = asset.copyWith(
+      status: result.naive
+          ? AssetStatus.pendingCloudStitch
+          : AssetStatus.stitching,
+      panoramaPath: result.panoramaPath,
+      thumbnailPath: result.thumbnailPath,
+    );
+    await assets.saveAsset(stitched);
+    await assets.enqueueUpload(stitched);
+    return null;
+  } catch (e) {
+    await assets.saveAsset(asset.copyWith(status: AssetStatus.failed));
+    return 'Stitching failed: $e — try re-capturing';
+  }
+}
+
+/// Deletes capture session directories whose session was never saved (no
+/// asset or room references any file inside them, so cloud re-stitch would
+/// never need them) and that are older than [maxAge], so in-flight sessions
+/// are never swept. Call once at startup after the store is available —
+/// main.dart wires it (see the W3e fix report).
+Future<void> sweepOrphanedCaptures({
+  required LocalStore store,
+  Directory? docsDir,
+  Duration maxAge = const Duration(hours: 24),
+}) async {
+  final root = docsDir ?? await getApplicationDocumentsDirectory();
+  final captures = Directory('${root.path}/captures');
+  if (!await captures.exists()) return;
+  final referenced = <String>{
+    for (final a in await store.readAll('assets')) ...[
+      if (a['panoramaPath'] is String) a['panoramaPath'] as String,
+      if (a['thumbnailPath'] is String) a['thumbnailPath'] as String,
+      for (final f in (a['framePaths'] as List? ?? const []))
+        if (f is String) f,
+    ],
+    for (final r in await store.readAll('rooms'))
+      if (r['panoramaPath'] is String) r['panoramaPath'] as String,
+  };
+  final now = DateTime.now();
+  await for (final entry in captures.list()) {
+    if (entry is! Directory) continue;
+    try {
+      // Session dirs are named with their creation epoch-ms, which is more
+      // reliable than mtime (writing frames bumps the dir mtime). Fall back
+      // to mtime for dirs with non-timestamp names.
+      final name = entry.uri.pathSegments
+          .where((s) => s.isNotEmpty)
+          .lastOrNull;
+      final nameTs = name != null ? int.tryParse(name) : null;
+      final created = nameTs != null
+          ? DateTime.fromMillisecondsSinceEpoch(nameTs)
+          : entry.statSync().modified;
+      if (now.difference(created) < maxAge) continue;
+      final dirPath = '${entry.path}/';
+      if (referenced.any((p) => p.startsWith(dirPath))) continue;
+      await entry.delete(recursive: true);
+      debugPrint('sweepOrphanedCaptures: deleted $dirPath');
+    } catch (e) {
+      debugPrint('sweepOrphanedCaptures: skipped ${entry.path}: $e');
+    }
+  }
+}
 
 class CaptureState {
   final CapturePhase phase;
@@ -367,6 +461,9 @@ class CaptureController extends Notifier<CaptureState> {
     String outDir, {
     bool preferDevice = true,
   }) async {
+    // Reflect the pipeline state immediately so the room list never shows a
+    // not-started room as "Uploading…" with no progress (focus g).
+    await assets.saveRoom(room.copyWith(status: 'uploading'));
     try {
       final result = await const StitcherService().stitch(
         framePaths: framePaths,
@@ -374,12 +471,21 @@ class CaptureController extends Notifier<CaptureState> {
         outDir: outDir,
         preferDevice: preferDevice,
       );
-      final stitched = room.copyWith(panoramaPath: result.panoramaPath);
+      final stitched = room.copyWith(
+        panoramaPath: result.panoramaPath,
+        status: 'ready',
+      );
       await assets.saveRoom(stitched);
       final asset = await assets.getAsset(assetId);
       if (asset != null) await queue.enqueueRoom(asset, stitched);
-    } catch (_) {
-      // Room stays without a panorama; user can delete and recapture.
+    } catch (e) {
+      // Terminal stitch failure: surface it on the room instead of leaving
+      // it stuck at "Uploading…" forever (focus g). Upload failures after
+      // enqueue are marked by the queue's onGiveUp.
+      await assets.saveRoom(room.copyWith(
+        status: 'failed',
+        lastError: 'Stitching failed: $e — try re-capturing',
+      ));
     }
   }
 

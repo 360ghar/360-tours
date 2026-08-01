@@ -1,11 +1,12 @@
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import type { AxiosError } from 'axios';
 import { MetaTags, VirtualTourStructuredData } from '@/components/common/MetaTags';
 import { Share2, Heart, Expand, Minimize, Volume2, VolumeX, Info, Keyboard, X } from 'lucide-react';
 import { Button, PageLoader, Badge } from '@/components/ui';
 import { toursApi } from '@/api';
-import { DEFAULT_TOUR_SETTINGS } from '@/constants';
+import { DEFAULT_TOUR_SETTINGS, ROUTES } from '@/constants';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { ShareModal } from '@/components/features/ShareModal';
 import { FloorPlanOverlay } from '@/components/features/FloorPlanOverlay';
@@ -15,7 +16,7 @@ import { usePublicTourTracking } from '@/hooks/usePublicTourTracking';
 import { useTwoFingerSwipe } from '@/hooks';
 import { cn, parseBooleanParam } from '@/utils';
 import { parseLinkHotspotContent } from '@/types/hotspotContent';
-import type { Hotspot } from '@/types';
+import type { Hotspot, Tour } from '@/types';
 
 function getWatermarkPositionClass(position?: string): string {
   switch (position) {
@@ -58,6 +59,7 @@ export function PublicTourPage() {
   const [showKeyboardHints, setShowKeyboardHints] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
   const [isLiking, setIsLiking] = useState(false);
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
   const [showHotspotModal, setShowHotspotModal] = useState(false);
@@ -91,11 +93,26 @@ export function PublicTourPage() {
   const rotateParam = parseBooleanParam(searchParams.get('rotate'));
 
   // Use public API endpoints (no authentication required)
-  const { data: tour, isLoading: isLoadingTour } = useQuery({
+  const {
+    data: tour,
+    isLoading: isLoadingTour,
+    error: tourError,
+    refetch: refetchTour,
+  } = useQuery({
     queryKey: ['public-tour', id],
     queryFn: () => toursApi.getPublicTour(id!, { track: false }),
     enabled: !!id,
   });
+
+  // Hydrate like state from the fetched tour. The public endpoint returns
+  // `is_liked` (visitor session) and `like_count` when available — without
+  // this, a previously liked tour always renders unliked.
+  useEffect(() => {
+    if (!tour) return;
+    const publicTour = tour as Tour & { is_liked?: boolean };
+    setIsLiked(publicTour.is_liked ?? false);
+    setLikeCount(publicTour.like_count ?? 0);
+  }, [tour]);
 
   // Scenes are included in tour response from public API
   const scenes = tour?.scenes;
@@ -353,15 +370,17 @@ export function PublicTourPage() {
 
     const next = !isLiked;
     setIsLiked(next);
+    setLikeCount(count => Math.max(0, count + (next ? 1 : -1)));
 
     try {
-      if (next) {
-        await toursApi.likePublicTour(id, sessionId);
-      } else {
-        await toursApi.unlikePublicTour(id, sessionId);
-      }
+      const result = next
+        ? await toursApi.likePublicTour(id, sessionId)
+        : await toursApi.unlikePublicTour(id, sessionId);
+      // Prefer the server's authoritative count over the optimistic guess.
+      setLikeCount(result.like_count);
     } catch {
       setIsLiked(!next);
+      setLikeCount(count => Math.max(0, count + (next ? -1 : 1)));
     } finally {
       setIsLiking(false);
     }
@@ -376,6 +395,24 @@ export function PublicTourPage() {
     return <PageLoader message="Loading tour..." />;
   }
 
+  // A genuine fetch failure (network/5xx/401) is NOT the same as "tour not
+  // found": show an error state with a retry so transient backend problems
+  // don't masquerade as a deleted tour.
+  const tourErrorStatus = (tourError as AxiosError | undefined)?.response?.status;
+  if (tourError && tourErrorStatus !== 404) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <div className="text-center text-white">
+          <h1 className="text-2xl font-bold">Couldn&apos;t load this tour</h1>
+          <p className="mt-2 text-white/70">Please check your connection and try again.</p>
+          <Button variant="outline" className="mt-6" onClick={() => void refetchTour()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!tour) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black">
@@ -384,6 +421,12 @@ export function PublicTourPage() {
           <p className="mt-2 text-white/70">
             This tour may have been removed or is no longer available.
           </p>
+          <Link
+            to={ROUTES.HOME}
+            className="mt-6 inline-block text-sm font-medium text-white underline underline-offset-4 hover:text-white/80"
+          >
+            Go to homepage
+          </Link>
         </div>
       </div>
     );
@@ -494,7 +537,6 @@ export function PublicTourPage() {
           </Button>
           <Button
             variant="ghost"
-            size="icon"
             className={cn('text-white hover:bg-white/20', isLiked && 'text-red-500')}
             onClick={handleLikeToggle}
             disabled={isLiking}
@@ -502,6 +544,7 @@ export function PublicTourPage() {
             aria-pressed={isLiked}
           >
             <Heart className={cn('h-5 w-5', isLiked && 'fill-current')} />
+            <span className="text-sm tabular-nums">{likeCount}</span>
           </Button>
           <Button
             variant="ghost"

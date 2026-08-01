@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   generateIframeCode,
@@ -104,6 +106,23 @@ describe('embedCode utilities', () => {
       expect(code).toContain(`sandbox="${EMBED_IFRAME_SANDBOX}"`);
       expect(code).toContain(`referrerpolicy="${EMBED_IFRAME_REFERRER_POLICY}"`);
       expect(code).toContain('border-radius: 8px');
+    });
+
+    it('default output is byte-identical to the cross-app golden fixture', () => {
+      // Cross-app contract (root AGENTS.md): mobile/app/test/embed_code_test.dart
+      // asserts the same golden file against the Dart generator, so a change on
+      // either side fails its own suite until both match.
+      // Read via process.cwd() (web/ in vitest and CI) — Vite rewrites
+      // `new URL(..., import.meta.url)` to a dev-server URL under jsdom and
+      // denies `?raw` imports of files outside the project root, so a plain
+      // fs read of the repo-root golden is the CI-robust option.
+      const golden = readFileSync(
+        resolve(process.cwd(), '../docs/embed-parity-golden.html'),
+        'utf8'
+      )
+        .replaceAll('__VIEWER_BASE__', BASE_ORIGIN)
+        .replaceAll('__TOUR_ID__', TEST_TOUR_ID);
+      expect(generateIframeCode(TEST_TOUR_ID)).toBe(golden);
     });
 
     it('applies custom width and height as numbers', () => {

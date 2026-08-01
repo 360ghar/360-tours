@@ -85,6 +85,24 @@ class BackendApi {
     return res.data ?? {};
   }
 
+  /// Existing hotspots for a scene (each: id, type, title, position
+  /// {yaw, pitch}, target_scene_id).
+  Future<List<Map<String, dynamic>>> getHotspots(String sceneId) async {
+    final res = await _dio.get<dynamic>('/scenes/$sceneId/hotspots');
+    final data = res.data;
+    if (data is List) {
+      return data
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(growable: false);
+    }
+    if (data is Map && data['items'] is List) {
+      return (data['items'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(growable: false);
+    }
+    return const [];
+  }
+
   Future<void> deleteHotspot(String hotspotId) =>
       _dio.delete('/hotspots/$hotspotId');
 

@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 import { supabaseAuth, type SupabaseSession } from '@/lib/supabaseAuth';
-import type { User, AuthTokens, LoginCredentials, RegisterCredentials } from '@/types';
+import type { User, AuthTokens, LoginCredentials } from '@/types';
 import type { AuthMethod } from '@/lib/lastAuthMethod';
 
 /** Channel the identifier resolves to (frozen backend contract). */
@@ -74,28 +74,6 @@ export const authApi = {
    */
   async login(credentials: LoginCredentials): Promise<{ user: User; tokens: AuthTokens }> {
     const session = await supabaseAuth.signInWithPassword(credentials);
-    return completeAuthSession(session);
-  },
-
-  /**
-   * Register a new user with phone
-   */
-  async register(
-    data: RegisterCredentials
-  ): Promise<{ user: User | null; tokens: AuthTokens | null }> {
-    const { session } = await supabaseAuth.signUp({
-      phone: data.phone,
-      password: data.password,
-      data: {
-        full_name: data.full_name ?? null,
-        email: data.email ?? null,
-      },
-    });
-
-    if (!session) {
-      return { user: null, tokens: null };
-    }
-
     return completeAuthSession(session);
   },
 

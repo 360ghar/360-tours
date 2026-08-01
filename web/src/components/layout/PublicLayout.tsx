@@ -275,38 +275,6 @@ export function PublicLayout() {
                     Pricing
                   </a>
                 </li>
-                <li>
-                  <span
-                    aria-disabled="true"
-                    className="text-sm text-white/30 cursor-not-allowed"
-                    style={{ fontFamily: 'var(--font-body)' }}
-                  >
-                    API
-                  </span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Company */}
-            <div>
-              <h4
-                className="text-sm font-semibold uppercase tracking-wider text-white/70"
-                style={{ fontFamily: 'var(--font-body)' }}
-              >
-                Company
-              </h4>
-              <ul className="mt-4 space-y-3">
-                {['About', 'Blog', 'Careers', 'Contact'].map(item => (
-                  <li key={item}>
-                    <span
-                      aria-disabled="true"
-                      className="text-sm text-white/30 cursor-not-allowed"
-                      style={{ fontFamily: 'var(--font-body)' }}
-                    >
-                      {item}
-                    </span>
-                  </li>
-                ))}
               </ul>
             </div>
 
@@ -319,17 +287,28 @@ export function PublicLayout() {
                 Legal
               </h4>
               <ul className="mt-4 space-y-3">
-                {['Privacy Policy', 'Terms of Service', 'Cookie Policy'].map(item => (
-                  <li key={item}>
-                    <span
-                      aria-disabled="true"
-                      className="text-sm text-white/30 cursor-not-allowed"
-                      style={{ fontFamily: 'var(--font-body)' }}
-                    >
-                      {item}
-                    </span>
-                  </li>
-                ))}
+                <li>
+                  <a
+                    href="https://360ghar.com/policies/privacy-policy"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-white/50 hover:text-white transition-colors"
+                    style={{ fontFamily: 'var(--font-body)' }}
+                  >
+                    Privacy Policy
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://360ghar.com/policies/terms-of-service"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-white/50 hover:text-white transition-colors"
+                    style={{ fontFamily: 'var(--font-body)' }}
+                  >
+                    Terms of Service
+                  </a>
+                </li>
               </ul>
             </div>
           </div>
@@ -339,18 +318,6 @@ export function PublicLayout() {
             <p className="text-sm text-white/40" style={{ fontFamily: 'var(--font-body)' }}>
               © {new Date().getFullYear()} 360 Tours. All rights reserved.
             </p>
-            <div className="flex items-center gap-6">
-              {['Twitter', 'LinkedIn', 'GitHub'].map(social => (
-                <span
-                  key={social}
-                  aria-disabled="true"
-                  className="text-sm text-white/20 cursor-not-allowed"
-                  style={{ fontFamily: 'var(--font-body)' }}
-                >
-                  {social}
-                </span>
-              ))}
-            </div>
           </div>
         </div>
       </footer>

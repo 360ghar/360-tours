@@ -1,277 +1,212 @@
 /**
  * E2E tests for the public tour viewer.
  *
- * Tests 360 viewer functionality, hotspot navigation, fullscreen, and mobile gestures.
+ * Runs hermetically in the `chromium` project: the backend API is stubbed
+ * with `page.route()` and panorama images are fulfilled with a tiny valid
+ * PNG, so every assertion is deterministic — no real backend, no network.
+ *
+ * The previous version of this spec asserted `expect(body).toBeVisible()`
+ * (vacuous — always true), so it could not catch viewer regressions.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import { installMockAuth, MOCK_TOUR, TINY_PNG } from './fixtures/mockAuth';
 
-test.describe('Public Tour Viewer', () => {
-  const testTourId = 'test-tour-id';
+const TOUR_ID = 'test-tour-id';
 
-  test.describe('360 Viewer', () => {
-    test('should load the public tour page', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
+/** Hotspot fixture helper (full `Hotspot` shape as consumed by the viewer). */
+function hotspot(overrides: Record<string, unknown>) {
+  return {
+    id: 'hs-missing',
+    scene_id: 'scene-1',
+    type: 'info',
+    position: { yaw: 0, pitch: 0 },
+    target_scene_id: null,
+    title: null,
+    description: null,
+    icon: null,
+    icon_name: null,
+    icon_color: null,
+    icon_size: 32,
+    content: null,
+    custom_data: {},
+    order_index: 0,
+    is_active: true,
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
 
-      const canvas = page.locator('canvas');
-      const panoramaContainer = page.locator(
-        '[data-testid="panorama-viewer"], .panorama-viewer, .pannellum-container'
-      );
-      const hasViewer = (await canvas.count()) > 0 || (await panoramaContainer.count()) > 0;
+const SCENE_LIVING = {
+  id: 'scene-1',
+  tour_id: TOUR_ID,
+  title: 'Living Room',
+  image_url: 'https://example.com/living-room.jpg',
+  order_index: 0,
+  hotspots: [
+    hotspot({
+      id: 'hs-info-1',
+      scene_id: 'scene-1',
+      type: 'info',
+      title: 'About this room',
+      content: { kind: 'info', text: 'Sunny corner room with a fireplace' },
+    }),
+    hotspot({
+      id: 'hs-nav-1',
+      scene_id: 'scene-1',
+      type: 'navigation',
+      title: 'Go to Kitchen',
+      target_scene_id: 'scene-2',
+      content: { kind: 'navigation', label: 'Go to Kitchen' },
+      position: { yaw: 45, pitch: 0 },
+    }),
+  ],
+  created_at: '2025-01-01T00:00:00Z',
+  updated_at: '2025-01-01T00:00:00Z',
+};
 
-      // Page should load (may show error for invalid tour)
-      expect(hasViewer || (await page.locator('body').isVisible())).toBe(true);
-    });
+const SCENE_KITCHEN = {
+  id: 'scene-2',
+  tour_id: TOUR_ID,
+  title: 'Kitchen',
+  image_url: 'https://example.com/kitchen.jpg',
+  order_index: 1,
+  hotspots: [
+    hotspot({
+      id: 'hs-kitchen',
+      scene_id: 'scene-2',
+      type: 'info',
+      title: 'Kitchen tip',
+      content: { kind: 'info', text: 'New quartz countertops' },
+    }),
+  ],
+  created_at: '2025-01-01T00:00:00Z',
+  updated_at: '2025-01-01T00:00:00Z',
+};
 
-    test('should display panorama canvas', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      // Look for Three.js canvas or panorama container
-      const canvas = page.locator('canvas');
-      const panoramaContainer = page.locator(
-        '[data-testid="panorama-viewer"], .panorama-viewer, .pannellum-container'
-      );
-
-      // Either canvas or container should be present (or error state)
-      const hasViewer = (await canvas.count()) > 0 || (await panoramaContainer.count()) > 0;
-
-      // Accept both valid viewer and error states
-      expect(hasViewer || (await page.locator('body').isVisible())).toBe(true);
-    });
-
-    test('should support mouse drag navigation', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      const canvas = page.locator('canvas').first();
-      if (await canvas.isVisible()) {
-        const box = await canvas.boundingBox();
-        if (box) {
-          // Simulate drag
-          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-          await page.mouse.down();
-          await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2);
-          await page.mouse.up();
-
-          // View should have changed (camera position)
-          await expect(canvas).toBeVisible();
-        }
-      }
-    });
-
-    test('should support scroll zoom', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      const canvas = page.locator('canvas').first();
-      if (await canvas.isVisible()) {
-        const box = await canvas.boundingBox();
-        if (box) {
-          // Simulate scroll
-          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-          await page.mouse.wheel(0, -100); // Zoom in
-
-          await expect(canvas).toBeVisible();
-        }
-      }
-    });
-
-    test('should support keyboard navigation', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      const canvas = page.locator('canvas').first();
-      if (await canvas.isVisible()) {
-        await canvas.focus();
-
-        // Arrow key navigation
-        await page.keyboard.press('ArrowLeft');
-        await page.keyboard.press('ArrowRight');
-        await page.keyboard.press('ArrowUp');
-        await page.keyboard.press('ArrowDown');
-
-        await expect(canvas).toBeVisible();
-      }
-    });
-  });
-
-  test.describe('Hotspot Navigation', () => {
-    test('should display hotspot markers', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      // Wait for viewer to load
-      await page.waitForLoadState('networkidle');
-
-      const hotspots = page.locator('[data-testid="hotspot"], .hotspot, .hotspot-marker');
-      const hotspotCount = await hotspots.count();
-
-      // May or may not have hotspots depending on tour data
-      expect(hotspotCount).toBeGreaterThanOrEqual(0);
-    });
-
-    test('should show hotspot tooltip on hover', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      const hotspots = page.locator('[data-testid="hotspot"], .hotspot');
-      if ((await hotspots.count()) > 0) {
-        await hotspots.first().hover();
-
-        // Look for tooltip
-        const tooltip = page.locator('[role="tooltip"], .tooltip, .hotspot-tooltip');
-        // Tooltip may or may not appear based on implementation
-        await expect(tooltip.or(page.locator('body')).first()).toBeVisible();
-      }
-    });
-
-    test('should navigate to linked scene on hotspot click', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      const navigationHotspots = page.locator(
-        '[data-testid="hotspot"][data-type="navigation"], .hotspot-navigation'
-      );
-
-      if ((await navigationHotspots.count()) > 0) {
-        await navigationHotspots.first().click();
-
-        // Scene should change (URL may include scene ID)
-        await page.waitForTimeout(500); // Wait for transition
-        await expect(page.locator('body')).toBeVisible();
-      }
-    });
-
-    test('should show info popup on info hotspot click', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      const infoHotspots = page.locator(
-        '[data-testid="hotspot"][data-type="info"], .hotspot-info'
-      );
-
-      if ((await infoHotspots.count()) > 0) {
-        await infoHotspots.first().click();
-
-        // Info popup should appear
-        const popup = page.locator('[role="dialog"], .info-popup, .hotspot-content-modal');
-        // Popup may or may not appear based on implementation
-        await expect(popup.or(page.locator('body')).first()).toBeVisible();
-      }
+async function mockPublicTourApi(
+  page: Page,
+  { tourStatus = 200, tour }: { tourStatus?: number; tour?: unknown } = {}
+) {
+  // The public tour payload (scenes are embedded per the public API).
+  await page.route(new RegExp(`/public/tours/${TOUR_ID}(\\?.*)?$`), route => {
+    if (tourStatus !== 200) {
+      void route.fulfill({ status: tourStatus, body: '{}' });
+      return;
+    }
+    void route.fulfill({
+      json:
+        tour ??
+        ({
+          ...MOCK_TOUR,
+          id: TOUR_ID,
+          status: 'published',
+          visibility: 'public',
+          like_count: 12,
+          is_liked: true,
+          scenes: [SCENE_LIVING, SCENE_KITCHEN],
+        } as object),
+      status: 200,
     });
   });
 
-  test.describe('Fullscreen Mode', () => {
-    test('should have fullscreen button', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
+  // Floor-plan fallback endpoint (returns nothing for this tour).
+  await page.route(new RegExp(`/public/tours/${TOUR_ID}/floor-plans(\\?.*)?$`), route =>
+    route.fulfill({ json: [], status: 200 })
+  );
 
-      const fullscreenButton = page.locator(
-        '[data-testid="fullscreen"], button:has-text("Fullscreen"), [aria-label*="fullscreen" i]'
-      );
+  // Analytics events: accepted, never asserted.
+  await page.route(new RegExp(`/public/tours/${TOUR_ID}/events(\\?.*)?$`), route =>
+    route.fulfill({ status: 204 })
+  );
 
-      // Fullscreen button should be present
-      if ((await fullscreenButton.count()) > 0) {
-        await expect(fullscreenButton.first()).toBeVisible();
-      }
-    });
+  // Panorama / thumbnail images: fulfill with a tiny valid PNG so the
+  // photo-sphere-viewer texture actually loads and markers render.
+  await page.route(/\.(jpg|jpeg|png|webp)(\\?.*)?$/i, route =>
+    route.fulfill({ body: TINY_PNG, contentType: 'image/png', status: 200 })
+  );
+}
 
-    test('should toggle fullscreen on button click', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
 
-      const fullscreenButton = page.locator(
-        '[data-testid="fullscreen"], button:has-text("Fullscreen")'
-      ).first();
-
-      if (await fullscreenButton.isVisible()) {
-        await fullscreenButton.click();
-
-        // Fullscreen API may not work in test environment
-        await expect(page.locator('body')).toBeVisible();
-      }
-    });
-
-    test('should exit fullscreen on escape key', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      // Press Escape
-      await page.keyboard.press('Escape');
-
-      // Should exit fullscreen (if was in fullscreen)
-      await expect(page.locator('body')).toBeVisible();
-    });
+test.describe('Public Tour Viewer — hermetic (mocked API)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Fake session so the app boots deterministically without real Supabase.
+    await installMockAuth(page);
+    mockPublicTourApi(page);
   });
 
-  test.describe('Mobile Gestures', () => {
-    test.use({ viewport: { width: 375, height: 667 } }); // iPhone SE size
+  test('renders the tour title, the viewer canvas, and scene markers', async ({ page }) => {
+    await page.goto(`/view/${TOUR_ID}`);
 
-    test('should support touch drag navigation', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      const canvas = page.locator('canvas').first();
-      if (await canvas.isVisible()) {
-        const box = await canvas.boundingBox();
-        if (box) {
-          // Simulate touch drag
-          await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-
-          await expect(canvas).toBeVisible();
-        }
-      }
-    });
-
-    test('should support pinch-to-zoom', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      // Pinch zoom is difficult to simulate, verify page loads on mobile
-      await expect(page.locator('body')).toBeVisible();
-    });
-
-    test('should have mobile-friendly controls', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      // Check for mobile-friendly UI elements
-      const mobileControls = page.locator(
-        '[data-testid="mobile-controls"], .mobile-controls, .touch-controls'
-      );
-
-      // Controls should be present on mobile
-      await expect(mobileControls.or(page.locator('body')).first()).toBeVisible();
-    });
-
-    test('should adapt layout for mobile viewport', async ({ page }) => {
-      await page.goto(`/view/${testTourId}`);
-
-      // Verify responsive layout
-      const viewerContainer = page.locator(
-        '[data-testid="viewer-container"], .viewer-container, main'
-      );
-
-      if (await viewerContainer.isVisible()) {
-        const box = await viewerContainer.boundingBox();
-        if (box) {
-          // Container should fit mobile viewport
-          expect(box.width).toBeLessThanOrEqual(375);
-        }
-      }
-    });
+    await expect(page.getByRole('heading', { name: 'E2E Tour' })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    // The first scene's markers render once the viewer is ready.
+    await expect(page.locator('[data-marker-id="hs-info-1"]')).toBeVisible({ timeout: 15000 });
   });
 
-  test.describe('Embedded Tour', () => {
-    test('should load embedded tour page', async ({ page }) => {
-      await page.goto(`/embed/${testTourId}`);
+  test('opens the content modal when an info hotspot is clicked', async ({ page }) => {
+    await page.goto(`/view/${TOUR_ID}`);
 
-      await expect(page.locator('body')).toBeVisible();
+    const marker = page.locator('[data-marker-id="hs-info-1"]');
+    await marker.click({ timeout: 15000 });
+
+    await expect(page.getByRole('heading', { name: 'About this room' })).toBeVisible();
+    await expect(page.getByText('Sunny corner room with a fireplace')).toBeVisible();
+  });
+
+  test('navigates to the target scene when a navigation hotspot is clicked', async ({ page }) => {
+    await page.goto(`/view/${TOUR_ID}`);
+
+    // The Kitchen scene's marker must not exist until we navigate to it.
+    await expect(page.locator('[data-marker-id="hs-kitchen"]')).toHaveCount(0, {
+      timeout: 15000,
     });
 
-    test('should respect embed parameters', async ({ page }) => {
-      await page.goto(`/embed/${testTourId}?navbar=false&autoplay=true`);
+    await page.locator('[data-marker-id="hs-nav-1"]').click({ timeout: 15000 });
 
-      // Navbar should be hidden
-      const navbar = page.locator('header, nav, [data-testid="navbar"]');
-      // May or may not be present based on parameter handling
+    // Kitchen marker appears => the viewer actually switched scenes.
+    await expect(page.locator('[data-marker-id="hs-kitchen"]')).toBeVisible({ timeout: 15000 });
+  });
 
-      await expect(navbar.or(page.locator('body')).first()).toBeVisible();
-    });
+  test('hydrates the like state from the tour payload', async ({ page }) => {
+    await page.goto(`/view/${TOUR_ID}`);
 
-    test('should start autorotation with autoplay parameter', async ({ page }) => {
-      await page.goto(`/embed/${testTourId}?autoplay=true`);
+    const likeButton = page.getByRole('button', { name: 'Unlike this tour' });
+    await expect(likeButton).toBeVisible({ timeout: 15000 });
+    await expect(likeButton).toHaveAttribute('aria-pressed', 'true');
+    // Server-authoritative count rendered.
+    await expect(page.getByText('12')).toBeVisible();
+  });
 
-      // Autoplay should start rotation
-      await page.waitForTimeout(1000);
+  test('shows Tour Not Found for a missing tour (404)', async ({ page }) => {
+    // Re-stub just the tour route with a 404; the other routes stay mocked.
+    await page.unroute(new RegExp(`/public/tours/${TOUR_ID}(\\?.*)?$`));
+    await page.route(new RegExp(`/public/tours/${TOUR_ID}(\\?.*)?$`), route =>
+      route.fulfill({ status: 404, body: '{}' })
+    );
 
-      await expect(page.locator('body')).toBeVisible();
-    });
+    await page.goto(`/view/${TOUR_ID}`);
+
+    await expect(page.getByText('Tour Not Found')).toBeVisible({ timeout: 15000 });
+  });
+
+  test('distinguishes server failures from 404 and retries', async ({ page }) => {
+    await page.unroute(new RegExp(`/public/tours/${TOUR_ID}(\\?.*)?$`));
+    await page.route(new RegExp(`/public/tours/${TOUR_ID}(\\?.*)?$`), route =>
+      route.fulfill({ status: 500, body: '{}' })
+    );
+
+    await page.goto(`/view/${TOUR_ID}`);
+
+    // A 500 is NOT "tour not found" — a retryable error screen is shown.
+    await expect(page.getByText("Couldn't load this tour")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Tour Not Found')).toHaveCount(0);
+
+    // Fix the backend and retry: the tour loads without a reload.
+    await page.unroute(new RegExp(`/public/tours/${TOUR_ID}(\\?.*)?$`));
+    mockPublicTourApi(page);
+
+    await page.getByRole('button', { name: 'Retry' }).click();
+    await expect(page.getByRole('heading', { name: 'E2E Tour' })).toBeVisible({ timeout: 15000 });
   });
 });

@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Lock, Mail, User, KeyRound } from 'lucide-react';
 import { Button, Input, PhoneInput, Checkbox } from '@/components/ui';
 import { GoogleSignInButton } from '@/components/features';
-import { type IdentifierChannel } from '@/api';
-import { supabaseAuth } from '@/lib/supabaseAuth';
+import { checkIdentifierStatusSafe, type IdentifierChannel } from '@/api';
+import { stashOAuthNext, supabaseAuth } from '@/lib/supabaseAuth';
 import { useWebOtp, useResendTimer } from '@/hooks';
 import { maskIdentifier } from '@/lib/lastAuthMethod';
 import { useAuthStore } from '@/stores';
+import { IDENTIFIER_STATUS_UNAVAILABLE_MESSAGE } from '@/lib/authErrors';
 import {
   emailIdentifierSchema,
   phoneIdentifierSchema,
@@ -32,7 +33,10 @@ interface SetPasswordFormData {
 
 export function RegisterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const fetchCurrentUser = useAuthStore(s => s.fetchCurrentUser);
+  // Auth pages must never be the OAuth return target (bounce loops).
+  const OAUTH_RETURN_BLOCKLIST = [ROUTES.LOGIN, ROUTES.REGISTER, ROUTES.FORGOT_PASSWORD, ROUTES.AUTH_CALLBACK];
   const [step, setStep] = useState<Step>('identifier');
   const [channel, setChannel] = useState<IdentifierChannel>('phone');
   const [identifier, setIdentifier] = useState('');
@@ -42,6 +46,7 @@ export function RegisterPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [stepLoading, setStepLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [existingAccount, setExistingAccount] = useState<string | null>(null);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [termsError, setTermsError] = useState<string | null>(null);
 
@@ -78,6 +83,7 @@ export function RegisterPage() {
   const resetErrors = () => {
     setLocalError(null);
     setTermsError(null);
+    setExistingAccount(null);
   };
 
   const switchChannel = (next: IdentifierChannel) => {
@@ -103,6 +109,21 @@ export function RegisterPage() {
 
     setStepLoading(true);
     try {
+      // Security gate: never send an OTP with shouldCreateUser: true for an
+      // identifier that already has an account — verifying it and running
+      // updatePassword would overwrite that account's password. When the
+      // identifier-status service is unreachable we must not fall through to
+      // the OTP either (that would risk silent account creation/overwrite).
+      const status = await checkIdentifierStatusSafe(formData.identifier);
+      if ('unavailable' in status) {
+        setLocalError(IDENTIFIER_STATUS_UNAVAILABLE_MESSAGE);
+        return;
+      }
+      if (status.exists) {
+        setExistingAccount(formData.identifier);
+        return;
+      }
+
       const profileData = { full_name: fullName.trim() };
       if (channel === 'email') {
         await supabaseAuth.requestEmailOtp({
@@ -182,6 +203,20 @@ export function RegisterPage() {
     resetErrors();
     setStepLoading(true);
     try {
+      // Security gate parity with the initial send: never re-send an OTP with
+      // shouldCreateUser: true if the identifier gained an account since the
+      // first check (TOCTOU race — verifying that OTP would sign into the
+      // existing account and the set-password step would overwrite its
+      // password). Same fail-closed behavior when the status service is down.
+      const status = await checkIdentifierStatusSafe(identifier);
+      if ('unavailable' in status) {
+        setLocalError(IDENTIFIER_STATUS_UNAVAILABLE_MESSAGE);
+        return;
+      }
+      if (status.exists) {
+        setExistingAccount(identifier);
+        return;
+      }
       if (channel === 'email') {
         await supabaseAuth.requestEmailOtp({ email: identifier, shouldCreateUser: true });
       } else {
@@ -199,6 +234,10 @@ export function RegisterPage() {
     resetErrors();
     setGoogleLoading(true);
     try {
+      // Preserve the return path across the OAuth round trip (mirrors
+      // LoginPage); auth pages are blocklisted to avoid bounce loops.
+      const from = (location.state as { from?: string } | null)?.from;
+      stashOAuthNext(from && !OAUTH_RETURN_BLOCKLIST.includes(from) ? from : null, ROUTES.DASHBOARD);
       await supabaseAuth.signInWithGoogle();
       // Browser redirects to Google; nothing else runs here on success.
     } catch (err) {
@@ -231,6 +270,22 @@ export function RegisterPage() {
             className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]"
           >
             {localError}
+          </div>
+        )}
+
+        {existingAccount && (
+          <div
+            role="alert"
+            className="rounded-lg bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-600)]"
+          >
+            <p>An account already exists with this identifier — sign in instead.</p>
+            <Link
+              to={ROUTES.LOGIN}
+              state={{ identifier: existingAccount, channel }}
+              className="mt-2 inline-block font-semibold text-[var(--color-primary-600)] underline underline-offset-2 hover:text-[var(--color-primary-700)]"
+            >
+              Sign in instead
+            </Link>
           </div>
         )}
 

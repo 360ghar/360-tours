@@ -11,7 +11,7 @@ import { HotspotContentModal } from '@/components/features/HotspotContentModal';
 import { getViewerSceneScope, useViewerStore } from '@/stores';
 import { usePublicTourTracking } from '@/hooks/usePublicTourTracking';
 import { cn, parseBooleanParam } from '@/utils';
-import { parseEmbedInboundCommand } from '@/types/embedMessages';
+import { parseEmbedInboundCommand, parseEmbedOriginParam } from '@/types/embedMessages';
 import { parseLinkHotspotContent } from '@/types/hotspotContent';
 import type { BrandingSettings, Hotspot } from '@/types';
 import type { EmbedOutboundMessage } from '@/types/embedMessages';
@@ -68,6 +68,7 @@ export function EmbedTourPage() {
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
   const [showHotspotModal, setShowHotspotModal] = useState(false);
   const hasPostedReadyRef = useRef(false);
+  const hasPostedTourErrorRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -93,6 +94,7 @@ export function EmbedTourPage() {
     data: tour,
     isLoading: isLoadingTour,
     error: tourError,
+    refetch: refetchTour,
   } = useQuery({
     queryKey: ['public-tour', id],
     queryFn: () => toursApi.getPublicTour(id!, { track: false }),
@@ -177,19 +179,32 @@ export function EmbedTourPage() {
   // Send message to parent window
   // Use window.parent.origin instead of a URL parameter to prevent origin spoofing.
   // Falls back to '*' only when the parent origin is inaccessible (e.g., cross-origin iframe).
-  const postMessage = useCallback((message: EmbedOutboundMessage) => {
-    if (window.parent !== window) {
-      try {
-        window.parent.postMessage(message, window.parent.origin);
-      } catch {
-        // Cross-origin: fall back to wildcard (parent can still filter by origin)
-        window.parent.postMessage(message, '*');
+  //
+  // When public/embed.js loaded us it appends the embedding page's `origin` param,
+  // which we validate and prefer as the targetOrigin — this keeps outbound tour
+  // metadata from leaking to unknown parents and lets inbound commands require
+  // an exact origin match instead of a mere source-window check.
+  const embedOrigin = useMemo(() => parseEmbedOriginParam(window.location.search), []);
+  const postMessage = useCallback(
+    (message: EmbedOutboundMessage) => {
+      if (window.parent !== window && embedOrigin) {
+        window.parent.postMessage(message, embedOrigin);
+        return;
       }
-    } else {
-      // Top-level window (e.g. Flutter WebView): deliver to in-page listeners
-      window.postMessage(message, '*');
-    }
-  }, []);
+      if (window.parent !== window) {
+        try {
+          window.parent.postMessage(message, window.parent.origin);
+        } catch {
+          // Cross-origin: fall back to wildcard (parent can still filter by origin)
+          window.parent.postMessage(message, '*');
+        }
+      } else {
+        // Top-level window (e.g. Flutter WebView): deliver to in-page listeners
+        window.postMessage(message, '*');
+      }
+    },
+    [embedOrigin]
+  );
 
   // Analytics tracking (tour_view, session_start/duration, scene_view)
   const { trackEvent } = usePublicTourTracking({
@@ -249,6 +264,7 @@ export function EmbedTourPage() {
 
   useEffect(() => {
     hasPostedReadyRef.current = false;
+    hasPostedTourErrorRef.current = false;
   }, [id]);
 
   // Set initial scene and notify parent
@@ -313,7 +329,12 @@ export function EmbedTourPage() {
       // third-party sites/iframes from driving scene navigation or fullscreen.
       // event.source is the originating window; for a top-level embed it equals
       // window.parent, and for same-origin it equals window.
-      if (event.source !== window.parent && event.source !== window) return;
+      if (embedOrigin) {
+        // embed.js told us the embedding page's origin: require an exact match.
+        if (event.origin !== embedOrigin) return;
+      } else if (event.source !== window.parent && event.source !== window) {
+        return;
+      }
       const command = parseEmbedInboundCommand(event.data);
       if (!command) return;
 
@@ -429,6 +450,27 @@ export function EmbedTourPage() {
     }
   }, [tourError, id, postMessage]);
 
+  // Notify the parent when the tour content itself is missing or empty —
+  // distinct from the fetch `error` message above. A parent (e.g. the Flutter
+  // WebView hotspot editor) needs a signal that no viewer content will ever
+  // render, otherwise it waits forever for `ready`.
+  useEffect(() => {
+    if (hasPostedReadyRef.current) return;
+    if (tourError) return;
+    if (isLoadingTour) return;
+    if (!tour || !scenes || scenes.length === 0 || !currentScene) {
+      if (!hasPostedTourErrorRef.current) {
+        hasPostedTourErrorRef.current = true;
+        postMessage({
+          type: 'tour_error',
+          tourId: id!,
+          tour_id: id!,
+          data: { message: 'Tour not available' },
+        });
+      }
+    }
+  }, [currentScene, id, isLoadingTour, postMessage, scenes, tour, tourError]);
+
   if (isLoadingTour) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-black">
@@ -442,6 +484,9 @@ export function EmbedTourPage() {
       <div className="flex h-screen w-screen flex-col items-center justify-center bg-black">
         <p className="text-white">Failed to load tour</p>
         <p className="mt-1 text-sm text-white/50">Please check the link or try again later.</p>
+        <Button variant="outline" className="mt-4" onClick={() => void refetchTour()}>
+          Retry
+        </Button>
       </div>
     );
   }

@@ -3,9 +3,20 @@ name: Mobile Harness
 on:
   push:
     branches: [main]
-    paths: ['mobile/**', '.github/workflows/harness.yml']
+    # docs/embed-parity-golden.html is the cross-app embed contract artifact:
+    # mobile/app/test/embed_code_test.dart asserts byte-identical output
+    # against it, so touching it must run this CI (and web CI).
+    paths: ['mobile/**', '.github/workflows/harness.yml', 'docs/embed-parity-golden.html']
   pull_request:
-    paths: ['mobile/**', '.github/workflows/harness.yml']
+    paths: ['mobile/**', '.github/workflows/harness.yml', 'docs/embed-parity-golden.html']
+  workflow_dispatch:
+
+concurrency:
+  group: harness-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
 
 jobs:
   verify:
@@ -16,10 +27,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7 (SHA-pinned like web CI)
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2 (SHA-pinned)
         with:
           channel: stable
           cache: true
@@ -37,6 +48,16 @@ jobs:
       - name: Analyze
         working-directory: mobile/app
         run: flutter analyze
+
+      # Cross-app embed contract (root AGENTS.md): the embed parity test
+      # (mobile/app/test/embed_code_test.dart) is part of the suite below —
+      # keep it listed in app/test/ so `flutter test` always runs it. It reads
+      # docs/embed-parity-golden.html and asserts the Dart generator's default
+      # output is byte-identical to it; web CI enforces the same against
+      # web/src/utils/embedCode.ts.
+      - name: Embed parity golden fixture present
+        working-directory: mobile
+        run: test -f ../docs/embed-parity-golden.html
 
       - name: Test
         working-directory: mobile/app

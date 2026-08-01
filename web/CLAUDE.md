@@ -54,9 +54,6 @@ Only `VITE_*` vars are exposed to the client. Parsed in `src/constants/config.ts
 | `VITE_API_TIMEOUT` | `30000` | Axios timeout (ms) |
 | `VITE_SUPABASE_URL` | _(empty, required)_ | Auth throws at load if unset (non-test) |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | _(empty, required)_ | Supabase anon key |
-| `VITE_ENABLE_ANALYTICS` | `true` | Feature flag (`=== 'true'`) |
-| `VITE_ENABLE_VR_MODE` | `true` | Feature flag (gyro/stereo plugins) |
-| `VITE_ENABLE_AI_FEATURES` | `true` | Feature flag |
 | `VITE_MAX_UPLOAD_SIZE_MB` | `50` | Client upload cap |
 | `VITE_ALLOWED_IMAGE_TYPES` | `image/jpeg,image/png,image/webp` | Accept list |
 | `VITE_AUTH_REDIRECT_URL` | `window.location.origin/auth/callback` | Google OAuth redirect override |
@@ -114,7 +111,7 @@ Router is `createBrowserRouter` (`src/lib/router.tsx`). Entry pages (`HomePage`,
 
 ## State Management — Zustand (`src/stores/`)
 
-- **`authStore`** — `user`, `tokens`, `isAuthenticated`, `isLoading`; actions `login`, `loginWithPassword`, `verifyLoginOtp`, `register`, `logout`, `fetchCurrentUser`, `checkAuth` (subscribes to Supabase `onAuthStateChange` once). `isAuthError` signs out only on 401/403/SESSION_EXPIRED — **5xx/network errors do NOT sign out** (survives transient backend outages).
+- **`authStore`** — `user`, `tokens`, `isAuthenticated`, `isLoading`; actions `login`, `loginWithPassword`, `verifyLoginOtp`, `setPasswordAndComplete`, `logout`, `fetchCurrentUser`, `checkAuth` (subscribes to Supabase `onAuthStateChange` once). `isAuthError` signs out only on 401/403/SESSION_EXPIRED — **5xx/network errors do NOT sign out** (survives transient backend outages).
 - **`tourEditorStore`** — `currentTour`, `currentSceneId`, `selectedHotspotId`, panel flags, `hasUnsavedChanges`, undo/redo stacks (capped 50). Scene/hotspot draft mutators are `@deprecated` — persistence now flows through `toursApi` endpoints inside feature components, **not** TourEditPage Save.
 - **`viewerStore`** — per-scope `currentSceneId` keyed `"${route}:${tourId}"` so public/embed viewers stay isolated.
 - **`uiStore`** — `theme: 'light'|'dark'|'system'`, `sidebarCollapsed`, `toasts[]`; `persist` middleware (only `theme` + `sidebarCollapsed`); exports `applyTheme`.

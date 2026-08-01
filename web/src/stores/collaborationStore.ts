@@ -39,12 +39,6 @@ interface CollaborationState {
   collaboratorsError: string | null;
 
   // Actions
-  setActivities: (activities: ActivityItem[]) => void;
-  addActivity: (activity: ActivityItem) => void;
-  setLoadingActivities: (loading: boolean) => void;
-  setCollaborators: (collaborators: Collaborator[]) => void;
-  setLoadingCollaborators: (loading: boolean) => void;
-  clearCollaboration: () => void;
   fetchActivities: (tourId: string) => Promise<void>;
   fetchCollaborators: (tourId: string) => Promise<void>;
   inviteCollaborator: (tourId: string, email: string, role: 'editor' | 'viewer') => Promise<void>;
@@ -58,29 +52,6 @@ export const useCollaborationStore = create<CollaborationState>(set => ({
   collaborators: [],
   isLoadingCollaborators: false,
   collaboratorsError: null,
-
-  setActivities: activities => set({ activities }),
-
-  addActivity: activity =>
-    set(state => ({
-      activities: [activity, ...state.activities],
-    })),
-
-  setLoadingActivities: loading => set({ isLoadingActivities: loading }),
-
-  setCollaborators: collaborators => set({ collaborators }),
-
-  setLoadingCollaborators: loading => set({ isLoadingCollaborators: loading }),
-
-  clearCollaboration: () =>
-    set({
-      activities: [],
-      isLoadingActivities: false,
-      activitiesError: null,
-      collaborators: [],
-      isLoadingCollaborators: false,
-      collaboratorsError: null,
-    }),
 
   fetchActivities: async tourId => {
     set({ isLoadingActivities: true, activitiesError: null });

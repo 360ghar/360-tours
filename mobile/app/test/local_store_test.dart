@@ -39,6 +39,45 @@ void main() {
     expect(await store.readAll('bad'), isEmpty);
   });
 
+  test('wrong-shape JSON (top-level object) is quarantined and reads empty',
+      () async {
+    await File('${dir.path}/assets.json')
+        .writeAsString('{"id": "not-a-list"}');
+    expect(await store.readAll('assets'), isEmpty);
+    expect(
+      dir.listSync().map((e) => e.path).where((p) => p.contains('.corrupt-')),
+      isNotEmpty,
+    );
+  });
+
+  test('valid JSON list with non-object entries is quarantined', () async {
+    await File('${dir.path}/upload_queue.json')
+        .writeAsString('[1, 2, "three"]');
+    expect(await store.readAll('upload_queue'), isEmpty);
+    expect(
+      dir.listSync().map((e) => e.path).where((p) => p.contains('.corrupt-')),
+      isNotEmpty,
+    );
+  });
+
+  test('assets and upload_queue both recover after wrong-shape quarantine',
+      () async {
+    await File('${dir.path}/assets.json').writeAsString('{"bad": true}');
+    await File('${dir.path}/upload_queue.json').writeAsString('[[1], [2]]');
+    expect(await store.readAll('assets'), isEmpty);
+    expect(await store.readAll('upload_queue'), isEmpty);
+    await store.upsert('assets', {'id': 'a1'});
+    await store.upsert('upload_queue', {'id': 'j1'});
+    expect((await store.readAll('assets')).single['id'], 'a1');
+    expect((await store.readAll('upload_queue')).single['id'], 'j1');
+  });
+
+  test('watch survives wrong-shape JSON without an unhandled error', () async {
+    await File('${dir.path}/assets.json').writeAsString('{"nope": 1}');
+    final first = await store.watch('assets').first;
+    expect(first, isEmpty);
+  });
+
   test('watch emits current contents then updates', () async {
     await store.upsert('things', {'id': 'a'});
     final emissions = <int>[];

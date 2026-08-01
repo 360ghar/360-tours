@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { APP_NAME } from '@/constants';
 
 interface MetaTagsProps {
@@ -207,23 +207,25 @@ export function VirtualTourStructuredData({
   datePublished?: string;
   dateModified?: string;
 }) {
-  return (
-    <StructuredData
-      type="ImageGallery"
-      data={{
-        name,
-        description,
-        image,
-        url: url || (typeof window !== 'undefined' ? window.location.href : ''),
-        creator: creator ? { '@type': 'Person', name: creator } : undefined,
-        datePublished,
-        dateModified,
-        accessMode: ['visual'],
-        accessibilityFeature: ['highContrastDisplay'],
-        isAccessibleForFree: true,
-      }}
-    />
+  // Memoize so the StructuredData effect does not re-run on every parent
+  // render (e.g. PublicTourPage re-renders on every scene change).
+  const data = useMemo(
+    () => ({
+      name,
+      description,
+      image,
+      url: url || (typeof window !== 'undefined' ? window.location.href : ''),
+      creator: creator ? { '@type': 'Person', name: creator } : undefined,
+      datePublished,
+      dateModified,
+      accessMode: ['visual'],
+      accessibilityFeature: ['highContrastDisplay'],
+      isAccessibleForFree: true,
+    }),
+    [name, description, image, url, creator, datePublished, dateModified]
   );
+
+  return <StructuredData type="VirtualTour" data={data} />;
 }
 
 export function WebApplicationStructuredData({

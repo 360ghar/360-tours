@@ -24,6 +24,7 @@ import {
 import { VideoPlayer } from '@/components/features/VideoPlayer';
 import { copyToClipboard } from '@/utils';
 import { aiApi } from '@/api';
+import { useToast } from '@/hooks/useToast';
 import type { ReelResult } from '@/api';
 import type { AIProcessingJob, Scene } from '@/types';
 import { AIJobStatus } from './AIJobStatus';
@@ -74,6 +75,7 @@ export function ReelGeneratorModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const { toast } = useToast();
 
   const initializeScenes = useCallback(() => {
     const sorted = [...scenes].sort((a, b) => a.order_index - b.order_index);
@@ -190,6 +192,11 @@ export function ReelGeneratorModal({
       setCopied(true);
       clearTimeout(copiedTimerRef.current);
       copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
+      toast('success', 'Reel link copied to the clipboard.', { title: 'Link copied' });
+    } else {
+      toast('error', 'Could not copy the link. Copy it from the address bar instead.', {
+        title: 'Copy failed',
+      });
     }
   };
 

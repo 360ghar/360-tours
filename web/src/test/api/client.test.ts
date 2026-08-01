@@ -9,7 +9,7 @@ vi.mock('@/lib/supabaseAuth', () => ({
   },
 }));
 
-import apiClient, { extractData, onAuthExpired } from '@/api/client';
+import apiClient, { extractData, isIdempotentMethod, onAuthExpired } from '@/api/client';
 import { supabaseAuth } from '@/lib/supabaseAuth';
 import { ERROR_MESSAGES } from '@/constants';
 
@@ -65,6 +65,46 @@ describe('API Client', () => {
         headers: { Authorization?: string };
       };
       expect(result.headers.Authorization).toBeUndefined();
+    });
+
+    it('never attaches a Bearer token to public endpoints even when a token exists', async () => {
+      (supabaseAuth.getTokens as Mock).mockReturnValue({ access_token: 'session-token' });
+      (supabaseAuth.getAccessToken as Mock).mockResolvedValue('session-token');
+
+      const interceptor = getRequestInterceptor();
+      const config = {
+        headers: new axios.AxiosHeaders(),
+        method: 'get' as const,
+        url: '/public/tours/tour-1?track=false',
+      };
+
+      const result = (await interceptor.fulfilled(config)) as {
+        headers: { Authorization?: string };
+        _skipAuthExpiry?: boolean;
+      };
+      expect(result.headers.Authorization).toBeUndefined();
+      expect(supabaseAuth.getAccessToken).not.toHaveBeenCalled();
+      // Marks the request so a 401/403 on it never triggers the sign-out cascade.
+      expect(result._skipAuthExpiry).toBe(true);
+    });
+
+    it('still attaches a Bearer token to authenticated endpoints', async () => {
+      (supabaseAuth.getTokens as Mock).mockReturnValue(null);
+      (supabaseAuth.getAccessToken as Mock).mockResolvedValue('session-token');
+
+      const interceptor = getRequestInterceptor();
+      const config = {
+        headers: new axios.AxiosHeaders(),
+        method: 'get' as const,
+        url: '/tours/tour-1',
+      };
+
+      const result = (await interceptor.fulfilled(config)) as {
+        headers: { Authorization?: string };
+        _skipAuthExpiry?: boolean;
+      };
+      expect(result.headers.Authorization).toBe('Bearer session-token');
+      expect(result._skipAuthExpiry).toBeUndefined();
     });
   });
 
@@ -187,6 +227,40 @@ describe('API Client', () => {
 
       await expect(interceptor.rejected(error)).rejects.toThrow(ERROR_MESSAGES.SESSION_EXPIRED);
       expect(supabaseAuth.signOut).not.toHaveBeenCalled();
+    });
+
+    it('rejects public 401 without refresh, sign-out, or auth-expiry notification', async () => {
+      // A stale session would normally trigger the refresh → sign-out cascade;
+      // public requests are flagged _skipAuthExpiry by the request interceptor
+      // and must fail anonymously instead of logging a visitor out.
+      (supabaseAuth.getAccessToken as Mock).mockResolvedValue(null);
+      (supabaseAuth.getTokens as Mock).mockReturnValue({ access_token: 'stale-token' });
+      (supabaseAuth.signOut as Mock).mockResolvedValue(undefined);
+
+      const listener = vi.fn();
+      const unsubscribe = onAuthExpired(listener);
+
+      const interceptor = getResponseInterceptor();
+
+      const error = new axios.AxiosError('Unauthorized', '401', undefined, undefined, {
+        status: 401,
+        data: {},
+        statusText: 'Unauthorized',
+        headers: {},
+        config: { headers: new axios.AxiosHeaders() } as never,
+      });
+      error.config = {
+        headers: new axios.AxiosHeaders({ Authorization: 'Bearer stale-token' }),
+        url: '/public/tours/tour-1',
+        _skipAuthExpiry: true,
+      } as never;
+
+      await expect(interceptor.rejected(error)).rejects.toBe(error);
+      expect(supabaseAuth.getAccessToken).not.toHaveBeenCalled();
+      expect(supabaseAuth.signOut).not.toHaveBeenCalled();
+      expect(listener).not.toHaveBeenCalled();
+
+      unsubscribe();
     });
   });
 
@@ -320,6 +394,26 @@ describe('API Client', () => {
         apiClient.defaults.adapter = originalAdapter;
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('retry replay policy (isIdempotentMethod)', () => {
+    // 5xx/network retries replay the original request; only idempotent methods
+    // are safe to replay (a lost-response 500 may have processed a mutation).
+    it('replays GET/HEAD/OPTIONS', () => {
+      expect(isIdempotentMethod('GET')).toBe(true);
+      expect(isIdempotentMethod('get')).toBe(true);
+      expect(isIdempotentMethod('HEAD')).toBe(true);
+      expect(isIdempotentMethod('OPTIONS')).toBe(true);
+      // Axios defaults to GET when no method is set.
+      expect(isIdempotentMethod(undefined)).toBe(true);
+    });
+
+    it('never replays mutating methods', () => {
+      expect(isIdempotentMethod('POST')).toBe(false);
+      expect(isIdempotentMethod('PUT')).toBe(false);
+      expect(isIdempotentMethod('PATCH')).toBe(false);
+      expect(isIdempotentMethod('DELETE')).toBe(false);
     });
   });
 
