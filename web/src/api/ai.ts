@@ -1,9 +1,17 @@
 import { apiClient } from './client';
-import type { AIProcessingJob, Scene, Hotspot, HotspotPosition, CursorPaginatedResponse } from '@/types';
+import type {
+  AIProcessingJob,
+  Scene,
+  Hotspot,
+  HotspotPosition,
+  CursorPaginatedResponse,
+} from '@/types';
 
 // AI Job creation response
 interface AIJobResponse {
   job: AIProcessingJob;
+  tour_id?: string;
+  scene_ids?: string[];
 }
 
 // Scene analysis result
@@ -70,10 +78,12 @@ export interface ReelResult {
 export interface AIJobStatusResponse {
   job: AIProcessingJob;
   result?: {
+    tour_id?: string;
     scenes?: Scene[];
     analysis?: SceneAnalysisResult[];
     hotspots?: HotspotSuggestion[];
     descriptions?: Record<string, string>;
+    [key: string]: unknown;
   };
 }
 
@@ -86,7 +96,7 @@ export async function generateTour(
 ): Promise<AIJobResponse> {
   const formData = new FormData();
 
-  options.images.forEach((image) => {
+  options.images.forEach(image => {
     formData.append(`images`, image);
   });
 
@@ -106,7 +116,9 @@ export async function generateTour(
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-    onUploadProgress: (progressEvent) => {
+    // Panorama batches can exceed the normal API timeout before the job is created.
+    timeout: 180000,
+    onUploadProgress: progressEvent => {
       if (onProgress && progressEvent.total) {
         const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
         onProgress(progress);
@@ -167,17 +179,17 @@ export async function generateSceneDescription(
   sceneId: string,
   options?: DescriptionOptions
 ): Promise<AIJobResponse> {
-  const response = await apiClient.post<AIJobResponse>(`/ai/scenes/${sceneId}/description`, options);
+  const response = await apiClient.post<AIJobResponse>(
+    `/ai/scenes/${sceneId}/description`,
+    options
+  );
   return response.data;
 }
 
 /**
  * Generate a 360 reel video from a tour's scenes
  */
-export async function generateReel(
-  tourId: string,
-  options?: ReelOptions
-): Promise<AIJobResponse> {
+export async function generateReel(tourId: string, options?: ReelOptions): Promise<AIJobResponse> {
   const response = await apiClient.post<AIJobResponse>(`/ai/tours/${tourId}/reel`, options);
   return response.data;
 }

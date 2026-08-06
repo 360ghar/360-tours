@@ -28,7 +28,7 @@ import {
 import { cn } from '@/utils';
 import { useToast } from '@/hooks';
 import { AIJobStatus } from './AIJobStatus';
-import { aiApi } from '@/api';
+import { aiApi, toursApi } from '@/api';
 import {
   SCENE_UPLOAD_ACCEPT,
   SCENE_UPLOAD_MAX_FILE_COUNT,
@@ -64,6 +64,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     auto_generate_descriptions: true,
   });
   const [jobId, setJobId] = useState<string | null>(null);
+  const [generatedTourId, setGeneratedTourId] = useState<string | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [result, setResult] = useState<{ tour?: Tour; scenes?: Scene[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const imagesRef = useRef<UploadedImage[]>([]);
@@ -74,61 +76,64 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
 
   useEffect(() => {
     return () => {
-      imagesRef.current.forEach((img) => URL.revokeObjectURL(img.preview));
+      imagesRef.current.forEach(img => URL.revokeObjectURL(img.preview));
     };
   }, []);
 
   // Handle image drop
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const validatedFiles = acceptedFiles.map((file) => ({
-      file,
-      validation: validateSceneUploadFile(file),
-    }));
-    const invalidFiles = validatedFiles.filter((item) => !item.validation.valid);
-    const validFiles = validatedFiles
-      .filter((item) => item.validation.valid)
-      .map((item) => item.file);
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      const validatedFiles = acceptedFiles.map(file => ({
+        file,
+        validation: validateSceneUploadFile(file),
+      }));
+      const invalidFiles = validatedFiles.filter(item => !item.validation.valid);
+      const validFiles = validatedFiles
+        .filter(item => item.validation.valid)
+        .map(item => item.file);
 
-    // Enforce total file count (including already-selected images)
-    const projectedCount = images.length + validFiles.length;
-    const allowedNewFiles =
-      projectedCount > SCENE_UPLOAD_MAX_FILE_COUNT
-        ? validFiles.slice(0, Math.max(0, SCENE_UPLOAD_MAX_FILE_COUNT - images.length))
-        : validFiles;
+      // Enforce total file count (including already-selected images)
+      const projectedCount = images.length + validFiles.length;
+      const allowedNewFiles =
+        projectedCount > SCENE_UPLOAD_MAX_FILE_COUNT
+          ? validFiles.slice(0, Math.max(0, SCENE_UPLOAD_MAX_FILE_COUNT - images.length))
+          : validFiles;
 
-    // Combine ALL rejection reasons into one message. The previous version
-    // called setError twice in sequence, so the count-cap error silently
-    // overwrote the oversized-rejection error and the user had no idea why
-    // their files were dropped.
-    const errors: string[] = [];
-    if (invalidFiles.length > 0) {
-      const messages = Array.from(
-        new Set(invalidFiles.map((item) => item.validation.error || 'Invalid file'))
-      );
-      errors.push(
-        `${invalidFiles.length} file${invalidFiles.length !== 1 ? 's' : ''} ${invalidFiles.length !== 1 ? 'were' : 'was'} removed. ${messages.join(' ')}`
-      );
-    }
-    if (projectedCount > SCENE_UPLOAD_MAX_FILE_COUNT) {
-      errors.push(
-        `Maximum ${SCENE_UPLOAD_MAX_FILE_COUNT} files allowed. Only ${allowedNewFiles.length} of ${validFiles.length} file${validFiles.length !== 1 ? 's' : ''} were added.`
-      );
-    }
-    if (errors.length > 0) {
-      setError(errors.join(' '));
-    } else {
-      setError(null);
-    }
+      // Combine ALL rejection reasons into one message. The previous version
+      // called setError twice in sequence, so the count-cap error silently
+      // overwrote the oversized-rejection error and the user had no idea why
+      // their files were dropped.
+      const errors: string[] = [];
+      if (invalidFiles.length > 0) {
+        const messages = Array.from(
+          new Set(invalidFiles.map(item => item.validation.error || 'Invalid file'))
+        );
+        errors.push(
+          `${invalidFiles.length} file${invalidFiles.length !== 1 ? 's' : ''} ${invalidFiles.length !== 1 ? 'were' : 'was'} removed. ${messages.join(' ')}`
+        );
+      }
+      if (projectedCount > SCENE_UPLOAD_MAX_FILE_COUNT) {
+        errors.push(
+          `Maximum ${SCENE_UPLOAD_MAX_FILE_COUNT} files allowed. Only ${allowedNewFiles.length} of ${validFiles.length} file${validFiles.length !== 1 ? 's' : ''} were added.`
+        );
+      }
+      if (errors.length > 0) {
+        setError(errors.join(' '));
+      } else {
+        setError(null);
+      }
 
-    if (allowedNewFiles.length === 0) return;
+      if (allowedNewFiles.length === 0) return;
 
-    const newImages = allowedNewFiles.map((file) => ({
-      id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      file,
-      preview: URL.createObjectURL(file),
-    }));
-    setImages((prev) => [...prev, ...newImages]);
-  }, [images.length]);
+      const newImages = allowedNewFiles.map(file => ({
+        id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        file,
+        preview: URL.createObjectURL(file),
+      }));
+      setImages(prev => [...prev, ...newImages]);
+    },
+    [images.length]
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -137,12 +142,12 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   });
 
   const removeImage = (id: string) => {
-    setImages((prev) => {
-      const image = prev.find((img) => img.id === id);
+    setImages(prev => {
+      const image = prev.find(img => img.id === id);
       if (image) {
         URL.revokeObjectURL(image.preview);
       }
-      return prev.filter((img) => img.id !== id);
+      return prev.filter(img => img.id !== id);
     });
   };
 
@@ -177,11 +182,12 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   const handleStartGeneration = async () => {
     setStep('processing');
     setError(null);
+    setGeneratedTourId(null);
 
     try {
       const response = await aiApi.generateTour(
         {
-          images: images.map((img) => img.file),
+          images: images.map(img => img.file),
           title: title || undefined,
           description: description || undefined,
           auto_detect_rooms: options.auto_detect_rooms,
@@ -191,36 +197,79 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
         setUploadProgress
       );
       setJobId(response.job.id);
+      setGeneratedTourId(response.tour_id ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start tour generation');
       setStep('options');
     }
   };
 
-  const handleJobComplete = (job: unknown, jobResult: unknown) => {
+  const handleJobComplete = async (_job: unknown, jobResult: unknown) => {
     setJobId(null);
-    if (jobResult && typeof jobResult === 'object') {
-      const data = jobResult as { tour?: Tour; scenes?: Scene[] };
-      if (!data.tour || !Array.isArray(data.scenes)) {
-        const message = 'Tour generation finished, but the generated tour data was not returned.';
-        setError(message);
-        setStep('options');
-        toastError(message, { title: 'Tour generation incomplete' });
-        return;
+    let parsedResult: unknown = jobResult;
+
+    if (typeof parsedResult === 'string') {
+      try {
+        parsedResult = JSON.parse(parsedResult);
+      } catch {
+        parsedResult = null;
       }
-      setResult(data);
-      setStep('review');
+    }
+
+    const data =
+      parsedResult && typeof parsedResult === 'object'
+        ? (parsedResult as { tour_id?: string; tour?: Tour; scenes?: Scene[] })
+        : {};
+    const tourId = data.tour_id ?? generatedTourId;
+
+    if (!tourId && (!data.tour || !Array.isArray(data.scenes))) {
+      const message = 'Tour generation finished without usable results.';
+      setError(message);
+      setStep('options');
+      toastError(message, { title: 'Tour generation incomplete' });
       return;
     }
 
-    const message = 'Tour generation finished without usable results.';
-    setError(message);
-    setStep('options');
-    toastError(message, { title: 'Tour generation incomplete' });
+    setIsFinalizing(true);
+    try {
+      let tour = data.tour;
+      let scenes = data.scenes;
+
+      // The backend returns the created tour ID immediately and the completed
+      // job result may contain only that ID. Fetch the canonical records before
+      // showing the review step.
+      if (tourId) {
+        try {
+          [tour, scenes] = await Promise.all([
+            toursApi.getTour(tourId),
+            toursApi.getScenes(tourId),
+          ]);
+        } catch {
+          // A complete result payload is still usable if the follow-up fetch
+          // temporarily fails.
+          if (!tour || !Array.isArray(scenes)) throw new Error('Tour records could not be loaded');
+        }
+      }
+
+      if (!tour || !Array.isArray(scenes)) {
+        throw new Error('Generated tour data was not returned');
+      }
+
+      setResult({ tour, scenes });
+      setStep('review');
+    } catch {
+      const message = 'Tour generation finished, but the generated tour data could not be loaded.';
+      setError(message);
+      setStep('options');
+      toastError(message, { title: 'Tour generation incomplete' });
+    } finally {
+      setIsFinalizing(false);
+    }
   };
 
   const handleJobError = (job: unknown, errorMessage: string) => {
     setJobId(null);
+    setGeneratedTourId(null);
     setError(errorMessage);
     setStep('options');
     toastError(errorMessage, { title: 'Tour generation failed' });
@@ -235,7 +284,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
 
   const handleClose = () => {
     // Cleanup
-    images.forEach((img) => URL.revokeObjectURL(img.preview));
+    images.forEach(img => URL.revokeObjectURL(img.preview));
     setImages([]);
     setTitle('');
     setDescription('');
@@ -246,6 +295,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     });
     setStep('upload');
     setJobId(null);
+    setGeneratedTourId(null);
     setResult(null);
     setError(null);
     setUploadProgress(0);
@@ -304,8 +354,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   getStepNumber() > index + 1
                     ? 'bg-[var(--color-success-500)] text-white'
                     : getStepNumber() === index + 1
-                    ? 'bg-[var(--color-primary-500)] text-white'
-                    : 'bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]'
+                      ? 'bg-[var(--color-primary-500)] text-white'
+                      : 'bg-[var(--color-surface-elevated)] text-[var(--color-text-muted)]'
                 )}
               >
                 {getStepNumber() > index + 1 ? <Check className="h-4 w-4" /> : index + 1}
@@ -362,7 +412,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   </Label>
                   <ScrollArea className="h-[200px]">
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {images.map((image) => (
+                      {images.map(image => (
                         <div key={image.id} className="relative group">
                           <img
                             src={image.preview}
@@ -394,7 +444,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                 <Input
                   id="title"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={e => setTitle(e.target.value)}
                   placeholder="e.g., Modern Downtown Apartment"
                 />
                 <p className="text-xs text-[var(--color-text-muted)]">
@@ -407,7 +457,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                 <Textarea
                   id="description"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={e => setDescription(e.target.value)}
                   placeholder="Describe your property or space..."
                   rows={4}
                 />
@@ -420,7 +470,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
               <div className="pt-4 border-t border-[var(--color-border)]">
                 <Label className="mb-2 block">Images to process</Label>
                 <div className="flex gap-2 overflow-x-auto pb-2">
-                  {images.slice(0, 6).map((image) => (
+                  {images.slice(0, 6).map(image => (
                     <img
                       key={image.id}
                       src={image.preview}
@@ -454,8 +504,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   id="ai-auto-detect-rooms"
                   aria-label="Auto-detect room types"
                   checked={options.auto_detect_rooms}
-                  onCheckedChange={(checked) =>
-                    setOptions((prev) => ({ ...prev, auto_detect_rooms: checked }))
+                  onCheckedChange={checked =>
+                    setOptions(prev => ({ ...prev, auto_detect_rooms: checked }))
                   }
                 />
               </div>
@@ -471,8 +521,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   id="ai-auto-place-hotspots"
                   aria-label="Auto-place hotspots"
                   checked={options.auto_place_hotspots}
-                  onCheckedChange={(checked) =>
-                    setOptions((prev) => ({ ...prev, auto_place_hotspots: checked }))
+                  onCheckedChange={checked =>
+                    setOptions(prev => ({ ...prev, auto_place_hotspots: checked }))
                   }
                 />
               </div>
@@ -488,8 +538,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                   id="ai-generate-descriptions"
                   aria-label="Generate descriptions"
                   checked={options.auto_generate_descriptions}
-                  onCheckedChange={(checked) =>
-                    setOptions((prev) => ({ ...prev, auto_generate_descriptions: checked }))
+                  onCheckedChange={checked =>
+                    setOptions(prev => ({ ...prev, auto_generate_descriptions: checked }))
                   }
                 />
               </div>
@@ -507,12 +557,8 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                 <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
                   <li>• {images.length} images to process</li>
                   {title && <li>• Title: {title}</li>}
-                  <li>
-                    • Room detection: {options.auto_detect_rooms ? 'Enabled' : 'Disabled'}
-                  </li>
-                  <li>
-                    • Auto hotspots: {options.auto_place_hotspots ? 'Enabled' : 'Disabled'}
-                  </li>
+                  <li>• Room detection: {options.auto_detect_rooms ? 'Enabled' : 'Disabled'}</li>
+                  <li>• Auto hotspots: {options.auto_place_hotspots ? 'Enabled' : 'Disabled'}</li>
                   <li>
                     • Descriptions: {options.auto_generate_descriptions ? 'Enabled' : 'Disabled'}
                   </li>
@@ -524,7 +570,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
           {/* Step 4: Processing */}
           {step === 'processing' && (
             <div className="py-8">
-              {uploadProgress < 100 && !jobId && (
+              {uploadProgress < 100 && !jobId && !isFinalizing && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary-500)]" />
@@ -537,7 +583,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                 </div>
               )}
 
-              {jobId && (
+              {jobId && !isFinalizing && (
                 <AIJobStatus
                   jobId={jobId}
                   onComplete={handleJobComplete}
@@ -548,6 +594,18 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
                     setStep('options');
                   }}
                 />
+              )}
+
+              {isFinalizing && (
+                <div className="space-y-4 py-8">
+                  <div className="flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary-500)]" />
+                  </div>
+                  <p className="text-center font-medium">Loading your generated tour...</p>
+                  <p className="text-center text-sm text-[var(--color-text-muted)]">
+                    Fetching the latest scenes and AI-generated navigation.
+                  </p>
+                </div>
               )}
             </div>
           )}
