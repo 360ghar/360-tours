@@ -50,7 +50,7 @@ dependencies:
   sign_in_with_apple: ^8.1.0
   opencv_dart: ^1.4.5
   supabase_flutter: ^2.11.0
-  dio: ^5.9.0
+  dio: ^5.11.0
   connectivity_plus: ^7.0.0
   cached_network_image: ^3.4.1
   app_links: ^6.4.1
