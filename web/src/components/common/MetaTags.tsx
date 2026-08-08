@@ -21,6 +21,16 @@ interface StructuredDataProps {
   data: Record<string, unknown>;
 }
 
+/** Default social preview image; overridden per page via the `image` prop. */
+const DEFAULT_OG_IMAGE = '/og-image.png';
+
+function resolveDefaultOgImage(): string {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${DEFAULT_OG_IMAGE}`;
+  }
+  return DEFAULT_OG_IMAGE;
+}
+
 export function MetaTags({
   title,
   description,
@@ -81,10 +91,9 @@ export function MetaTags({
     setMetaTag('og:description', metaDescription, true);
     setMetaTag('og:type', type, true);
     setMetaTag('og:url', currentUrl, true);
-    if (image) {
-      setMetaTag('og:image', image, true);
-      setMetaTag('og:image:alt', fullTitle, true);
-    }
+    const ogImage = image || resolveDefaultOgImage();
+    setMetaTag('og:image', ogImage, true);
+    setMetaTag('og:image:alt', fullTitle, true);
     setMetaTag('og:site_name', APP_NAME, true);
     if (publishedTime) {
       setMetaTag('article:published_time', publishedTime, true);
@@ -96,9 +105,7 @@ export function MetaTags({
     setMetaTag('twitter:card', twitterCard);
     setMetaTag('twitter:title', fullTitle);
     setMetaTag('twitter:description', metaDescription);
-    if (image) {
-      setMetaTag('twitter:image', image);
-    }
+    setMetaTag('twitter:image', ogImage);
 
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {

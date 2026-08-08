@@ -9,7 +9,9 @@ interface Demo360ViewerProps {
 
 const RESUME_DELAY = 2000;
 const BASE_SPEED_RAD = 0.02;
-const DEMO_PANORAMA_URL = 'https://photo-sphere-viewer-data.netlify.app/assets/sphere.jpg';
+// Bundled equirectangular demo panorama (see public/demo/) — no runtime
+// dependency on a third-party CDN.
+const DEMO_PANORAMA_URL = '/demo/living-room-panorama.webp';
 
 export function Demo360Viewer({ className }: Demo360ViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);

@@ -39,14 +39,9 @@ export function PublicLayout() {
       >
         <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-6 md:px-12 lg:px-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 group">
+          <Link to="/" className="flex items-center gap-2.5 group" aria-label="360 Tours home">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--landing-accent)] transition-transform group-hover:scale-105">
-              <span
-                className="text-lg font-bold text-white"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                360
-              </span>
+              <img src="/logo-mark-white.png" alt="" className="h-6 w-6" draggable={false} />
             </div>
             <span
               className="text-lg font-bold text-[var(--landing-text-hero)]"
@@ -229,12 +224,7 @@ export function PublicLayout() {
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--landing-accent)]">
-                  <span
-                    className="text-lg font-bold text-white"
-                    style={{ fontFamily: 'var(--font-display)' }}
-                  >
-                    360
-                  </span>
+                  <img src="/logo-mark-white.png" alt="" className="h-6 w-6" draggable={false} />
                 </div>
                 <span className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
                   Tours

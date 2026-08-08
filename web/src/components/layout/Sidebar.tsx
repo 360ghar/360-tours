@@ -100,13 +100,13 @@ export function Sidebar({ className }: SidebarProps) {
         <div className="flex h-16 items-center justify-between border-b border-[var(--color-border)] px-4">
           <div className={cn('flex items-center gap-3', sidebarCollapsed && 'lg:hidden')}>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
-              <span className="text-lg font-bold text-white">3</span>
+              <img src="/logo-mark-white.png" alt="" className="h-5 w-5" draggable={false} />
             </div>
             <span className="text-lg font-semibold">360 Viewer</span>
           </div>
           {sidebarCollapsed && (
             <div className="hidden h-9 w-9 items-center justify-center rounded-lg gradient-primary lg:flex">
-              <span className="text-lg font-bold text-white">3</span>
+              <img src="/logo-mark-white.png" alt="" className="h-5 w-5" draggable={false} />
             </div>
           )}
           <Button

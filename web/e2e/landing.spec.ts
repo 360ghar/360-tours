@@ -4,8 +4,8 @@ test.describe('Landing Page', () => {
   test('should display the landing page correctly', async ({ page }) => {
     await page.goto('/');
 
-    // Check page title
-    await expect(page).toHaveTitle(/360 Viewer/);
+    // Check page title (app is branded "360 Tours" — see index.html + VITE_APP_NAME)
+    await expect(page).toHaveTitle(/360 Tours/);
 
     // Check hero section is visible
     await expect(page.locator('h1')).toBeVisible();
