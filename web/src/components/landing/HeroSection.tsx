@@ -25,7 +25,7 @@ export function HeroSection() {
       </div>
 
       <div className="relative w-full max-w-[1400px] mx-auto px-6 md:px-12 lg:px-16 py-8 md:py-12 lg:py-0">
-        <div className="grid lg:grid-cols-[1.1fr,1fr] gap-12 lg:gap-16 items-center">
+        <div className="grid lg:grid-cols-[1.1fr_1fr] gap-12 lg:gap-16 items-center">
           {/* Left column - Content */}
           <div className="relative z-10">
             {/* Badge */}
