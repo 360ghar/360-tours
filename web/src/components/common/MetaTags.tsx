@@ -22,7 +22,7 @@ interface StructuredDataProps {
 }
 
 /** Default social preview image; overridden per page via the `image` prop. */
-const DEFAULT_OG_IMAGE = '/og-image.png';
+const DEFAULT_OG_IMAGE = '/og-image-home.jpg';
 
 function resolveDefaultOgImage(): string {
   if (typeof window !== 'undefined') {
