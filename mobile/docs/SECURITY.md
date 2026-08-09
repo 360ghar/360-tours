@@ -3,8 +3,8 @@
 ## Secrets
 
 - **Never commit** real secrets: API tokens, Cloudinary secrets, service keys.
-- Supabase keys: the bundled `.env` asset (`app/.env`, loaded by `app/lib/core/env.dart`) may hold **publishable/anon** keys only â€” they are public by design (web ships the same publishable key via the `web/.env.example` template). Anything sensitive stays `--dart-define`-only, never in `.env` or git.
-- Resolution order in `env.dart`: `--dart-define` (highest) â†’ bundled `.env` â†’ default.
+- Supabase keys: the bundled `.env` asset (`app/.env`, loaded by `app/lib/core/env.dart`) may hold **publishable/anon** keys only — they are public by design (web ships the same publishable key via the `web/.env.example` template). Anything sensitive stays `--dart-define`-only, never in `.env` or git.
+- Resolution order in `env.dart`: `--dart-define` (highest) → bundled `.env` → default.
 - Anon key is a public client key; still treat it as non-writable to git history and screenshots in issues when possible.
 
 ## AuthZ model
@@ -25,7 +25,7 @@
 
 ## Native / local network
 
-- Insta360 path uses local WiFi / `NEHotspotNetwork` / camera HTTP endpoints â€” local network usage strings are required in Info.plist.
+- Insta360 path uses local WiFi / `NEHotspotNetwork` / camera HTTP endpoints — local network usage strings are required in Info.plist.
 - LiDAR / camera permissions: request with system APIs; fail closed with user-visible errors.
 - **Do not vendor** NDA Insta360 SDK binaries into git.
 

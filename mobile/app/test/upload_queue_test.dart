@@ -373,7 +373,7 @@ void main() {
         expect(
           done.status,
           AssetStatus.ready,
-          reason: 'the naive pano is live â€” never AssetStatus.failed',
+          reason: 'the naive pano is live — never AssetStatus.failed',
         );
         expect(done.cloudStitchFailed, isTrue);
       },
@@ -456,8 +456,13 @@ void main() {
         reason: 'early re-pump is deferred until the interval elapses',
       );
 
-      // After the interval, the scheduled Timer fires and the job advances.
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+      // After the interval, the scheduled Timer fires and the job advances
+      // (the NEXT poll is then due 200ms later — asserted before it fires).
+      final deadline = DateTime.now().add(const Duration(seconds: 2));
+      while (api.calls.where((c) => c == 'pollStitch').length < 2 &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
       expect(api.calls.where((c) => c == 'pollStitch').length, 2);
     });
   });

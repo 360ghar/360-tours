@@ -251,8 +251,17 @@ CaptureDecision decideCapture({
       ? {...state.lowQualityTargets, targetIndex}
       : state.lowQualityTargets.difference({targetIndex});
 
-  final nextIndex = targetIndex + 1;
-  if (nextIndex >= plan.total) {
+  // Advance to the next target NOT yet captured: in retake/skip flows this
+  // jumps straight to the next missing angle instead of re-guiding the user
+  // through already-filled targets (which would silently replace their
+  // frames). Normal sequential capture is unaffected (the next index is
+  // never already captured).
+  var advance = targetIndex + 1;
+  while (advance < plan.total && capturedTargets.contains(advance)) {
+    advance++;
+  }
+
+  if (advance >= plan.total) {
     if (capturedTargets.length >= plan.total) {
       return CaptureDecision(
         state.copyWith(
@@ -289,7 +298,7 @@ CaptureDecision decideCapture({
   return CaptureDecision(
     state.copyWith(
       phase: CapturePhase.aiming,
-      targetIndex: nextIndex,
+      targetIndex: advance,
       capturedTargets: capturedTargets,
       framePaths: framePaths,
       frameOrientations: frameOrientations,

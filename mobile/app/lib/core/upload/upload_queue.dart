@@ -9,7 +9,15 @@ import '../models/models.dart';
 import '../storage/local_store.dart';
 
 /// Outcome of advancing a single job one step.
-enum _Step { progressed, idle, errored }
+enum _Step {
+  progressed,
+  idle,
+
+  /// The job scheduled its own Timer (poll backoff): skip it for the rest of
+  /// this drain pass so concurrent progress cannot advance it early.
+  timerScheduled,
+  errored,
+}
 
 /// Persistent, sequential upload pipeline for a captured panorama:
 ///
@@ -136,9 +144,11 @@ class UploadQueue {
       // skip them on later inner iterations instead of hammering them while
       // another job keeps progressing. Cleared each outer pass to allow re-pumps.
       final errored = <String>{};
-      // Jobs waiting on their own scheduled Timer (poll backoff): advancing
-      // them again while another job progresses would defeat the delay and
-      // could exhaust the poll budget prematurely.
+      // Jobs that scheduled their own poll Timer: advancing them again while
+      // another job progresses would defeat the delay and could exhaust the
+      // poll budget prematurely. Blocked (non-timer) jobs like a room
+      // waiting for its tour are NOT added — they must be re-tried as the
+      // asset job progresses.
       final waiting = <String>{};
       var progressed = true;
       while (progressed) {
@@ -162,8 +172,10 @@ class UploadQueue {
               progressed = true;
             case _Step.errored:
               errored.add(id);
-            case _Step.idle:
+            case _Step.timerScheduled:
               waiting.add(id);
+            case _Step.idle:
+              break;
           }
         }
       }
@@ -370,7 +382,7 @@ class UploadQueue {
                     .millisecondsSinceEpoch;
                 await _store.upsert(_collection, job);
                 Timer(interval, pump);
-                return _Step.idle;
+                return _Step.timerScheduled;
               }
             }
           }

@@ -70,8 +70,10 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   const [error, setError] = useState<string | null>(null);
   const imagesRef = useRef<UploadedImage[]>([]);
   // Bumped every time the dialog closes: async completions from a previous
-  // session must not restore stale state into a fresh session.
+  // session must not restore stale state into a fresh session. jobTokenRef
+  // binds each submitted generation to its own session token.
   const generationTokenRef = useRef(0);
+  const jobTokenRef = useRef(0);
 
   useEffect(() => {
     imagesRef.current = images;
@@ -186,6 +188,12 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     setStep('processing');
     setError(null);
     setGeneratedTourId(null);
+    // Bind this generation to a fresh session token: a completion that
+    // arrives after the dialog closed (and possibly reopened) must be
+    // rejected, even if its callback starts after the reopen.
+    generationTokenRef.current += 1;
+    const sessionToken = generationTokenRef.current;
+    jobTokenRef.current = sessionToken;
 
     try {
       const response = await aiApi.generateTour(
@@ -208,6 +216,9 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   };
 
   const handleJobComplete = async (_job: unknown, jobResult: unknown) => {
+    // The job's session token must still be current: a completion from a
+    // previous session must never drive a freshly reopened wizard.
+    if (jobTokenRef.current !== generationTokenRef.current) return;
     const token = generationTokenRef.current;
     setJobId(null);
     let parsedResult: unknown = jobResult;

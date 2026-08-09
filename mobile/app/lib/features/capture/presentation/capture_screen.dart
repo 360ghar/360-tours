@@ -101,24 +101,28 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     final resume = await showDialog<bool>(
       context: context,
       // Only the explicit Discard button may delete the prior capture —
-      // tapping the barrier or pressing Back must never discard by accident.
+      // the barrier AND the system Back button must never discard by
+      // accident (and must not strand the screen on its spinner).
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Resume previous capture?'),
-        content: Text(
-          'You captured ${offer.frameCount} of ${offer.total} shots. '
-          'Continue where you left off?',
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('Resume previous capture?'),
+          content: Text(
+            'You captured ${offer.frameCount} of ${offer.total} shots. '
+            'Continue where you left off?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Discard'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Resume'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Discard'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Resume'),
-          ),
-        ],
       ),
     );
     if (!mounted || resume == null) return;

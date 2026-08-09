@@ -137,7 +137,7 @@ class StitcherService {
           // OpenCV measurably wins: ship it.
           await File(ocvPath).copy(panoPath);
           try {
-            File(ocvPath).deleteSync();
+            await File(ocvPath).delete();
           } catch (_) {
             // best-effort cleanup
           }

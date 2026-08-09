@@ -490,6 +490,61 @@ void main() {
       );
       expect(s.replacedPath, isNull);
     });
+
+    test('after retaking a missing angle, advance skips already-filled '
+        'targets to the NEXT missing one', () {
+      // Targets 0..4 with 2 skipped; the user is guided to retake target 2.
+      // After capturing it, the next target is 5 (filled targets 3, 4 must
+      // not be re-captured).
+      final s = decideCapture(
+        state: CaptureState(
+          phase: CapturePhase.aiming,
+          targetIndex: 2,
+          capturedTargets: const [0, 1, 3, 4],
+          framePaths: const ['f0.jpg', 'f1.jpg', 'f3.jpg', 'f4.jpg'],
+          frameOrientations: const [oriented, oriented, oriented, oriented],
+        ),
+        path: 'f2.jpg',
+        orientation: oriented,
+        qualityResult: ok(),
+        duplicate: false,
+        consecutiveRejects: 0,
+      );
+      expect(
+        s.state.targetIndex,
+        5,
+        reason: 'advance to the next UNCAPTURED target',
+      );
+      expect(s.state.capturedTargets, [0, 1, 3, 4, 2]);
+    });
+
+    test('retaking the last missing angle completes to review', () {
+      final plan = kFallbackCapturePlan;
+      // Everything captured except target 5; user is on target 5.
+      final captured = [
+        for (var i = 0; i < plan.total; i++)
+          if (i != 5) i,
+      ];
+      final s = decideCapture(
+        state: CaptureState(
+          phase: CapturePhase.aiming,
+          targetIndex: 5,
+          capturedTargets: captured,
+          framePaths: [for (var i = 0; i < captured.length; i++) 'f$i.jpg'],
+          frameOrientations: [
+            for (var i = 0; i < captured.length; i++) oriented,
+          ],
+          plan: plan,
+        ),
+        path: 'f5.jpg',
+        orientation: oriented,
+        qualityResult: ok(),
+        duplicate: false,
+        consecutiveRejects: 0,
+      );
+      expect(s.state.phase, CapturePhase.review);
+      expect(s.state.done, isTrue);
+    });
   });
 
   group('isDuplicateCapture (positional lookup)', () {
