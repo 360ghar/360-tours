@@ -27,7 +27,8 @@ class UploadQueue {
     this._getRooms,
     this._saveRoom,
     Stream<List<ConnectivityResult>>? connectivityChanges,
-  }) {
+    Duration Function(int polls)? pollInterval,
+  }) : _pollInterval = pollInterval ?? _defaultPollInterval {
     (connectivityChanges ?? Connectivity().onConnectivityChanged).listen((
       results,
     ) {
@@ -35,12 +36,18 @@ class UploadQueue {
     });
   }
 
+  /// 3s, doubling to a 20s cap every 5 polls (injectable for tests).
+  static Duration _defaultPollInterval(int polls) =>
+      Duration(seconds: min(20, 3 * pow(2, min(polls ~/ 5, 3))).toInt());
+
   static const _collection = 'upload_queue';
   static const _maxAttempts = 8;
 
   /// Maximum polls of a cloud-stitch job (3s→20s intervals, ~11 min cap;
   /// the backend stitch itself is bounded by a 5 min timeout).
   static const int maxStitchPolls = 40;
+
+  final Duration Function(int polls) _pollInterval;
 
   final LocalStore _store;
   final BackendApi _api;
@@ -311,15 +318,30 @@ class UploadQueue {
             await _markStitchFailed(asset);
             job['step'] = 'stitchFailed';
           } else {
+            // Honor the backoff interval even if another pump re-advances
+            // this job early (external pumps, retries): the scheduled Timer
+            // owns the next poll.
+            final nextAt = job['nextPollAt'] as int? ?? 0;
+            final now = DateTime.now().millisecondsSinceEpoch;
+            if (now < nextAt) {
+              await _store.upsert(_collection, job);
+              return _Step.idle;
+            }
             final status = await _api.getAiJob(jobId);
             final state = status['status'] as String? ?? 'unknown';
             if (state == 'completed') {
               // The backend replaces the scene image only when the cloud
-              // panorama passed its own quality validation.
+              // panorama passed its own quality validation. The refined
+              // image URL may arrive under result OR job.output_data (the
+              // web client reads both shapes).
               final result = Map<String, dynamic>.from(
                 status['result'] as Map? ?? {},
               );
-              final imageUrl = result['image_url'] as String?;
+              final output = Map<String, dynamic>.from(
+                status['output_data'] as Map? ?? {},
+              );
+              final imageUrl =
+                  (result['image_url'] ?? output['image_url']) as String?;
               await _saveIfAlive(
                 asset.id,
                 (c) => c.copyWith(
@@ -329,7 +351,9 @@ class UploadQueue {
                 ),
               );
               job['step'] = 'done';
-            } else if (state == 'failed' || state == 'cancelled') {
+            } else if (state == 'failed' ||
+                state == 'canceled' ||
+                state == 'cancelled') {
               await _markStitchFailed(asset);
               job['step'] = 'stitchFailed';
             } else {
@@ -340,9 +364,12 @@ class UploadQueue {
                 await _markStitchFailed(asset);
                 job['step'] = 'stitchFailed';
               } else {
+                final interval = _pollInterval(polls);
+                job['nextPollAt'] = DateTime.now()
+                    .add(interval)
+                    .millisecondsSinceEpoch;
                 await _store.upsert(_collection, job);
-                final seconds = min(20, 3 * pow(2, min(polls ~/ 5, 3))).toInt();
-                Timer(Duration(seconds: seconds), pump);
+                Timer(interval, pump);
                 return _Step.idle;
               }
             }

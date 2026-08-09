@@ -56,6 +56,10 @@ class OrientationEngine {
   List<double>? _mag;
   Quaternion? _quaternion;
   double? _yawZero;
+
+  /// True when [zero] was called before the first quaternion arrived; the
+  /// first real reading then establishes the reference.
+  bool _zeroRequested = false;
   FrameOrientation _current = const FrameOrientation(yaw: 0, pitch: 0);
   bool get hasFix =>
       _fused ? _quaternion != null : (_accel != null && _mag != null);
@@ -93,6 +97,15 @@ class OrientationEngine {
     } else {
       // Real device: prefer the platform rotation-vector sensor.
       try {
+        // Use an ARBITRARY world reference frame, not magnetic north:
+        // flutter_rotation_sensor's iOS north-referenced path remaps the
+        // CoreMotion quaternion with a right-multiply, which numerically
+        // cancels the frame conversion (upstream tlserver/flutter_rotation_
+        // sensor#100) and leaves yaw 90° off. This engine only needs a
+        // RELATIVE heading — zero() rebases at capture start — so the
+        // arbitrary frame (no remap, X = device-initial direction) is both
+        // correct and drift-free for session-length captures.
+        RotationSensor.referenceFrame = ReferenceFrame.arbitrary;
         RotationSensor.samplingPeriod = SensorInterval.gameInterval;
         _rotationSub = RotationSensor.orientationStream.listen(
           _onRotation,
@@ -119,10 +132,13 @@ class OrientationEngine {
 
   /// Snapshot the current yaw as the zero reference (call at capture start).
   void zero() {
-    // Without a quaternion yet (delayed sensor), the identity fallback would
-    // record yaw 0 as the heading and leave targets absolute — leave the
-    // reference unset until a real reading arrives.
-    if (_fused && _quaternion == null) return;
+    // Without a quaternion yet (delayed sensor), defer to the first real
+    // reading via _zeroRequested instead of recording an identity heading.
+    if (_fused && _quaternion == null) {
+      _zeroRequested = true;
+      return;
+    }
+    _zeroRequested = false;
     final o = _fused
         ? orientationFromQuaternion(
             _quaternion ?? Quaternion(0, 0, 0, 1),
@@ -149,6 +165,14 @@ class OrientationEngine {
 
   void _onRotation(OrientationEvent e) {
     _quaternion = e.quaternion;
+    // If the controller called zero() before the first quaternion arrived
+    // (slow sensor cold start), establish the user-relative reference from
+    // the first real reading — otherwise the session would silently use
+    // absolute sensor yaw.
+    if (_zeroRequested) {
+      _zeroRequested = false;
+      _yawZero = orientationFromQuaternion(e.quaternion, deviceUp: _accel)?.yaw;
+    }
   }
 
   void _rotationFailed() {

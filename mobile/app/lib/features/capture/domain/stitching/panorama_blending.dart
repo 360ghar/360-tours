@@ -130,19 +130,95 @@ class BlendAccumulator {
 /// Conservative latitude band a frame can paint, INCLUDING roll: the corners
 /// of a rolled frame extend further in latitude than the unrolled vertical
 /// FOV (horizontal FOV rotates into latitude). Used to cull rows safely.
-/// The bound is exact for the frame corners:
-///   d_z(u,v) = fwd.z + tanH·u·right'_z + tanV·v·up'_z, u,v in [-1,1]
+///
+/// The bound is exact along each sampled camera-row: for a fixed v the
+/// direction d(u) = fwd + u·tanH·right' + v·tanV·up' has
+/// z_norm(u) = (Az + u·Bz)/sqrt(|A|² + u²) whose extremum over the interval
+/// is at the interior stationary point u* = Bz·|A|²/Az (when it lies inside)
+/// or an endpoint. We evaluate the u-extrema on the v-samples {−tanV, 0, +tanV}
+/// and the v-extrema on the u-samples {−tanH, 0, +tanH}, then inflate by a
+/// small margin for inter-sample curvature — the cull may over-include rows
+/// (cost: a few extra iterations) but never exclude a contributing one.
 (double latMinDeg, double latMaxDeg) frameLatitudeBand(
   CameraBasis basis,
   CameraProfile profile,
 ) {
   final tanH = tan(profile.hFovDeg * pi / 360);
   final tanV = tan(profile.vFovDeg * pi / 360);
-  final corner = tanH * basis.right.z.abs() + tanV * basis.up.z.abs();
-  final maxDz = (basis.forward.z + corner).clamp(-1.0, 1.0);
-  final minDz = (basis.forward.z - corner).clamp(-1.0, 1.0);
-  // +1° margin for float noise.
-  return (asin(minDz) * 180 / pi - 1, asin(maxDz) * 180 / pi + 1);
+  final fwd = basis.forward, right = basis.right, up = basis.up;
+
+  double extremaOnLine({
+    required Vec3 a0,
+    required Vec3 b0,
+    required bool maximize,
+  }) {
+    // z_norm(t) = (Az + t·Bz)/sqrt(|A|² + t²·|b0|²) over t in [-1, 1]
+    // (b0 already carries the tanH/tanV scale).
+    final az = a0.z, bz = b0.z;
+    final a2 = a0.x * a0.x + a0.y * a0.y + a0.z * a0.z;
+    final b2 = b0.x * b0.x + b0.y * b0.y + b0.z * b0.z;
+    final tStar = az.abs() > 1e-9 && b2 > 1e-12 ? bz * a2 / (az * b2) : null;
+    var best = maximize ? -1e9 : 1e9;
+    void consider(double t) {
+      final z = (az + t * bz) / sqrt(a2 + t * t * b2);
+      best = maximize ? (z > best ? z : best) : (z < best ? z : best);
+    }
+
+    consider(-1);
+    consider(1);
+    final t = tStar;
+    if (t != null && t > -1 && t < 1) consider(t);
+    return best.clamp(-1.0, 1.0);
+  }
+
+  double zFor(double u, double v) {
+    final d = Vec3(
+      fwd.x + u * tanH * right.x + v * tanV * up.x,
+      fwd.y + u * tanH * right.y + v * tanV * up.y,
+      fwd.z + u * tanH * right.z + v * tanV * up.z,
+    );
+    return d.normalized().z;
+  }
+
+  var maxZ = -1e9, minZ = 1e9;
+  // Exact u-extrema on the sampled v rows (unrolled frames are exact here).
+  for (final v in [-1.0, 0.0, 1.0]) {
+    final a0 = Vec3(
+      fwd.x + v * tanV * up.x,
+      fwd.y + v * tanV * up.y,
+      fwd.z + v * tanV * up.z,
+    );
+    final b0 = Vec3(right.x * tanH, right.y * tanH, right.z * tanH);
+    final hi = extremaOnLine(a0: a0, b0: b0, maximize: true);
+    final lo = extremaOnLine(a0: a0, b0: b0, maximize: false);
+    if (hi > maxZ) maxZ = hi;
+    if (lo < minZ) minZ = lo;
+  }
+  // Symmetric: exact v-extrema on the sampled u columns.
+  for (final u in [-1.0, 0.0, 1.0]) {
+    final a0 = Vec3(
+      fwd.x + u * tanH * right.x,
+      fwd.y + u * tanH * right.y,
+      fwd.z + u * tanH * right.z,
+    );
+    final b0 = Vec3(up.x * tanV, up.y * tanV, up.z * tanV);
+    final hi = extremaOnLine(a0: a0, b0: b0, maximize: true);
+    final lo = extremaOnLine(a0: a0, b0: b0, maximize: false);
+    if (hi > maxZ) maxZ = hi;
+    if (lo < minZ) minZ = lo;
+  }
+  // Reference grid points guard against inter-line curvature.
+  for (final u in [-1.0, 0.0, 1.0]) {
+    for (final v in [-1.0, 0.0, 1.0]) {
+      final z = zFor(u, v);
+      if (z > maxZ) maxZ = z;
+      if (z < minZ) minZ = z;
+    }
+  }
+
+  // +3° inflation: over-inclusion costs a few extra rows; under-inclusion
+  // would drop valid coverage.
+  return (asin(minZ) * 180 / pi - 3, asin(maxZ) * 180 / pi + 3);
 }
 
 /// Accumulate one frame's contribution onto [acc]. Precomputed per-column

@@ -46,23 +46,23 @@ class CaptureSessionStore {
   /// Deletes the session's frame files (used on Discard). Only paths under
   /// [capturesRoot] (`<docs>/captures`) are ever deleted — corrupted session
   /// metadata must never be able to remove arbitrary app files; a path
-  /// outside the root is treated as unrecoverable and skipped.
+  /// outside the root (including `..` traversal) is treated as
+  /// unrecoverable and skipped.
   static void deleteFrameFiles(
     CaptureSession session, {
     required String capturesRoot,
   }) {
-    final root = capturesRoot.replaceAll('\\', '/');
+    final root = File(capturesRoot).absolute.path.replaceAll('\\', '/');
     for (final f in session.frames) {
       try {
-        final file = File(f.path);
-        if (file.path.replaceAll('\\', '/').startsWith(root)) {
-          final dir = file.parent;
-          if (file.existsSync()) file.deleteSync();
-          if (dir.existsSync() &&
-              dir.listSync().whereType<File>().isEmpty &&
-              dir.path.contains('captures')) {
-            dir.deleteSync(recursive: true);
-          }
+        final file = File(f.path).absolute;
+        if (!file.path.replaceAll('\\', '/').startsWith('$root/')) continue;
+        if (file.existsSync()) file.deleteSync();
+        final dir = file.parent;
+        // Only remove the session directory when it is completely empty —
+        // a stray file or another capture dir must survive cleanup.
+        if (dir.existsSync() && dir.listSync().isEmpty) {
+          dir.deleteSync();
         }
       } catch (_) {
         // best-effort cleanup

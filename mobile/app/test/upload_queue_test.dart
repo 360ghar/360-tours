@@ -180,6 +180,8 @@ void main() {
         rooms.add(r);
       },
       connectivityChanges: const Stream.empty(),
+      // Deterministic polls: the backoff cadence is covered by its own test.
+      pollInterval: (_) => Duration.zero,
     );
   });
 
@@ -371,7 +373,7 @@ void main() {
         expect(
           done.status,
           AssetStatus.ready,
-          reason: 'the naive pano is live — never AssetStatus.failed',
+          reason: 'the naive pano is live â€” never AssetStatus.failed',
         );
         expect(done.cloudStitchFailed, isTrue);
       },
@@ -411,6 +413,52 @@ void main() {
       );
       expect(assets['a1']!.cloudStitchFailed, isFalse);
       expect(assets['a1']!.status, AssetStatus.ready);
+    });
+
+    test('polls respect the backoff interval (nextPollAt): early re-pumps '
+        'do not burn the poll budget', () async {
+      final pano = await writePano();
+      assets['a1'] = makeNaiveAsset('a1', panoPath: pano);
+      await writeFrameFiles(assets['a1']!.framePaths);
+      api.stitchPollResults.add({
+        'id': 'stitch-job-1',
+        'status': 'processing',
+        'progress': 50,
+      });
+      api.stitchPollResults.add({
+        'id': 'stitch-job-1',
+        'status': 'processing',
+        'progress': 90,
+      });
+
+      final slowQueue = UploadQueue(
+        store,
+        api,
+        getAsset: (id) async => assets[id],
+        saveAsset: (a) async => assets[a.id] = a,
+        connectivityChanges: const Stream.empty(),
+        pollInterval: (_) => const Duration(milliseconds: 200),
+      );
+
+      await slowQueue.enqueue(assets['a1']!);
+      await slowQueue.pump();
+      expect(
+        api.calls.where((c) => c == 'pollStitch').length,
+        1,
+        reason: 'one poll, then the job waits on its Timer',
+      );
+
+      // An early external pump must NOT re-poll before nextPollAt.
+      await slowQueue.pump();
+      expect(
+        api.calls.where((c) => c == 'pollStitch').length,
+        1,
+        reason: 'early re-pump is deferred until the interval elapses',
+      );
+
+      // After the interval, the scheduled Timer fires and the job advances.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(api.calls.where((c) => c == 'pollStitch').length, 2);
     });
   });
 }
