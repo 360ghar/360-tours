@@ -106,7 +106,7 @@ thresholds calibrated on synthetic fixtures.
 ## Context and Orientation
 
 Mobile (`mobile/app`):
-- `lib/features/capture/domain/stitcher_service.dart` — current naive + OpenCV ladder
+- `lib/features/capture/domain/stitching/stitcher_service.dart` — blend + OpenCV ladder
 - `lib/features/capture/domain/capture_targets.dart` — CameraProfile (single FOV source of truth)
 - `lib/features/capture/domain/frame_quality.dart` — variance-of-Laplacian (reused for sharpness score)
 - `lib/core/upload/upload_queue.dart` — `requestStitch` step (silent failure to fix)

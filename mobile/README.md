@@ -9,11 +9,14 @@ Flutter client for capturing guided 360° room panoramas, stitching on device, p
 
 ```sh
 cd app
+cp .env.example .env   # publishable Supabase keys; .env is gitignored
 flutter run
 ```
 
 Supabase credentials live in the bundled `app/.env` (publishable/anon keys
-only); `--dart-define` overrides them — see `app/README.md`.
+only); `--dart-define` overrides them — see `app/README.md`. A fresh clone
+must create `.env` from the `.env.example` template first; without it the
+app falls back to `_MissingEnvApp` (no credentials) or `--dart-define`.
 
 ```sh
 cd app && flutter analyze && flutter test

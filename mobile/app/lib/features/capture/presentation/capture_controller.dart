@@ -277,7 +277,10 @@ class CaptureController extends Notifier<CaptureState> {
   Future<void> discardSession() async {
     final session = _session;
     if (session != null) {
-      CaptureSessionStore.deleteFrameFiles(session);
+      CaptureSessionStore.deleteFrameFiles(
+        session,
+        capturesRoot: '${_docsDir!.path}/captures',
+      );
       await _sessionStore?.clear();
     }
     _session = null;

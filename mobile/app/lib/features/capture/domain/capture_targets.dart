@@ -75,7 +75,10 @@ class CameraProfile {
     final h = (json['hFovDeg'] as num?)?.toDouble() ?? kHFovDeg;
     final v = (json['vFovDeg'] as num?)?.toDouble() ?? kVFovDeg;
     final o = (json['overlap'] as num?)?.toDouble() ?? 0.30;
-    if (h <= 0 || v <= 0 || v > 180 || h > 360) {
+    // Rectilinear projection is undefined at/above 180° FOV — persisted
+    // boundary values would degenerate the tangent tables (empty or
+    // collapsed panoramas). Fall back instead of trusting them.
+    if (h <= 0 || h >= 180 || v <= 0 || v >= 180) {
       return CameraProfile.fallbackWide;
     }
     return CameraProfile(

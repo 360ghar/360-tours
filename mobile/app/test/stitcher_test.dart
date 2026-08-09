@@ -294,6 +294,22 @@ void main() {
       );
     });
 
+    test('a fully-covered blend is never replaced, even by a sharper '
+        'candidate — a dark room is not a coverage hole', () {
+      expect(
+        openCvWins(
+          ocvCoverage: 99,
+          blendCoverage: 99.8, // true angular coverage of a dark room
+          ocvSharpness: 90,
+          blendSharpness: 70,
+        ),
+        isFalse,
+        reason:
+            'OpenCV output is partial by construction; a complete blend '
+            'must keep the full sphere',
+      );
+    });
+
     test(
       'a losing candidate never overwrites the blend output (files)',
       () async {

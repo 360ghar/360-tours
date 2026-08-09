@@ -127,6 +127,24 @@ class BlendAccumulator {
       sumW = Float32List(width * height);
 }
 
+/// Conservative latitude band a frame can paint, INCLUDING roll: the corners
+/// of a rolled frame extend further in latitude than the unrolled vertical
+/// FOV (horizontal FOV rotates into latitude). Used to cull rows safely.
+/// The bound is exact for the frame corners:
+///   d_z(u,v) = fwd.z + tanH·u·right'_z + tanV·v·up'_z, u,v in [-1,1]
+(double latMinDeg, double latMaxDeg) frameLatitudeBand(
+  CameraBasis basis,
+  CameraProfile profile,
+) {
+  final tanH = tan(profile.hFovDeg * pi / 360);
+  final tanV = tan(profile.vFovDeg * pi / 360);
+  final corner = tanH * basis.right.z.abs() + tanV * basis.up.z.abs();
+  final maxDz = (basis.forward.z + corner).clamp(-1.0, 1.0);
+  final minDz = (basis.forward.z - corner).clamp(-1.0, 1.0);
+  // +1° margin for float noise.
+  return (asin(minDz) * 180 / pi - 1, asin(maxDz) * 180 / pi + 1);
+}
+
 /// Accumulate one frame's contribution onto [acc]. Precomputed per-column
 /// longitude and per-row latitude trig tables make the inner loop cheap.
 void accumulateFrame(
@@ -144,11 +162,11 @@ void accumulateFrame(
       up = frame.basis.up,
       fwd = frame.basis.forward;
 
-  // Only rows inside the frame's vertical footprint (+2° margin) can
-  // contribute — halves the sweep for the pole rings.
-  final pitchDeg = asin(fwd.z.clamp(-1.0, 1.0)) * 180 / pi;
-  final latMin = (pitchDeg - (profile.vFovDeg + 4) / 2) * pi / 180;
-  final latMax = (pitchDeg + (profile.vFovDeg + 4) / 2) * pi / 180;
+  // Only rows inside the frame's (roll-aware) latitude band can contribute —
+  // halves the sweep for the pole rings without losing rolled edges.
+  final (latMinDeg, latMaxDeg) = frameLatitudeBand(frame.basis, profile);
+  final latMin = latMinDeg * pi / 180;
+  final latMax = latMaxDeg * pi / 180;
   final yStart = max(0, ((pi / 2 - latMax) / pi * h).floor());
   final yEnd = min(h, ((pi / 2 - latMin) / pi * h).ceil());
   if (yStart >= yEnd) return;

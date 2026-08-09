@@ -25,7 +25,7 @@ abstract final class AppTheme {
       surfaceContainer: AppColors.surface,
       surfaceContainerHigh: AppColors.surfaceRaised,
       primary: AppColors.accent,
-      onPrimary: Color(0xFFFFFDF9),
+      onPrimary: AppColors.ink,
       secondary: AppColors.accentDim,
       onSurface: AppColors.ink,
       onSurfaceVariant: AppColors.inkDim,

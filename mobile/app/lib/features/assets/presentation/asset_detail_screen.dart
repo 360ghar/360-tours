@@ -116,13 +116,14 @@ class _Body extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     FilledButton.tonal(
                       onPressed: () => _retryRefinement(context, ref),
                       child: const Text('Retry refinement'),
                     ),
-                    const SizedBox(width: 8),
                     TextButton(
                       onPressed: () => _useCurrentPanorama(context, ref),
                       child: const Text('Use current panorama'),

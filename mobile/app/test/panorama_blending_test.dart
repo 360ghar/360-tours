@@ -131,12 +131,21 @@ void main() {
       }
       final image = finalizeBlend(acc);
 
-      // North (x = 0.5w) is dominated by the white frame, east (x = 0.75w)
-      // by the gray frame; the transition region blends.
+      // North (x = 0.5w) is dominated by the white frame; the gray frame at
+      // yaw 30 covers yaw 0..60, so x = (30+180)/360*w ≈ 0.583w must show a
+      // blend of both (whiter than gray, darker than white).
       final north = image.getPixel(w ~/ 2, h ~/ 2);
-      final east = image.getPixel((3 * w) ~/ 4, h ~/ 2);
+      final grayZone = image.getPixel(((30 + 180) / 360 * w).round(), h ~/ 2);
       expect(north.r, greaterThan(200));
-      expect(east.r, lessThan(160));
+      expect(grayZone.r, greaterThan(60));
+      expect(
+        grayZone.r,
+        lessThan(220),
+        reason: 'yaw 30 sits in the gray frame center, blended with white',
+      );
+      // x = 0.75w (yaw 90) is covered by neither frame: honestly black.
+      final uncovered = image.getPixel((3 * w) ~/ 4, h ~/ 2);
+      expect(uncovered.r, lessThan(30));
     });
   });
 }

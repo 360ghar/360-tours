@@ -100,6 +100,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
 
     final resume = await showDialog<bool>(
       context: context,
+      // Only the explicit Discard button may delete the prior capture —
+      // tapping the barrier or pressing Back must never discard by accident.
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Resume previous capture?'),
         content: Text(
@@ -118,8 +121,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
         ],
       ),
     );
-    if (!mounted) return;
-    if (resume == true) {
+    if (!mounted || resume == null) return;
+    if (resume) {
       await controller.resumeSession();
     } else {
       await controller.discardSession();
@@ -252,6 +255,17 @@ class _CaptureBody extends StatelessWidget {
                   child: const Text(
                     'Stay in the same spot. Rotate only',
                     style: TextStyle(color: Colors.white, fontSize: 14),
+                  ),
+                ),
+              // Capture finished but angles were skipped: the instruction
+              // says so — give the aiming UI an explicit jump-to-missing.
+              if (state.captureComplete && !state.done)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: FilledButton.tonalIcon(
+                    onPressed: controller.retakeMissingAngles,
+                    icon: const Icon(Icons.replay, size: 18),
+                    label: const Text('Retake missing angles'),
                   ),
                 ),
               Padding(

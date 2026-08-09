@@ -142,7 +142,7 @@ void main() {
 
     test('turned 45° right → yaw 45', () {
       final q = _qMul(
-        _qFromAxis(const [0, 0, -1], 45), // -90° about +Z: turn right
+        _qFromAxis(const [0, 0, -1], 45), // -45° about +Z: turn right
         _qFromAxis(const [1, 0, 0], 90),
       );
       final o = OrientationEngine.orientationFromQuaternion(q, deviceUp: up)!;

@@ -25,7 +25,7 @@ flutter analyze
 flutter test
 ```
 
-Harness checks (from repo root):
+Harness checks (from `mobile/` — the scripts live under `mobile/scripts/`):
 
 ```sh
 ./scripts/check_docs_harness.sh

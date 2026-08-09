@@ -35,10 +35,17 @@ void main() {
 
   CapturedFrameRecord frame(int targetIndex) => CapturedFrameRecord(
     targetIndex: targetIndex,
-    path: '${dir.path}/frame_$targetIndex.jpg',
+    // Production layout: frames live under <root>/captures/<session>.
+    path: '${dir.path}/captures/s1/frame_$targetIndex.jpg',
     orientation: FrameOrientation(yaw: 36 * targetIndex.toDouble(), pitch: 0),
     lowQuality: targetIndex == 1,
   );
+
+  Future<void> writeFrameFile(String path) async {
+    final f = File(path);
+    await f.parent.create(recursive: true);
+    await f.writeAsString('jpeg');
+  }
 
   test('persist -> load round-trip keeps every field', () async {
     final original = session(
@@ -63,8 +70,8 @@ void main() {
 
   test('resume scenario: capture 1 + 2, persist, fresh instance reloads, '
       'frames remain, correct target resumes', () async {
-    await File(frame(0).path).writeAsString('jpeg0');
-    await File(frame(1).path).writeAsString('jpeg1');
+    await writeFrameFile(frame(0).path);
+    await writeFrameFile(frame(1).path);
     await sessionStore.save(
       session(targetIndex: 2, frames: [frame(0), frame(1)]),
     );
@@ -79,18 +86,46 @@ void main() {
   });
 
   test('discard cleans up: record removed and frame files deleted', () async {
-    await File(frame(0).path).writeAsString('jpeg');
-    await File(frame(1).path).writeAsString('jpeg');
+    await writeFrameFile(frame(0).path);
+    await writeFrameFile(frame(1).path);
     await sessionStore.save(
       session(targetIndex: 2, frames: [frame(0), frame(1)]),
     );
 
-    CaptureSessionStore.deleteFrameFiles((await sessionStore.load())!);
+    CaptureSessionStore.deleteFrameFiles(
+      (await sessionStore.load())!,
+      capturesRoot: '${dir.path}/captures',
+    );
     await sessionStore.clear();
 
     expect(await sessionStore.load(), isNull);
     expect(File(frame(0).path).existsSync(), isFalse);
     expect(File(frame(1).path).existsSync(), isFalse);
+  });
+
+  test('discard never deletes files outside the captures root (Phase 3 '
+      'hardening)', () async {
+    // Corrupted session metadata pointing at an arbitrary app file must be
+    // ignored by cleanup.
+    final outside = File('${dir.path}/important.txt');
+    await outside.writeAsString('keep me');
+    final evil = CapturedFrameRecord(
+      targetIndex: 0,
+      path: outside.path,
+      orientation: const FrameOrientation(yaw: 0, pitch: 0),
+    );
+    await sessionStore.save(session(targetIndex: 1, frames: [evil]));
+
+    CaptureSessionStore.deleteFrameFiles(
+      (await sessionStore.load())!,
+      capturesRoot: '${dir.path}/captures',
+    );
+
+    expect(
+      outside.existsSync(),
+      isTrue,
+      reason: 'arbitrary paths outside captures/ are never deleted',
+    );
   });
 
   test('zero-progress session is not offered for resume', () async {

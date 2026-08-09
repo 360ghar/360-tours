@@ -129,6 +129,10 @@ class UploadQueue {
       // skip them on later inner iterations instead of hammering them while
       // another job keeps progressing. Cleared each outer pass to allow re-pumps.
       final errored = <String>{};
+      // Jobs waiting on their own scheduled Timer (poll backoff): advancing
+      // them again while another job progresses would defeat the delay and
+      // could exhaust the poll budget prematurely.
+      final waiting = <String>{};
       var progressed = true;
       while (progressed) {
         progressed = false;
@@ -145,14 +149,14 @@ class UploadQueue {
         if (pending.isEmpty) break;
         for (final job in pending) {
           final id = job['id'] as String;
-          if (errored.contains(id)) continue;
+          if (errored.contains(id) || waiting.contains(id)) continue;
           switch (await _advance(job)) {
             case _Step.progressed:
               progressed = true;
             case _Step.errored:
               errored.add(id);
             case _Step.idle:
-              break;
+              waiting.add(id);
           }
         }
       }
@@ -260,6 +264,13 @@ class UploadQueue {
               await _api.uploadToCloudinary(presigned: presigned, file: file);
               await _api.confirmUpload(presigned['upload_id'] as String);
               (job['frameUrls'] as List).add(presigned['public_url']);
+              // Persist the ORIGINAL frame index with each uploaded URL so
+              // cloud metadata stays aligned even when a frame is missing
+              // (missing files are skipped above and shift nothing).
+              final sourceIndices =
+                  (job['frameSourceIndices'] as List?) ?? <int>[];
+              sourceIndices.add(i);
+              job['frameSourceIndices'] = sourceIndices;
             }
             job['frameIndex'] = i + 1;
           }
@@ -276,8 +287,13 @@ class UploadQueue {
           } else {
             // Only legacy captures (no recorded orientations) skip the
             // metadata payload — the backend falls back to its legacy path.
-            final metadata = asset.frameOrientations.isNotEmpty
-                ? _frameMetadata(asset, urls)
+            final sourceIndices = (job['frameSourceIndices'] as List?)
+                ?.cast<int>();
+            final metadata =
+                asset.frameOrientations.isNotEmpty &&
+                    sourceIndices != null &&
+                    sourceIndices.length == urls.length
+                ? _frameMetadata(asset, urls, sourceIndices)
                 : null;
             final response = await _api.requestCloudStitch(
               sceneId: job['sceneId'] as String,
@@ -367,25 +383,41 @@ class UploadQueue {
   );
 
   /// Per-frame metadata for the cloud stitcher, parallel to [urls].
+  /// [sourceIndices] maps each uploaded URL back to its ORIGINAL frame index
+  /// so yaw/pitch/roll/target/low_quality stay aligned even when a raw frame
+  /// file was missing (and therefore never uploaded).
   List<Map<String, dynamic>> _frameMetadata(
     ScanAsset asset,
     List<String> urls,
+    List<int> sourceIndices,
   ) {
     final orientations = asset.frameOrientations;
     final indices = asset.frameTargetIndices;
     final lowQuality = asset.frameLowQuality;
     return [
-      for (var i = 0; i < urls.length; i++)
+      for (var k = 0; k < urls.length; k++)
         {
-          'url': urls[i],
-          'yaw': i < orientations.length ? orientations[i].yaw : 0.0,
-          'pitch': i < orientations.length ? orientations[i].pitch : 0.0,
-          'roll': i < orientations.length ? orientations[i].roll : 0.0,
-          'target_index': indices != null && i < indices.length
-              ? indices[i]
-              : null,
-          'low_quality':
-              lowQuality != null && i < lowQuality.length && lowQuality[i],
+          'url': urls[k],
+          'yaw': (() {
+            final i = k < sourceIndices.length ? sourceIndices[k] : k;
+            return i < orientations.length ? orientations[i].yaw : 0.0;
+          })(),
+          'pitch': (() {
+            final i = k < sourceIndices.length ? sourceIndices[k] : k;
+            return i < orientations.length ? orientations[i].pitch : 0.0;
+          })(),
+          'roll': (() {
+            final i = k < sourceIndices.length ? sourceIndices[k] : k;
+            return i < orientations.length ? orientations[i].roll : 0.0;
+          })(),
+          'target_index': (() {
+            final i = k < sourceIndices.length ? sourceIndices[k] : k;
+            return indices != null && i < indices.length ? indices[i] : null;
+          })(),
+          'low_quality': (() {
+            final i = k < sourceIndices.length ? sourceIndices[k] : k;
+            return lowQuality != null && i < lowQuality.length && lowQuality[i];
+          })(),
         },
     ];
   }

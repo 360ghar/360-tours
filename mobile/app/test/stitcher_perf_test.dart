@@ -41,44 +41,48 @@ void main() {
       return;
     }
     final dir = await Directory.systemTemp.createTemp('stitch_perf');
-    final out = Directory('${dir.path}/out')..createSync(recursive: true);
-    // ignore: avoid_print
-    print('PERF: generating 24 x 1080x1920 frames...');
-    final frames = <String>[];
-    for (var i = 0; i < 24; i++) {
-      final path = '${dir.path}/f$i.jpg';
-      await File(
-        path,
-      ).writeAsBytes(img.encodeJpg(_portraitFrame(i), quality: 88));
-      frames.add(path);
-    }
-    // ignore: avoid_print
-    print('PERF: generated ${frames.length} frames');
-
-    for (final count in [16, 20, 24]) {
-      final orientations = [
-        for (var i = 0; i < count; i++)
-          FrameOrientation(yaw: i * 360.0 / count, pitch: 0),
-      ];
-      final watch = Stopwatch()..start();
-      final result = await const StitcherService().stitch(
-        framePaths: frames.sublist(0, count),
-        orientations: orientations,
-        outDir: out.path,
-        preferDevice: false,
-      );
-      watch.stop();
-      final panoSize = File(result.panoramaPath).lengthSync();
+    try {
+      final out = Directory('${dir.path}/out')..createSync(recursive: true);
       // ignore: avoid_print
-      print(
-        'PERF: $count frames -> ${watch.elapsedMilliseconds}ms '
-        '(${(watch.elapsedMilliseconds / count).toStringAsFixed(0)}ms/frame), '
-        'coverage=${result.metrics.coveragePercent.toStringAsFixed(1)}% '
-        'overall=${result.metrics.overallScore} '
-        'pano=${result.metrics.width}x${result.metrics.height} '
-        '${(panoSize / 1024).round()}KB',
-      );
+      print('PERF: generating 24 x 1080x1920 frames...');
+      final frames = <String>[];
+      for (var i = 0; i < 24; i++) {
+        final path = '${dir.path}/f$i.jpg';
+        await File(
+          path,
+        ).writeAsBytes(img.encodeJpg(_portraitFrame(i), quality: 88));
+        frames.add(path);
+      }
+      // ignore: avoid_print
+      print('PERF: generated ${frames.length} frames');
+
+      for (final count in [16, 20, 24]) {
+        final orientations = [
+          for (var i = 0; i < count; i++)
+            FrameOrientation(yaw: i * 360.0 / count, pitch: 0),
+        ];
+        final watch = Stopwatch()..start();
+        final result = await const StitcherService().stitch(
+          framePaths: frames.sublist(0, count),
+          orientations: orientations,
+          outDir: out.path,
+          preferDevice: false,
+        );
+        watch.stop();
+        final panoSize = File(result.panoramaPath).lengthSync();
+        // ignore: avoid_print
+        print(
+          'PERF: $count frames -> ${watch.elapsedMilliseconds}ms '
+          '(${(watch.elapsedMilliseconds / count).toStringAsFixed(0)}ms/frame), '
+          'coverage=${result.metrics.coveragePercent.toStringAsFixed(1)}% '
+          'overall=${result.metrics.overallScore} '
+          'pano=${result.metrics.width}x${result.metrics.height} '
+          '${(panoSize / 1024).round()}KB',
+        );
+      }
+    } finally {
+      // Always clean up: 24 full-res frames leak into system temp otherwise.
+      dir.deleteSync(recursive: true);
     }
-    dir.deleteSync(recursive: true);
   });
 }

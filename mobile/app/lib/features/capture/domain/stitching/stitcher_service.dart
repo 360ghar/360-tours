@@ -15,15 +15,19 @@ import 'panorama_quality.dart';
 
 /// Pure candidate-selection decision (Step 10 production invariant): the
 /// OpenCV candidate may only REPLACE the metadata blend when it measurably
-/// beats it on BOTH coverage and sharpness. A worse candidate can never
-/// replace a better panorama; at best it is discarded.
+/// beats it on BOTH coverage and sharpness — and only when the blend itself
+/// is incomplete. A fully-covered blend (true angular coverage >= 99.5%)
+/// is never replaced by a letterboxed partial panorama, and a worse
+/// candidate can never replace a better panorama.
 bool openCvWins({
   required double ocvCoverage,
   required double blendCoverage,
   required double ocvSharpness,
   required double blendSharpness,
   double coverageTolerance = 0.5,
+  double fullCoverageThreshold = 99.5,
 }) =>
+    blendCoverage < fullCoverageThreshold &&
     ocvCoverage >= blendCoverage - coverageTolerance &&
     ocvSharpness > blendSharpness;
 
@@ -122,13 +126,21 @@ class StitcherService {
         ).timeout(_openCvTimeout, onTimeout: () => null);
         if (ocv != null &&
             openCvWins(
+              // The blend side uses its TRUE angular coverage (a dark but
+              // fully-covered room must not look like a coverage hole); the
+              // OpenCV side can only be measured as non-black luma.
               ocvCoverage: ocv.nonBlackCoverage,
-              blendCoverage: blend.nonBlackCoverage,
+              blendCoverage: blend.metrics.coveragePercent,
               ocvSharpness: ocv.sharpnessScore,
               blendSharpness: blend.sharpnessScore,
             )) {
           // OpenCV measurably wins: ship it.
           await File(ocvPath).copy(panoPath);
+          try {
+            File(ocvPath).deleteSync();
+          } catch (_) {
+            // best-effort cleanup
+          }
           await _writeThumbnail(panoPath, thumbPath);
           return StitchResult(
             panoramaPath: panoPath,
@@ -250,8 +262,9 @@ class StitcherService {
     if (w == 2 * h) return pano.clone();
     late int outW, outH;
     if (w > 2 * h) {
-      outW = w;
-      outH = (w / 2).round();
+      // Round the width up to an even value so 2:1 holds exactly.
+      outW = w + (w % 2);
+      outH = outW ~/ 2;
     } else {
       outH = h;
       outW = h * 2;
@@ -304,9 +317,15 @@ _blendStitchIsolate({
   for (var i = 0; i < framePaths.length && i < orientations.length; i++) {
     final decoded = img.decodeJpg(File(framePaths[i]).readAsBytesSync());
     if (decoded == null) continue;
+    // Cap the LONG side at workingLongSide (portrait captures are 1080x1920
+    // — resizing by width alone would leave a 1138px tall copy and triple
+    // the retained memory).
+    final scale =
+        StitcherService.workingLongSide / max(decoded.width, decoded.height);
     final small = img.copyResize(
       decoded,
-      width: StitcherService.workingLongSide,
+      width: (decoded.width * scale).round().clamp(1, 4096),
+      height: (decoded.height * scale).round().clamp(1, 4096),
     );
     final rgb = frameRgbBytes(small);
     final tiny = img.copyResize(decoded, width: 64);

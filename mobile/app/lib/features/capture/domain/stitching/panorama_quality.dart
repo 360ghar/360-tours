@@ -77,9 +77,9 @@ BlendStats collectBlendStats({
         up = frame.basis.up,
         fwd = frame.basis.forward;
 
-    final pitchDeg = asin(fwd.z.clamp(-1.0, 1.0)) * 180 / pi;
-    final latMin = (pitchDeg - (profile.vFovDeg + 4) / 2) * pi / 180;
-    final latMax = (pitchDeg + (profile.vFovDeg + 4) / 2) * pi / 180;
+    final (latMinDeg, latMaxDeg) = frameLatitudeBand(frame.basis, profile);
+    final latMin = latMinDeg * pi / 180;
+    final latMax = latMaxDeg * pi / 180;
     final yStart = max(0, ((pi / 2 - latMax) / pi * height).floor());
     final yEnd = min(height, ((pi / 2 - latMin) / pi * height).ceil());
 

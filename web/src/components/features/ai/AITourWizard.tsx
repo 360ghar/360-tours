@@ -69,6 +69,9 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   const [result, setResult] = useState<{ tour?: Tour; scenes?: Scene[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const imagesRef = useRef<UploadedImage[]>([]);
+  // Bumped every time the dialog closes: async completions from a previous
+  // session must not restore stale state into a fresh session.
+  const generationTokenRef = useRef(0);
 
   useEffect(() => {
     imagesRef.current = images;
@@ -205,6 +208,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   };
 
   const handleJobComplete = async (_job: unknown, jobResult: unknown) => {
+    const token = generationTokenRef.current;
     setJobId(null);
     let parsedResult: unknown = jobResult;
 
@@ -255,9 +259,14 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
         throw new Error('Generated tour data was not returned');
       }
 
+      // The dialog may have been closed (and reopened) while we fetched —
+      // never let a stale completion drive a fresh session.
+      if (generationTokenRef.current !== token) return;
+
       setResult({ tour, scenes });
       setStep('review');
     } catch {
+      if (generationTokenRef.current !== token) return;
       const message = 'Tour generation finished, but the generated tour data could not be loaded.';
       setError(message);
       setStep('options');
@@ -299,6 +308,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     setResult(null);
     setError(null);
     setUploadProgress(0);
+    generationTokenRef.current += 1; // invalidate in-flight completions
     onOpenChange(false);
   };
 

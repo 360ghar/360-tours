@@ -101,7 +101,7 @@ void main() {
         final q = gate.evaluate(f);
         // ignore: avoid_print
         print(
-          'quality ${f.split('\\').last}: sharp=${q.sharpness.toStringAsFixed(1)} bright=${q.brightness.toStringAsFixed(3)}',
+          'quality ${f.split(Platform.pathSeparator).last}: sharp=${q.sharpness.toStringAsFixed(1)} bright=${q.brightness.toStringAsFixed(3)}',
         );
       }
     });
@@ -490,8 +490,7 @@ void main() {
         reason: 'target 0 (position 0) is a duplicate angle',
       );
     });
-    test('same target is never a duplicate; different angles never match',
-        () {
+    test('same target is never a duplicate; different angles never match', () {
       // Position 2 is target 5's OWN frame at the same direction: same
       // target is excluded from the check.
       expect(

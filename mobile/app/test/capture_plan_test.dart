@@ -9,7 +9,8 @@ import 'package:tours360/features/capture/domain/capture_targets.dart';
 List<String> validatePlan(CapturePlan plan) {
   final errors = <String>[];
   final p = plan.profile;
-  final ov = p.overlap;
+  // Mirror the planner: overlap is clamped to [0, 0.8] before use.
+  final ov = p.overlap.clamp(0.0, 0.8);
   final v = p.vFovDeg;
 
   if (plan.rings.isEmpty || plan.targets.isEmpty) {

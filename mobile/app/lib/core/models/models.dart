@@ -182,10 +182,10 @@ class ScanAsset {
     frameOrientations: frameOrientations ?? this.frameOrientations,
     captureHFovDeg: identical(captureHFovDeg, _sentinel)
         ? this.captureHFovDeg
-        : captureHFovDeg as double?,
+        : (captureHFovDeg as num?)?.toDouble(),
     captureVFovDeg: identical(captureVFovDeg, _sentinel)
         ? this.captureVFovDeg
-        : captureVFovDeg as double?,
+        : (captureVFovDeg as num?)?.toDouble(),
     frameTargetIndices: identical(frameTargetIndices, _sentinel)
         ? this.frameTargetIndices
         : frameTargetIndices as List<int>?,

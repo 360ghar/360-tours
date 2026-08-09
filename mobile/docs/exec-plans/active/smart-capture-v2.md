@@ -82,7 +82,8 @@ capture that a normal user can trust:
 
 Shipped (2026-08-08): adaptive planner (24 targets on the fallback 55×69@30%
 profile; zero azimuthal holes, zero pole gap), quality gate (variance of
-Laplacian ≥ 60 on 256px luma; brightness 0.05–0.97; hysteresis accept after 3
+Laplacian ≥ 30 on 256px luma — recalibrated from 60 in Phase 3;
+brightness 0.05–0.97; hysteresis accept after 3
 rejects), single-target retake, persisted capture session with Resume/Discard
 (+ corrupted-session message), accelerometer-magnitude movement warning,
 1080p capture with 720p fallback, completion coverage gate with "Retake
@@ -100,9 +101,8 @@ real-room testing still required; roll is recorded but unused by stitching
 Key files:
 
 - `app/lib/features/capture/domain/capture_targets.dart` — CaptureTarget,
-  projection, alignment, FOV constants (source of truth)
-- `app/lib/features/capture/domain/capture_plan.dart` (NEW) — CameraProfile,
-  CaptureTargetPlanner, CapturePlan, coverage helpers
+  projection, alignment, FOV constants, CameraProfile, CaptureTargetPlanner,
+  CapturePlan, coverage helpers (all in one file — no capture_plan.dart)
 - `app/lib/features/capture/domain/frame_quality.dart` (NEW) — quality gate
 - `app/lib/features/capture/domain/capture_session.dart` (NEW) — session model
 - `app/lib/features/capture/data/capture_session_store.dart` (NEW) — persistence

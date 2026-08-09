@@ -119,6 +119,10 @@ class OrientationEngine {
 
   /// Snapshot the current yaw as the zero reference (call at capture start).
   void zero() {
+    // Without a quaternion yet (delayed sensor), the identity fallback would
+    // record yaw 0 as the heading and leave targets absolute — leave the
+    // reference unset until a real reading arrives.
+    if (_fused && _quaternion == null) return;
     final o = _fused
         ? orientationFromQuaternion(
             _quaternion ?? Quaternion(0, 0, 0, 1),
