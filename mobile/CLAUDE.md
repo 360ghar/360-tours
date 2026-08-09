@@ -61,7 +61,7 @@ Small, local changes do not need an ExecPlan.
 
 ## Hard constraints
 
-1. **No secrets in git.** The bundled `app/.env` may carry publishable Supabase keys only; everything else is `--dart-define` only (`app/lib/core/env.dart`).
+1. **No secrets in git.** The bundled `app/.env` may carry publishable Supabase keys only; everything else is `--dart-define` only (`app/lib/core/env.dart`). Note: `--dart-define` values are embedded in the app binary — never put privileged credentials there; keep those on the backend.
 2. **Insta360 `INSCameraSDK` is NDA-gated** — never vendor the framework; keep linkage points in the plugin.
 3. **Feature-first layering** — see `ARCHITECTURE.md`. No cross-feature imports of `*_screen.dart`. Domain must not import Dio, Supabase, or `presentation/` (no widgets).
 4. **Parse at boundaries** — typed models in `core/models`; do not thread raw `Map` deep into UI.

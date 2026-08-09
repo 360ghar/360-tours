@@ -47,10 +47,13 @@ class FrameQualityResult {
 }
 
 /// Variance of Laplacian of an image's luma, computed on a downscaled copy
-/// (default 256px wide). The single source of the sharpness metric — reused
-/// by the capture quality gate and the panorama sharpness score.
+/// (default 256px wide; already-small inputs are used as-is). The single
+/// source of the sharpness metric — reused by the capture quality gate and
+/// the panorama sharpness score.
 double laplacianVariance(img.Image image, {int sampleSize = 256}) {
-  final small = img.copyResize(image, width: sampleSize);
+  final small = image.width <= sampleSize
+      ? image
+      : img.copyResize(image, width: sampleSize);
   final luma = small.convert(numChannels: 1);
 
   var sum = 0.0;
@@ -117,6 +120,9 @@ class FrameQualityGate {
       // Un-decodable = broken frame; zero sharpness reads as tooBlurry.
       return const FrameQuality(sharpness: 0, brightness: 0.5);
     }
+    // Single downscale for the whole gate: the small copy feeds both the
+    // brightness mean and the sharpness variance (never resize the full
+    // 1080p frame twice on the shutter path).
     final small = img.copyResize(decoded, width: _sampleSize);
     final luma = small.convert(numChannels: 1);
 
@@ -130,7 +136,7 @@ class FrameQualityGate {
     final n = (w - 2) * (h - 2);
     final brightness = lumaSum / n / 255; // normalize to 0..1
     return FrameQuality(
-      sharpness: laplacianVariance(decoded, sampleSize: _sampleSize),
+      sharpness: laplacianVariance(small, sampleSize: small.width),
       brightness: brightness,
     );
   }

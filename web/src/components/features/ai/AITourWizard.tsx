@@ -251,7 +251,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
         }
       }
 
-      if (!tour || !Array.isArray(scenes)) {
+      if (!tour || !Array.isArray(scenes) || scenes.length === 0) {
         throw new Error('Generated tour data was not returned');
       }
 

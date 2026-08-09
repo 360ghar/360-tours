@@ -152,6 +152,25 @@ class CaptureDecision {
   const CaptureDecision(this.state, this.consecutiveRejects);
 }
 
+/// True when [orientation] duplicates an already-captured frame belonging to
+/// a DIFFERENT target. [capturedTargets] and [frameOrientations] are
+/// PARALLEL BY CAPTURE ORDER (a target index is NOT a list position — with
+/// skipped/retaken targets they diverge), so lookups must be positional.
+bool isDuplicateCapture({
+  required List<int> capturedTargets,
+  required List<FrameOrientation> frameOrientations,
+  required int targetIndex,
+  required FrameOrientation orientation,
+}) {
+  for (var i = 0; i < capturedTargets.length; i++) {
+    if (capturedTargets[i] != targetIndex &&
+        sameDirection(frameOrientations[i], orientation)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Pure state-machine step: given the shutter result, decide accept/reject/
 /// retake and advance. Kept free of I/O so every transition is deterministic
 /// and testable without a camera.
@@ -198,12 +217,27 @@ CaptureDecision decideCapture({
   }
 
   final lowQuality = qualityResult.quality.lowQuality;
-  final capturedTargets = [...state.capturedTargets, targetIndex];
-  final framePaths = [...state.framePaths, path];
-  final frameOrientations = [...state.frameOrientations, orientation];
+
+  // Record the frame for the current target. A retake of an already-recorded
+  // target (e.g. the last target recaptured after "angles missing") REPLACES
+  // its entry — capturedTargets/framePaths/frameOrientations stay parallel
+  // by capture order with at most one frame per target, so completion
+  // counts stay honest and the session never grows duplicate angles.
+  final capturedTargets = [...state.capturedTargets];
+  final framePaths = [...state.framePaths];
+  final frameOrientations = [...state.frameOrientations];
+  final pos = capturedTargets.indexOf(targetIndex);
+  if (pos >= 0) {
+    framePaths[pos] = path;
+    frameOrientations[pos] = orientation;
+  } else {
+    capturedTargets.add(targetIndex);
+    framePaths.add(path);
+    frameOrientations.add(orientation);
+  }
   final lowQualityTargets = lowQuality
       ? {...state.lowQualityTargets, targetIndex}
-      : state.lowQualityTargets;
+      : state.lowQualityTargets.difference({targetIndex});
 
   final nextIndex = targetIndex + 1;
   if (nextIndex >= plan.total) {

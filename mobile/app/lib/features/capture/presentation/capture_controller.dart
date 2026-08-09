@@ -230,6 +230,13 @@ class CaptureController extends Notifier<CaptureState> {
     if (session.frames.isNotEmpty) {
       final dir = File(session.frames.first.path).parent;
       _sessionDir = Directory(dir.path);
+    } else if (_sessionDir == null) {
+      // Skip-only session (no frames yet): nothing to reuse — create a fresh
+      // session directory so captureFrame never sees a null dir.
+      _sessionDir = Directory(
+        '${_docsDir!.path}/captures/${DateTime.now().millisecondsSinceEpoch}',
+      );
+      await _sessionDir!.create(recursive: true);
     }
     await _persistSession();
   }
@@ -287,6 +294,7 @@ class CaptureController extends Notifier<CaptureState> {
     await _persistSession();
     _consecutiveRejects = 0;
     state = state.copyWith(
+      phase: CapturePhase.aiming,
       targetIndex: 0,
       framePaths: const [],
       frameOrientations: const [],
@@ -393,9 +401,14 @@ class CaptureController extends Notifier<CaptureState> {
       // Duplicate-angle check: a frame aimed at a direction already captured
       // for a DIFFERENT target (adjacent targets are >= spacing - 2*tolerance
       // apart, so this only trips on a mis-tapped retake or sensor drift).
-      final duplicate = state.capturedTargets
-          .where((t) => t != targetIndex)
-          .any((t) => sameDirection(state.frameOrientations[t], orientation));
+      // Positional lookup: capturedTargets holds TARGET indices, which are
+      // not list positions once targets were skipped or retaken.
+      final duplicate = isDuplicateCapture(
+        capturedTargets: state.capturedTargets,
+        frameOrientations: state.frameOrientations,
+        targetIndex: targetIndex,
+        orientation: orientation,
+      );
 
       final decision = decideCapture(
         state: state,

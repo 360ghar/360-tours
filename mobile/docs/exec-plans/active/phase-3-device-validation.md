@@ -14,6 +14,27 @@ production-resolution blend benchmark, policy audit, legacy-compat regression)
 is recorded in this document. Fill in the tables below when hardware is
 available, then update `docs/QUALITY_SCORE.md` and this doc's status line.
 
+## Progress
+
+- [x] (2026-08-09) Device discovery: none connected (Windows desktop + web only)
+- [x] (2026-08-09) Android debug APK built and verified (natives for all ABIs)
+- [x] (2026-08-09) Host-side threshold-calibration sweep (photo-like fixtures)
+- [x] (2026-08-09) Production-resolution blend benchmark (16/20/24 frames)
+- [x] (2026-08-09) Stitch quality-policy audit + legacy-compat regression
+- [ ] Device matrix A-M (blocked: no hardware)
+- [ ] On-device threshold re-calibration (section 4)
+
+## Decision Log
+
+- Decision: sharpness threshold `kMinSharpness` 60 → 30 (evidence-based, host
+  sweep: sharp room 331, mild hand-shake blur 51.6, moderate blur 9.4).
+  Date: 2026-08-09. On-device re-check pending.
+- Decision: no blend optimization — benchmark shows ~200ms/frame in the VM
+  (AOT devices expected faster); optimize only if on-device timing exceeds
+  the 15-20s concern threshold.
+- Decision: no FOV change — the 55x69 fallback remains until real captures
+  provide evidence.
+
 ---
 
 ## 1. Devices

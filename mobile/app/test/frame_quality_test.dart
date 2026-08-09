@@ -435,5 +435,85 @@ void main() {
       );
       expect(s.state.lowQualityTargets, {1});
     });
+
+    test('recapturing an already-recorded target REPLACES its entry '
+        '(retake invariant)', () {
+      // The last target was accepted, "angles missing" kept aiming at it,
+      // and the user recaptured it: the second accept must replace, not
+      // append — lists stay parallel with one frame per target.
+      final s = decideCapture(
+        state: const CaptureState(
+          phase: CapturePhase.aiming,
+          targetIndex: 5,
+          capturedTargets: [0, 1, 5],
+          framePaths: ['f0.jpg', 'f1.jpg', 'f5-old.jpg'],
+          frameOrientations: [oriented, oriented, oriented],
+        ),
+        path: 'f5-new.jpg',
+        orientation: oriented,
+        qualityResult: ok(),
+        duplicate: false,
+        consecutiveRejects: 0,
+      );
+      expect(s.state.capturedTargets, [
+        0,
+        1,
+        5,
+      ], reason: 'no duplicate target entry');
+      expect(s.state.framePaths, [
+        'f0.jpg',
+        'f1.jpg',
+        'f5-new.jpg',
+      ], reason: 'the retake replaced the old frame');
+      expect(s.state.framePaths.length, 3);
+    });
+  });
+
+  group('isDuplicateCapture (positional lookup)', () {
+    const oriented = FrameOrientation(yaw: 0, pitch: 0, roll: 0);
+    const off = FrameOrientation(yaw: 40, pitch: 0);
+
+    test('compares against OTHER targets by capture position, not by '
+        'target index', () {
+      // With a skipped target the lists diverge: captured targets [0, 2, 5]
+      // have orientations at positions 0..2. The old bug indexed
+      // frameOrientations[5] -> RangeError on every later capture.
+      final duplicate = isDuplicateCapture(
+        capturedTargets: const [0, 2, 5],
+        frameOrientations: const [oriented, off, oriented],
+        targetIndex: 6,
+        orientation: oriented,
+      );
+      expect(
+        duplicate,
+        isTrue,
+        reason: 'target 0 (position 0) is a duplicate angle',
+      );
+    });
+    test('same target is never a duplicate; different angles never match',
+        () {
+      // Position 2 is target 5's OWN frame at the same direction: same
+      // target is excluded from the check.
+      expect(
+        isDuplicateCapture(
+          capturedTargets: const [0, 2, 5],
+          frameOrientations: const [off, off, oriented],
+          targetIndex: 5,
+          orientation: oriented,
+        ),
+        isFalse,
+        reason: 'its own (already captured) target is not a duplicate',
+      );
+      expect(
+        isDuplicateCapture(
+          capturedTargets: const [0, 2, 5],
+          frameOrientations: const [oriented, oriented, oriented],
+          targetIndex: 7,
+          orientation: off,
+        ),
+        isFalse,
+        reason: 'a fresh direction is not a duplicate',
+      );
+    });
   });
 }

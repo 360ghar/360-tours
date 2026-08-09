@@ -100,7 +100,10 @@ class OrientationEngine {
         );
         _fused = true;
       } catch (_) {
-        _rotationFailed();
+        // Synchronous failure (no rotation-vector sensor on this platform):
+        // _fused is still false here, so _rotationFailed() would no-op —
+        // subscribe the magnetometer fallback directly.
+        _magSub ??= _subscribeDefaultMag();
       }
     }
 
