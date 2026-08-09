@@ -22,10 +22,6 @@ export const ROUTES = {
   VIEW_3D: '/view3d/:id',
   EMBED_TOUR: '/embed/:id',
   LOCAL_TOUR: '/local/:propertyId',
-  LAB: '/lab',
-  LAB_EDITOR: '/lab/editor',
-  /** Constrained kitchen GS tour (standpoint nav) */
-  LAB_KITCHEN_TOUR: '/lab/kitchen-tour',
 } as const;
 
 // Navigation Items

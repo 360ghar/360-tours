@@ -7,18 +7,24 @@ import 'package:tours360/features/capture/domain/capture_targets.dart';
 void main() {
   const screen = Size(400, 800);
 
-  test('16 targets: 8 on the horizon, 4 up, 4 down', () {
-    expect(kCaptureTargets.length, 16);
-    expect(kCaptureTargets.where((t) => t.pitch == 0).length, 8);
-    expect(kCaptureTargets.where((t) => t.pitch == 45).length, 4);
-    expect(kCaptureTargets.where((t) => t.pitch == -45).length, 4);
-    // Horizon ring is evenly spaced at 45°.
-    final yaws = kCaptureTargets
-        .where((t) => t.pitch == 0)
-        .map((t) => (t.yaw + 360) % 360)
-        .toList()
-      ..sort();
-    expect(yaws, [0, 45, 90, 135, 180, 225, 270, 315]);
+  test('fallback profile plan: 24 targets, 10 horizon + 7 + 7 pole rings', () {
+    final plan = kFallbackCapturePlan;
+    expect(plan.total, 24);
+    expect(plan.rings.length, 3);
+    expect(plan.rings[0].pitchDeg, 0);
+    expect(plan.rings[0].yawCount, 10);
+    expect(plan.rings[1].pitchDeg, 55.5);
+    expect(plan.rings[1].yawCount, 7);
+    expect(plan.rings[2].pitchDeg, -55.5);
+    expect(plan.rings[2].yawCount, 7);
+    // Horizon ring is evenly spaced at 36°.
+    final yaws =
+        plan.targets
+            .where((t) => t.pitch == 0)
+            .map((t) => (t.yaw + 360) % 360)
+            .toList()
+          ..sort();
+    expect(yaws, [for (var i = 0; i < 10; i++) i * 36.0]);
   });
 
   test('aligned target projects to screen center', () {
@@ -75,19 +81,25 @@ void main() {
 
   test('alignment threshold honours the 5° tolerance', () {
     expect(
-      isAligned(const CaptureTarget(0, 0),
-          const FrameOrientation(yaw: 4, pitch: -4)),
+      isAligned(
+        const CaptureTarget(0, 0),
+        const FrameOrientation(yaw: 4, pitch: -4),
+      ),
       isTrue,
     );
     expect(
-      isAligned(const CaptureTarget(0, 0),
-          const FrameOrientation(yaw: 6, pitch: 0)),
+      isAligned(
+        const CaptureTarget(0, 0),
+        const FrameOrientation(yaw: 6, pitch: 0),
+      ),
       isFalse,
     );
     // Wrap-around alignment.
     expect(
-      isAligned(const CaptureTarget(180, 0),
-          const FrameOrientation(yaw: -178, pitch: 0)),
+      isAligned(
+        const CaptureTarget(180, 0),
+        const FrameOrientation(yaw: -178, pitch: 0),
+      ),
       isTrue,
     );
   });

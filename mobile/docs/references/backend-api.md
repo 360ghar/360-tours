@@ -49,4 +49,4 @@ Thin typed wrappers live in `app/lib/core/api/backend_api.dart`. Base URL: `Env.
 
 - Many methods still return `Map<String, dynamic>`. Prefer mapping into `core/models` at the repository boundary when touching call sites.
 - Share links use `Env.apiRoot`, not `apiBase`.
-- Backend implementation lives in a separate 360ghar-backend repo; do not invent endpoints not listed here without product confirmation.
+- Backend implementation lives in the sibling `backend` repo; do not invent endpoints not listed here without product confirmation.

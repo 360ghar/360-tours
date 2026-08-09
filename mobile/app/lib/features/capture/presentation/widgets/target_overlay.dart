@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../domain/capture_targets.dart';
+import '../../domain/frame_quality.dart';
 import '../../domain/orientation_engine.dart';
 import '../capture_controller.dart';
 
@@ -23,28 +24,35 @@ class TargetOverlayPainter extends CustomPainter {
       return;
     }
 
+    final plan = state.effectivePlan;
     final projection = projectTarget(
       target: state.currentTarget,
       orientation: state.orientation,
       screenSize: size,
+      profile: plan.profile,
     );
     final center = Offset(size.width / 2, size.height / 2);
     final aligned = projection.angularError < kAlignToleranceDeg;
+    final rejected = state.rejectionReason != null;
 
-    // Center reticle: a thin ring that tightens when aligned.
+    // Center reticle: a thin ring that tightens when aligned; tints red on a
+    // rejection so the "try again" state is visible without a dialog.
     final reticlePaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
-      ..color = Colors.white.withValues(alpha: aligned ? 0.9 : 0.35);
+      ..color = rejected
+          ? Colors.redAccent.withValues(alpha: 0.9)
+          : Colors.white.withValues(alpha: aligned ? 0.9 : 0.35);
     canvas.drawCircle(center, aligned ? 26 : 34, reticlePaint);
 
     if (projection.onScreen) {
       final t = projection.position;
       // Target dot, sized by proximity so it feels magnetic.
-      final proximity =
-          (1 - (projection.angularError / 40)).clamp(0.0, 1.0);
+      final proximity = (1 - (projection.angularError / 40)).clamp(0.0, 1.0);
       final dotPaint = Paint()
-        ..color = aligned
+        ..color = rejected
+            ? Colors.redAccent
+            : aligned
             ? AppColors.accent
             : Colors.white.withValues(alpha: 0.5 + 0.4 * proximity);
       canvas.drawCircle(t, 10 + 6 * proximity, dotPaint);
@@ -91,13 +99,16 @@ class TargetOverlayPainter extends CustomPainter {
 
     // Ghost dots for remaining targets in the current ring (context cue).
     final ghostPaint = Paint()..color = Colors.white.withValues(alpha: 0.18);
-    for (var i = state.targetIndex + 1;
-        i < min(state.targetIndex + 3, kCaptureTargets.length);
-        i++) {
+    for (
+      var i = state.targetIndex + 1;
+      i < min(state.targetIndex + 3, plan.targets.length);
+      i++
+    ) {
       final p = projectTarget(
-        target: kCaptureTargets[i],
+        target: plan.targets[i],
         orientation: state.orientation,
         screenSize: size,
+        profile: plan.profile,
       );
       if (p.onScreen) canvas.drawCircle(p.position, 7, ghostPaint);
     }
@@ -107,15 +118,39 @@ class TargetOverlayPainter extends CustomPainter {
   bool shouldRepaint(TargetOverlayPainter oldDelegate) => true;
 }
 
-/// Human instruction for the current aim state.
+/// Human instruction for the current aim state. Reasons are phrased for a
+/// user ("Image unclear") — never raw thresholds.
 String instructionFor(CaptureState state) {
+  if (state.captureComplete && !state.done) {
+    final missing = state.effectivePlan.missingTargets(
+      state.capturedTargets.toSet(),
+    );
+    final n = missing.length;
+    final angles = n == 1 ? '1 angle' : '$n angles';
+    return 'Capture incomplete. $angles need to be retaken.';
+  }
   if (state.needMoreShots) {
     final remaining = 4 - state.framePaths.length;
-    if (remaining <= 0) return 'Turn toward an uncovered area';
-    final shots = remaining == 1 ? '1 more shot' : '$remaining more shots';
-    return 'Need $shots — turn toward an uncovered area';
+    if (remaining <= 0) return 'A few more angles are needed';
+    return 'A few more angles are needed — keep rotating';
   }
   if (state.phase == CapturePhase.shooting) return 'Hold still…';
+  final reason = state.rejectionReason;
+  if (reason != null) {
+    return switch (reason) {
+      FrameRejectionReason.tooBlurry =>
+        'Image unclear — hold the phone still and try again',
+      FrameRejectionReason.tooDark =>
+        'Too dark — turn on a light, then try again',
+      FrameRejectionReason.tooBright =>
+        'Too bright — point away from the window or light, then try again',
+      FrameRejectionReason.unstable => 'Hold steady and try again',
+      FrameRejectionReason.wrongOrientation => 'Follow the guide and try again',
+      FrameRejectionReason.duplicate =>
+        'That angle is already captured — follow the guide',
+    };
+  }
+  if (state.movementWarning) return 'Keep the phone in the same spot';
   final d = projectionDelta(state);
   final dYaw = d.$1, dPitch = d.$2;
   if (dYaw.abs() < kAlignToleranceDeg && dPitch.abs() < kAlignToleranceDeg) {

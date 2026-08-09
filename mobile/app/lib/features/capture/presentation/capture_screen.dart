@@ -45,7 +45,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
     final controller = ref.read(captureControllerProvider.notifier);
     final capture = ref.read(captureControllerProvider);
-    final active = capture.phase == CapturePhase.aiming ||
+    final active =
+        capture.phase == CapturePhase.aiming ||
         capture.phase == CapturePhase.shooting ||
         capture.phase == CapturePhase.initializing;
     if (lifecycleState == AppLifecycleState.inactive) {
@@ -65,6 +66,64 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
       return;
     }
     await ref.read(captureControllerProvider.notifier).initialize();
+    if (!mounted) return;
+    _presentResumeFlow();
+  }
+
+  /// Offer to resume an interrupted session (or explain why it cannot be
+  /// resumed). Runs once per screen entry — lifecycle re-initializations
+  /// skip it because the offer/error are cleared after presentation.
+  Future<void> _presentResumeFlow() async {
+    final controller = ref.read(captureControllerProvider.notifier);
+    var offer = ref.read(captureControllerProvider).resumeOffer;
+    if (offer == null) {
+      final error = ref.read(captureControllerProvider).resumeError;
+      if (error != null) {
+        controller.dismissResumeError();
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Resume capture'),
+            content: Text(error),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Start a new capture'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    final resume = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Resume previous capture?'),
+        content: Text(
+          'You captured ${offer.frameCount} of ${offer.total} shots. '
+          'Continue where you left off?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Resume'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (resume == true) {
+      await controller.resumeSession();
+    } else {
+      await controller.discardSession();
+    }
   }
 
   @override
@@ -93,25 +152,27 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
       backgroundColor: Colors.black,
       body: switch (state.phase) {
         CapturePhase.initializing => const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text(
-                  'Preparing camera and sensors…',
-                  style: TextStyle(color: Colors.white70, fontSize: 15),
-                ),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Preparing camera and sensors…',
+                style: TextStyle(color: Colors.white70, fontSize: 15),
+              ),
+            ],
           ),
+        ),
         CapturePhase.error => _MessageScaffold(
-            message: state.errorMessage ?? 'Camera error',
-            actionLabel: 'Retry',
-            onAction: () => controller.initialize(),
-          ),
-        CapturePhase.review =>
-          _ReviewSheet(state: state, intoAssetId: widget.assetId),
+          message: state.errorMessage ?? 'Camera error',
+          actionLabel: 'Retry',
+          onAction: () => controller.initialize(),
+        ),
+        CapturePhase.review => _ReviewSheet(
+          state: state,
+          intoAssetId: widget.assetId,
+        ),
         _ => _CaptureBody(state: state, controller: controller),
       },
     );
@@ -130,14 +191,16 @@ class _CaptureBody extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (camera != null && camera.value.isInitialized)
-          CameraPreview(camera),
+        if (camera != null && camera.value.isInitialized) CameraPreview(camera),
         CustomPaint(painter: TargetOverlayPainter(state)),
         SafeArea(
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     IconButton(
@@ -160,7 +223,7 @@ class _CaptureBody extends StatelessWidget {
                     SizedBox(
                       width: 64,
                       child: Text(
-                        '${state.targetIndex + 1} / ${state.total}',
+                        '${state.capturedTargets.length} / ${state.total}',
                         textAlign: TextAlign.right,
                         style: const TextStyle(
                           color: Colors.white,
@@ -178,8 +241,10 @@ class _CaptureBody extends StatelessWidget {
               if (state.framePaths.length < 3)
                 Container(
                   margin: const EdgeInsets.only(bottom: 16),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.55),
                     borderRadius: BorderRadius.circular(10),
@@ -277,6 +342,11 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
   @override
   Widget build(BuildContext context) {
     final frames = widget.state.framePaths;
+    final state = widget.state;
+    final missing = state.effectivePlan.missingTargets(
+      state.capturedTargets.toSet(),
+    );
+    final lowQuality = state.lowQualityTargets;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -287,9 +357,9 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
             Text(
               '${frames.length} shots captured',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.5,
-                  ),
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
             ),
             const SizedBox(height: 6),
             const Text(
@@ -297,6 +367,35 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
               'share link is ready as soon as the upload finishes.',
               style: TextStyle(color: AppColors.inkDim),
             ),
+            if (missing.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _WarningChip(
+                icon: Icons.error_outline,
+                text:
+                    '${missing.length} angle${missing.length == 1 ? '' : 's'} '
+                    'were skipped — the tour may have gaps.',
+              ),
+            ],
+            if (lowQuality.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _WarningChip(
+                icon: Icons.warning_amber_rounded,
+                text:
+                    '${lowQuality.length} shot${lowQuality.length == 1 ? '' : 's'} '
+                    'were low quality.',
+              ),
+            ],
+            if (missing.isEmpty && lowQuality.isEmpty) ...[
+              const SizedBox(height: 12),
+              _WarningChip(
+                icon: Icons.check_circle_outline,
+                iconColor: AppColors.success,
+                positive: true,
+                text:
+                    'All ${frames.length} angles captured — '
+                    'looks good to stitch.',
+              ),
+            ],
             const SizedBox(height: 20),
             SizedBox(
               height: 84,
@@ -315,7 +414,21 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            if (missing.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () {
+                  ref
+                      .read(captureControllerProvider.notifier)
+                      .retakeMissingAngles();
+                },
+                icon: const Icon(Icons.replay),
+                label: Text(
+                  'Retake ${missing.length == 1 ? 'missing angle' : 'missing angles'}',
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
             TextField(
               controller: _name,
               autofocus: true,
@@ -333,6 +446,51 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _WarningChip extends StatelessWidget {
+  const _WarningChip({
+    required this.icon,
+    required this.text,
+    this.iconColor,
+    this.positive = false,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color? iconColor;
+
+  /// Positive (informational) chips use a neutral container instead of the
+  /// error container.
+  final bool positive;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: positive
+            ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)
+            : theme.colorScheme.errorContainer.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: iconColor ?? theme.colorScheme.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.inkDim,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -50,16 +50,18 @@ void main() {
     await sub.cancel();
   });
 
-  test('concurrent upserts to the same collection do not lose updates',
-      () async {
-    await Future.wait([
-      store.upsert('things', {'id': 'a', 'v': 1}),
-      store.upsert('things', {'id': 'b', 'v': 2}),
-    ]);
-    final all = await store.readAll('things');
-    expect(all.length, 2);
-    expect(all.map((e) => e['id']).toSet(), {'a', 'b'});
-  });
+  test(
+    'concurrent upserts to the same collection do not lose updates',
+    () async {
+      await Future.wait([
+        store.upsert('things', {'id': 'a', 'v': 1}),
+        store.upsert('things', {'id': 'b', 'v': 2}),
+      ]);
+      final all = await store.readAll('things');
+      expect(all.length, 2);
+      expect(all.map((e) => e['id']).toSet(), {'a', 'b'});
+    },
+  );
 
   group('LocalAssetRepository', () {
     late LocalAssetRepository repo;
@@ -67,11 +69,11 @@ void main() {
     setUp(() => repo = LocalAssetRepository(store));
 
     ScanAsset asset(String id, {String owner = 'u1'}) => ScanAsset(
-          id: id,
-          ownerId: owner,
-          name: 'Room $id',
-          createdAt: DateTime(2026, 7, 23),
-        );
+      id: id,
+      ownerId: owner,
+      name: 'Room $id',
+      createdAt: DateTime(2026, 7, 23),
+    );
 
     test('save / get / delete asset with rooms', () async {
       await repo.saveAsset(asset('a1'));
@@ -85,12 +87,14 @@ void main() {
 
     test('watchAssets filters by owner and sorts newest first', () async {
       await repo.saveAsset(asset('a1'));
-      await repo.saveAsset(ScanAsset(
-        id: 'a2',
-        ownerId: 'u1',
-        name: 'Newer',
-        createdAt: DateTime(2026, 7, 24),
-      ));
+      await repo.saveAsset(
+        ScanAsset(
+          id: 'a2',
+          ownerId: 'u1',
+          name: 'Newer',
+          createdAt: DateTime(2026, 7, 24),
+        ),
+      );
       await repo.saveAsset(asset('other', owner: 'u2'));
       final list = await repo.watchAssets('u1').first;
       expect(list.map((a) => a.id), ['a2', 'a1']);
@@ -114,17 +118,54 @@ void main() {
       expect(back.frameOrientations.single.pitch, -5);
 
       const room = Room(
-          id: 'r', assetId: 'x', name: 'R', remoteSceneId: 'scene-9');
+        id: 'r',
+        assetId: 'x',
+        name: 'R',
+        remoteSceneId: 'scene-9',
+      );
       expect(Room.fromJson(room.toJson()).remoteSceneId, 'scene-9');
 
       const h = Hotspot(
-          id: 'h',
-          targetRoomId: 'r2',
-          label: 'Door',
-          yawDeg: 5,
-          pitchDeg: -2,
-          remoteId: 'hs-1');
+        id: 'h',
+        targetRoomId: 'r2',
+        label: 'Door',
+        yawDeg: 5,
+        pitchDeg: -2,
+        remoteId: 'hs-1',
+      );
       expect(Hotspot.fromJson(h.toJson()).remoteId, 'hs-1');
+    });
+
+    test('legacy ScanAsset JSON (pre-Phase-2) loads with safe defaults '
+        '(Phase 3 regression)', () {
+      // A record written before the stitch-metadata fields existed must
+      // round-trip through the current model without touching them.
+      final legacy = {
+        'id': 'old-1',
+        'ownerId': 'u1',
+        'name': 'Old room',
+        'type': 'pano360',
+        'status': 'ready',
+        'createdAt': '2026-01-01T00:00:00.000',
+        'panoramaPath': '/captures/old/panorama.jpg',
+        'framePaths': ['/captures/old/f0.jpg', '/captures/old/f1.jpg'],
+        'frameOrientations': [
+          {'yaw': 0.0, 'pitch': 0.0, 'roll': 0.0},
+          {'yaw': 45.0, 'pitch': 0.0, 'roll': 0.0},
+        ],
+      };
+      final asset = ScanAsset.fromJson(legacy);
+      expect(asset.captureHFovDeg, isNull);
+      expect(asset.captureVFovDeg, isNull);
+      expect(asset.frameTargetIndices, isNull);
+      expect(asset.frameLowQuality, isNull);
+      expect(asset.cloudStitchFailed, isFalse);
+      expect(asset.status, AssetStatus.ready);
+      expect(asset.framePaths.length, 2);
+      // Reserializing keeps the legacy shape (new fields null/absent).
+      final round = ScanAsset.fromJson(asset.toJson());
+      expect(round.framePaths, asset.framePaths);
+      expect(round.cloudStitchFailed, isFalse);
     });
   });
 }

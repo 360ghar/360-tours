@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Tours360</string>
+	<string>360 Tours</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>tours360</string>
+	<string>360 Tours</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -27,13 +27,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Tours360 uses the camera to scan rooms with LiDAR and capture 360° photos for virtual tours.</string>
+	<string>360 Tours uses the camera to scan rooms with LiDAR and capture 360° photos for virtual tours.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Tours360 uses motion data to track your device while scanning rooms.</string>
+	<string>360 Tours uses motion data to track your device while scanning rooms.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Tours360 saves captured panoramas and room scans to your photo library.</string>
+	<string>360 Tours saves captured panoramas and room scans to your photo library.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Tours360 connects to your Insta360 camera over its local WiFi hotspot.</string>
+	<string>360 Tours connects to your Insta360 camera over its local WiFi hotspot.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

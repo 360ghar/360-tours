@@ -2,10 +2,9 @@
 
 ## Secrets
 
-- **Never commit** Supabase keys, API tokens, or Cloudinary secrets.
-- Runtime config is build-time `--dart-define` via `app/lib/core/env.dart`:
-  - `SUPABASE_URL`, `SUPABASE_ANON_KEY` (required)
-  - optional `API_BASE`, `API_ROOT`, `VIEWER_BASE`
+- **Never commit** real secrets: API tokens, Cloudinary secrets, service keys.
+- Supabase keys: the bundled `.env` asset (`app/.env`, loaded by `app/lib/core/env.dart`) may hold **publishable/anon** keys only — they are public by design (web commits the same key in `web/.env`). Anything sensitive stays `--dart-define`-only, never in `.env` or git.
+- Resolution order in `env.dart`: `--dart-define` (highest) → bundled `.env` → default.
 - Anon key is a public client key; still treat it as non-writable to git history and screenshots in issues when possible.
 
 ## AuthZ model

@@ -14,6 +14,10 @@ class _FakeApi extends BackendApi {
   final calls = <String>[];
   bool failPublishOnce = false;
 
+  /// Queue of job-status responses served by [getAiJob] (one per poll).
+  final stitchPollResults = <Map<String, dynamic>>[];
+  final stitchRequests = <Map<String, dynamic>>[];
+
   @override
   Future<Map<String, dynamic>> createTour({
     required String title,
@@ -78,6 +82,32 @@ class _FakeApi extends BackendApi {
     calls.add('publish:$tourId');
     return {'id': tourId, 'status': 'published', 'short_code': 'abc12'};
   }
+
+  @override
+  Future<Map<String, dynamic>> requestCloudStitch({
+    required String sceneId,
+    required List<String> frameUrls,
+    List<Map<String, dynamic>>? frames,
+    Map<String, dynamic>? cameraProfile,
+  }) async {
+    calls.add('requestStitch');
+    stitchRequests.add({
+      'sceneId': sceneId,
+      'frameUrls': frameUrls,
+      'frames': frames,
+      'cameraProfile': cameraProfile,
+    });
+    return {'id': 'stitch-job-1', 'status': 'pending'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> getAiJob(String jobId) async {
+    calls.add('pollStitch');
+    if (stitchPollResults.isEmpty) {
+      return {'id': jobId, 'status': 'processing', 'progress': 50};
+    }
+    return stitchPollResults.removeAt(0);
+  }
 }
 
 void main() {
@@ -98,6 +128,39 @@ void main() {
         panoramaPath: panoPath,
         remoteTourId: tourId,
       );
+
+  ScanAsset makeNaiveAsset(
+    String id, {
+    String? panoPath,
+    List<String>? framePaths,
+  }) => ScanAsset(
+    id: id,
+    ownerId: 'u1',
+    name: 'Room $id',
+    status: AssetStatus.pendingCloudStitch,
+    createdAt: DateTime(2026, 7, 23),
+    panoramaPath: panoPath,
+    framePaths:
+        framePaths ??
+        [for (var i = 0; i < 3; i++) '${dir.path}/$id/frame_$i.jpg'],
+    frameOrientations: [
+      FrameOrientation(yaw: 0, pitch: 0, roll: 0.5),
+      FrameOrientation(yaw: 120, pitch: 0, roll: -1),
+      FrameOrientation(yaw: 240, pitch: 0, roll: 0),
+    ],
+    frameTargetIndices: const [0, 8, 16],
+    frameLowQuality: const [false, true, false],
+    captureHFovDeg: 55,
+    captureVFovDeg: 69,
+  );
+
+  Future<void> writeFrameFiles(List<String> paths) async {
+    for (final path in paths) {
+      final f = File(path);
+      await f.parent.create(recursive: true);
+      await f.writeAsBytes([0xFF, 0xD8, 0xFF, 0xD9]);
+    }
+  }
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('queue_test');
@@ -149,23 +212,31 @@ void main() {
     expect(done.panoramaUrl, 'https://res.cloudinary.example/pano.jpg');
   });
 
-  test('recovers from a failed step without duplicating earlier ones',
-      () async {
-    final pano = await writePano();
-    assets['a1'] = makeAsset('a1', panoPath: pano);
-    api.failPublishOnce = true;
+  test(
+    'recovers from a failed step without duplicating earlier ones',
+    () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano);
+      api.failPublishOnce = true;
 
-    await queue.enqueue(assets['a1']!);
-    await queue.pump(); // publish fails once, retry succeeds
-    await queue.pump();
+      await queue.enqueue(assets['a1']!);
+      await queue.pump(); // publish fails once, retry succeeds
+      await queue.pump();
 
-    expect(api.calls.where((c) => c == 'createTour').length, 1,
-        reason: 'must not create a duplicate tour on retry');
-    expect(api.calls.where((c) => c == 'presign').length, 1,
-        reason: 'earlier steps must not repeat');
-    expect(api.calls.where((c) => c.startsWith('publish')).length, 1);
-    expect(assets['a1']!.status, AssetStatus.ready);
-  });
+      expect(
+        api.calls.where((c) => c == 'createTour').length,
+        1,
+        reason: 'must not create a duplicate tour on retry',
+      );
+      expect(
+        api.calls.where((c) => c == 'presign').length,
+        1,
+        reason: 'earlier steps must not repeat',
+      );
+      expect(api.calls.where((c) => c.startsWith('publish')).length, 1);
+      expect(assets['a1']!.status, AssetStatus.ready);
+    },
+  );
 
   test('deleted asset drops its queued job', () async {
     final pano = await writePano();
@@ -179,8 +250,9 @@ void main() {
   test('room job waits for the tour, then uploads a scene', () async {
     final pano = await writePano();
     assets['a1'] = makeAsset('a1', panoPath: pano);
-    rooms.add(Room(
-        id: 'r1', assetId: 'a1', name: 'Kitchen', panoramaPath: pano));
+    rooms.add(
+      Room(id: 'r1', assetId: 'a1', name: 'Kitchen', panoramaPath: pano),
+    );
 
     // Queue the room BEFORE the asset has a tour: it must not starve the
     // asset job that unblocks it.
@@ -191,5 +263,154 @@ void main() {
     expect(api.calls, contains('createScene:tour-1:1'));
     expect(rooms.single.remoteSceneId, 'scene-1');
     expect(rooms.single.panoramaUrl, isNotNull);
+  });
+
+  group('cloud stitch refinement', () {
+    test(
+      'sends frame metadata, polls to completion, marks the asset ready',
+      () async {
+        final pano = await writePano();
+        assets['a1'] = makeNaiveAsset('a1', panoPath: pano);
+        await writeFrameFiles(assets['a1']!.framePaths);
+        api.stitchPollResults.addAll([
+          {'id': 'stitch-job-1', 'status': 'processing', 'progress': 40},
+          {
+            'id': 'stitch-job-1',
+            'status': 'completed',
+            'progress': 100,
+            'result': {
+              'image_url': 'https://res.cloudinary.example/refined.jpg',
+              'width': 2048,
+              'height': 1024,
+              'quality': {'coverage_percent': 99.1},
+            },
+          },
+        ]);
+
+        await queue.enqueue(assets['a1']!);
+        await queue.pump();
+
+        expect(api.calls, contains('requestStitch'));
+        expect(api.calls.where((c) => c == 'pollStitch').length, 2);
+        final request = api.stitchRequests.single;
+        expect(
+          request['frames'],
+          isNotNull,
+          reason: 'captures with orientation metadata send frame metadata',
+        );
+        expect(request['frames'].length, 3);
+        expect(request['frames'][0]['yaw'], 0.0);
+        expect(request['frames'][0]['roll'], 0.5);
+        expect(request['frames'][1]['low_quality'], isTrue);
+        expect(request['frames'][1]['target_index'], 8);
+        expect(request['cameraProfile'], {
+          'horizontal_fov': 55.0,
+          'vertical_fov': 69.0,
+        });
+
+        final done = assets['a1']!;
+        expect(done.status, AssetStatus.ready);
+        expect(done.cloudStitchFailed, isFalse);
+        expect(done.panoramaUrl, 'https://res.cloudinary.example/refined.jpg');
+        // The job finished: re-enqueuing does not re-request.
+        await queue.enqueue(assets['a1']!);
+        await queue.pump();
+        expect(api.calls.where((c) => c == 'requestStitch').length, 1);
+      },
+    );
+
+    test('legacy assets (no orientations) send frame_urls only', () async {
+      final pano = await writePano();
+      final asset = ScanAsset(
+        id: 'legacy',
+        ownerId: 'u1',
+        name: 'Old room',
+        status: AssetStatus.pendingCloudStitch,
+        createdAt: DateTime(2026, 7, 23),
+        panoramaPath: pano,
+        framePaths: ['${dir.path}/legacy/f0.jpg', '${dir.path}/legacy/f1.jpg'],
+      );
+      await writeFrameFiles(asset.framePaths);
+      assets['legacy'] = asset;
+      api.stitchPollResults.add({
+        'id': 'stitch-job-1',
+        'status': 'completed',
+        'result': {'image_url': 'https://res.cloudinary.example/refined.jpg'},
+      });
+
+      await queue.enqueue(asset);
+      await queue.pump();
+
+      final request = api.stitchRequests.single;
+      expect(
+        request['frames'],
+        isNull,
+        reason: 'legacy captures keep the old contract',
+      );
+      expect(request['cameraProfile'], isNull);
+      expect(assets['legacy']!.status, AssetStatus.ready);
+    });
+
+    test(
+      'job failure keeps the tour published and flags refinement failed',
+      () async {
+        final pano = await writePano();
+        assets['a1'] = makeNaiveAsset('a1', panoPath: pano);
+        await writeFrameFiles(assets['a1']!.framePaths);
+        api.stitchPollResults.add({
+          'id': 'stitch-job-1',
+          'status': 'failed',
+          'error_message':
+              'Stitched panorama failed quality validation: coverage',
+        });
+
+        await queue.enqueue(assets['a1']!);
+        await queue.pump();
+
+        final done = assets['a1']!;
+        expect(
+          done.status,
+          AssetStatus.ready,
+          reason: 'the naive pano is live — never AssetStatus.failed',
+        );
+        expect(done.cloudStitchFailed, isTrue);
+      },
+    );
+
+    test('retry after refinement failure re-requests the stitch without '
+        're-uploading frames', () async {
+      final pano = await writePano();
+      assets['a1'] = makeNaiveAsset('a1', panoPath: pano);
+      await writeFrameFiles(assets['a1']!.framePaths);
+      api.stitchPollResults.add({
+        'id': 'stitch-job-1',
+        'status': 'failed',
+        'error_message': 'boom',
+      });
+
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+      expect(assets['a1']!.cloudStitchFailed, isTrue);
+
+      // Retry refinement: resume at a fresh stitch request.
+      api.stitchPollResults.add({
+        'id': 'stitch-job-1',
+        'status': 'completed',
+        'result': {'image_url': 'https://res.cloudinary.example/refined.jpg'},
+      });
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+
+      expect(api.calls.where((c) => c == 'requestStitch').length, 2);
+      expect(
+        api.calls.where((c) => c == 'presign').length,
+        4,
+        reason:
+            '1 panorama presign + 3 frame uploads, not re-uploaded '
+            'on refinement retry',
+      );
+      expect(assets['a1']!.cloudStitchFailed, isFalse);
+      expect(assets['a1']!.status, AssetStatus.ready);
+    });
   });
 }

@@ -25,8 +25,10 @@ class AssetDetailScreen extends ConsumerWidget {
         data: (asset) {
           if (asset == null) {
             return const Center(
-              child: Text('Scan not found',
-                  style: TextStyle(color: AppColors.inkDim)),
+              child: Text(
+                'Scan not found',
+                style: TextStyle(color: AppColors.inkDim),
+              ),
             );
           }
           return _Body(asset: asset);
@@ -52,13 +54,17 @@ class _Body extends ConsumerWidget {
           borderRadius: BorderRadius.circular(14),
           child: AspectRatio(
             aspectRatio: 2,
-            child: asset.panoramaPath != null &&
+            child:
+                asset.panoramaPath != null &&
                     File(asset.panoramaPath!).existsSync()
                 ? Image.file(File(asset.panoramaPath!), fit: BoxFit.cover)
                 : const ColoredBox(
                     color: AppColors.surface,
-                    child: Icon(Icons.panorama_horizontal,
-                        color: AppColors.inkFaint, size: 42),
+                    child: Icon(
+                      Icons.panorama_horizontal,
+                      color: AppColors.inkFaint,
+                      size: 42,
+                    ),
                   ),
           ),
         ),
@@ -66,9 +72,9 @@ class _Body extends ConsumerWidget {
         Text(
           asset.name,
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
-              ),
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -80,6 +86,51 @@ class _Body extends ConsumerWidget {
           OutlinedButton(
             onPressed: () => _retryUpload(context, ref),
             child: const Text('Retry upload'),
+          ),
+        ],
+        if (asset.cloudStitchFailed && ready) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceRaised,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: AppColors.danger,
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Panorama refinement failed.\nYour tour is still saved.',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    FilledButton.tonal(
+                      onPressed: () => _retryRefinement(context, ref),
+                      child: const Text('Retry refinement'),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () => _useCurrentPanorama(context, ref),
+                      child: const Text('Use current panorama'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
         const SizedBox(height: 24),
@@ -106,7 +157,9 @@ class _Body extends ConsumerWidget {
         ),
         _Action(
           icon: Icons.view_in_ar_outlined,
-          label: asset.model3dUrl != null ? 'View 3D world' : 'Generate 3D world',
+          label: asset.model3dUrl != null
+              ? 'View 3D world'
+              : 'Generate 3D world',
           enabled: ready && hasRemote,
           disabledHint: 'Available after upload completes',
           onTap: () => context.push('/asset/${asset.id}/generate3d'),
@@ -129,22 +182,24 @@ class _Body extends ConsumerWidget {
         TextButton.icon(
           onPressed: () => _confirmDelete(context, ref),
           icon: const Icon(Icons.delete_outline, color: AppColors.danger),
-          label: const Text('Delete scan',
-              style: TextStyle(color: AppColors.danger)),
+          label: const Text(
+            'Delete scan',
+            style: TextStyle(color: AppColors.danger),
+          ),
         ),
       ],
     );
   }
 
   String _statusLine(ScanAsset asset) => switch (asset.status) {
-        AssetStatus.capturing => 'Capture incomplete',
-        AssetStatus.stitching =>
-          'Stitching and uploading. The share link is minutes away.',
-        AssetStatus.pendingCloudStitch => 'Uploading frames for cloud stitch…',
-        AssetStatus.processing3d => 'Building the 3D world…',
-        AssetStatus.ready => 'Ready to share',
-        AssetStatus.failed => 'Something went wrong.',
-      };
+    AssetStatus.capturing => 'Capture incomplete',
+    AssetStatus.stitching =>
+      'Stitching and uploading. The share link is minutes away.',
+    AssetStatus.pendingCloudStitch => 'Uploading frames for cloud stitch…',
+    AssetStatus.processing3d => 'Building the 3D world…',
+    AssetStatus.ready => 'Ready to share',
+    AssetStatus.failed => 'Something went wrong.',
+  };
 
   Future<void> _retryUpload(BuildContext context, WidgetRef ref) async {
     final repo = ref.read(assetRepositoryProvider);
@@ -153,9 +208,7 @@ class _Body extends ConsumerWidget {
       final retried = asset.copyWith(status: AssetStatus.stitching);
       await repo.saveAsset(retried);
       await repo.enqueueUpload(retried);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Retrying upload…')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('Retrying upload…')));
     } catch (e) {
       // Best effort: revert the status so the UI does not claim an upload
       // is in flight when the enqueue actually failed.
@@ -170,6 +223,37 @@ class _Body extends ConsumerWidget {
     }
   }
 
+  /// Re-queues the (resumable) upload pipeline; a failed cloud-stitch job
+  /// resumes at a fresh stitch request, keeping the uploaded frames.
+  Future<void> _retryRefinement(BuildContext context, WidgetRef ref) async {
+    final repo = ref.read(assetRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await repo.enqueueUpload(
+        asset.copyWith(status: AssetStatus.pendingCloudStitch),
+      );
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Refinement queued — you will be '
+            'notified when it finishes.',
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not queue the refinement.')),
+      );
+    }
+  }
+
+  /// Dismisses the refinement-failure notice; the published local panorama
+  /// stays live.
+  Future<void> _useCurrentPanorama(BuildContext context, WidgetRef ref) async {
+    final repo = ref.read(assetRepositoryProvider);
+    await repo.saveAsset(asset.copyWith(cloudStitchFailed: false));
+  }
+
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -177,7 +261,8 @@ class _Body extends ConsumerWidget {
         backgroundColor: AppColors.surfaceRaised,
         title: const Text('Delete this scan?'),
         content: const Text(
-            'The panorama, its share link and the published tour are removed.'),
+          'The panorama, its share link and the published tour are removed.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -185,8 +270,10 @@ class _Body extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(color: AppColors.danger)),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppColors.danger),
+            ),
           ),
         ],
       ),
@@ -220,11 +307,12 @@ class _Action extends StatelessWidget {
         onTap: enabled ? onTap : null,
         enabled: enabled,
         tileColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(
+          icon,
+          color: enabled ? AppColors.ink : AppColors.inkFaint,
+          size: 24,
         ),
-        leading: Icon(icon,
-            color: enabled ? AppColors.ink : AppColors.inkFaint, size: 24),
         title: Text(
           label,
           style: TextStyle(
@@ -238,10 +326,14 @@ class _Action extends StatelessWidget {
             : Text(
                 disabledHint!,
                 style: const TextStyle(
-                    color: AppColors.inkFaint, fontSize: 12.5),
+                  color: AppColors.inkFaint,
+                  fontSize: 12.5,
+                ),
               ),
-        trailing: Icon(Icons.chevron_right,
-            color: enabled ? AppColors.inkDim : AppColors.inkFaint),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: enabled ? AppColors.inkDim : AppColors.inkFaint,
+        ),
       ),
     );
   }

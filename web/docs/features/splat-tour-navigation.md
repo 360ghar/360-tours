@@ -301,7 +301,7 @@ job_id/
 | `PublicTourPage` / `EmbedTourPage` / embed | Ship constrained player, not free SuperSplat |
 | Tour types / editor store | Room list + hotspot CRUD patterns |
 
-### 360ghar-backend
+### backend
 
 | Component | Reuse how |
 |-----------|-----------|
@@ -370,7 +370,7 @@ job_id/
 
 **How to open:** Lab → “Kitchen tour (constrained)” or `/lab/kitchen-tour`  
 **Assets:** `public/splats/kitchen.splat` + `kitchen_manifest.json`  
-**Bake CLI:** `360ghar-backend/scripts/bake_tour_spatial.py`
+**Bake CLI:** `backend/scripts/bake_tour_spatial.py`
 
 ### Phase B — Bounded walk + minimap
 

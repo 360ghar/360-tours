@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Pencil, Share2, BarChart3, Film } from 'lucide-react';
+import { ArrowLeft, Pencil, Share2, BarChart3 } from 'lucide-react';
 import {
   Button,
   PageLoader,
@@ -18,12 +18,10 @@ import { QUERY_KEYS, ROUTES } from '@/constants';
 import { formatCompactNumber, formatDate } from '@/utils/format';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { ShareModal } from '@/components/features/ShareModal';
-import { ReelGeneratorModal } from '@/components/features/ai';
 
 export function TourViewPage() {
   const { id } = useParams<{ id: string }>();
   const [shareOpen, setShareOpen] = useState(false);
-  const [reelOpen, setReelOpen] = useState(false);
 
   const { data: tour, isLoading: isLoadingTour } = useQuery({
     queryKey: [QUERY_KEYS.TOUR, id],
@@ -110,15 +108,6 @@ export function TourViewPage() {
               </Tooltip>
             </TooltipProvider>
           )}
-          <Button
-            variant="outline"
-            onClick={() => setReelOpen(true)}
-            disabled={!scenes || scenes.length === 0}
-            title={!scenes || scenes.length === 0 ? 'Add scenes before creating a reel' : undefined}
-          >
-            <Film className="h-4 w-4" />
-            Create Reel
-          </Button>
           <Link to={`/tours/${id}/edit`}>
             <Button>
               <Pencil className="h-4 w-4" />
@@ -269,13 +258,6 @@ export function TourViewPage() {
         tourDescription={tour.description || undefined}
       />
 
-      {/* Reel Generator Modal */}
-      <ReelGeneratorModal
-        open={reelOpen}
-        onOpenChange={setReelOpen}
-        tourId={id!}
-        scenes={scenes ?? []}
-      />
     </div>
   );
 }

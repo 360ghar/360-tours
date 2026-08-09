@@ -47,7 +47,7 @@ Providers in `core/providers.dart` throw `UnimplementedError` unless overridden 
 ## Widgets
 
 - Keep screen files focused; extract widgets into `presentation/widgets/` when a screen grows.
-- Theme colors: `AppColors` / `AppTheme` in `core/theme/app_theme.dart`.
+- Theme colors: `AppColors` / `AppTheme` in `core/theme/app_theme.dart`. The app ships one theme — `AppTheme.light()` — with a light warm palette; the capture camera preview is the only dark surface by design.
 
 ## Testing UI-adjacent logic
 

@@ -9,10 +9,11 @@ Flutter client for capturing guided 360° room panoramas, stitching on device, p
 
 ```sh
 cd app
-flutter run \
-  --dart-define=SUPABASE_URL=https://<project>.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=<anon-key>
+flutter run
 ```
+
+Supabase credentials live in the bundled `app/.env` (publishable/anon keys
+only); `--dart-define` overrides them — see `app/README.md`.
 
 ```sh
 cd app && flutter analyze && flutter test

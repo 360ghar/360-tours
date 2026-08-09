@@ -49,7 +49,7 @@ Upload panoramas and AI wizard remain available on the same create page.
 
 ## Backend
 
-See `360ghar-backend/docs/capture-sessions.md`.
+See `backend/docs/capture-sessions.md`.
 
 ## Non-goals (MVP)
 

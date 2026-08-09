@@ -10,7 +10,7 @@ This app lives at `web/` inside the `360-tours` monorepo. The Flutter mobile cli
 
 **360 Viewer** is a React 19 + TypeScript SPA for creating, editing, publishing, and viewing 360° virtual property tours. Primary focus (per `PRODUCT.md`): AI-assisted tour generation (scene analysis, auto hotspots, descriptions, reels), reliable tour editing, fast public viewing, and share/embed/QR simplicity. Secondary (present but de-prioritized): advanced analytics, floor plans, branding/white-label, video.
 
-Backend is the shared 360Ghar FastAPI monolith (`../../360ghar-backend`, i.e. a sibling of the `360-tours` monorepo) at `/api/v1`. Auth is Supabase. Primary users: real-estate photographers, agencies, PMs, architects; public viewers are buyers/tenants.
+Backend is the shared 360Ghar FastAPI monolith (`../backend`, a sibling of the `360-tours` monorepo) at `/api/v1`. Auth is Supabase. Primary users: real-estate photographers, agencies, PMs, architects; public viewers are buyers/tenants.
 
 ## Tech Stack
 

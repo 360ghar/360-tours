@@ -21,6 +21,7 @@ import 'features/share/data/api_share_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Env.load();
 
   if (!Env.hasSupabase) {
     // Fail loudly at startup instead of mysteriously at first sign-in.
@@ -128,7 +129,7 @@ class _ToursAppState extends ConsumerState<ToursApp> {
     return MaterialApp.router(
       title: '360 Tours',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark(),
+      theme: AppTheme.light(),
       routerConfig: router,
     );
   }
@@ -140,7 +141,7 @@ class _MissingEnvApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      theme: AppTheme.dark(),
+      theme: AppTheme.light(),
       home: const Scaffold(
         body: Center(
           child: Padding(

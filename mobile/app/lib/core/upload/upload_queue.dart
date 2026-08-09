@@ -28,14 +28,19 @@ class UploadQueue {
     this._saveRoom,
     Stream<List<ConnectivityResult>>? connectivityChanges,
   }) {
-    (connectivityChanges ?? Connectivity().onConnectivityChanged)
-        .listen((results) {
+    (connectivityChanges ?? Connectivity().onConnectivityChanged).listen((
+      results,
+    ) {
       if (!results.contains(ConnectivityResult.none)) pump();
     });
   }
 
   static const _collection = 'upload_queue';
   static const _maxAttempts = 8;
+
+  /// Maximum polls of a cloud-stitch job (3s→20s intervals, ~11 min cap;
+  /// the backend stitch itself is bounded by a 5 min timeout).
+  static const int maxStitchPolls = 40;
 
   final LocalStore _store;
   final BackendApi _api;
@@ -64,21 +69,23 @@ class UploadQueue {
   Future<void> enqueue(ScanAsset asset) async {
     final jobs = await _store.readAll(_collection);
     final existing = jobs
-        .where((j) =>
-            j['assetId'] == asset.id &&
-            j['kind'] != 'room' &&
-            j['step'] != 'done')
+        .where(
+          (j) =>
+              j['assetId'] == asset.id &&
+              j['kind'] != 'room' &&
+              j['step'] != 'done',
+        )
         .map(Map<String, dynamic>.from)
         .firstOrNull;
     if (existing != null) {
-      if (existing['step'] == 'failed') {
+      if (existing['step'] == 'failed' || existing['step'] == 'stitchFailed') {
         existing['step'] = _resumeStep(existing);
         existing['attempts'] = 0;
         existing['lastError'] = null;
         await _store.upsert(_collection, existing);
       }
       pump();
-      return; // already queued (or just reset from failed)
+      return; // already queued (or just reset from failed/stitchFailed)
     }
     await _store.upsert(_collection, {
       'id': asset.id, // one active job per asset
@@ -127,7 +134,12 @@ class UploadQueue {
         progressed = false;
         final jobs = await _store.readAll(_collection);
         final pending = jobs
-            .where((j) => j['step'] != 'done' && j['step'] != 'failed')
+            .where(
+              (j) =>
+                  j['step'] != 'done' &&
+                  j['step'] != 'failed' &&
+                  j['step'] != 'stitchFailed',
+            )
             .map(Map<String, dynamic>.from)
             .toList();
         if (pending.isEmpty) break;
@@ -164,7 +176,9 @@ class UploadQueue {
           final tour = await _api.createTour(title: asset.name);
           job['tourId'] = tour['id'];
           await _saveIfAlive(
-              asset.id, (c) => c.copyWith(remoteTourId: tour['id'] as String));
+            asset.id,
+            (c) => c.copyWith(remoteTourId: tour['id'] as String),
+          );
           job['step'] = 'presign';
         case 'presign':
           final pano = asset.panoramaPath;
@@ -203,16 +217,17 @@ class UploadQueue {
           final tour = await _api.publishTour(job['tourId'] as String);
           final needsCloudStitch =
               asset.status == AssetStatus.pendingCloudStitch &&
-                  asset.framePaths.isNotEmpty;
+              asset.framePaths.isNotEmpty;
           final panoramaUrl = job['panoramaUrl'] as String?;
           final shareCode = tour['short_code'] as String?;
           // copyWith treats an explicit null as "reset", so only apply these
           // when produced — a transient null must not wipe an existing value.
           await _saveIfAlive(asset.id, (c) {
             var u = c.copyWith(
-                status: needsCloudStitch
-                    ? AssetStatus.pendingCloudStitch
-                    : AssetStatus.ready);
+              status: needsCloudStitch
+                  ? AssetStatus.pendingCloudStitch
+                  : AssetStatus.ready,
+            );
             if (panoramaUrl != null) u = u.copyWith(panoramaUrl: panoramaUrl);
             if (shareCode != null) u = u.copyWith(shareCode: shareCode);
             return u;
@@ -224,9 +239,10 @@ class UploadQueue {
           } else {
             job['step'] = 'done';
           }
-        // The local stitch was the naive fallback: ship the raw frames and
-        // ask the backend to re-stitch with OpenCV (it replaces the scene
-        // image when the job completes). One frame per pass, resumable.
+        // The local stitch was the naive blend: ship the raw frames and ask
+        // the backend to re-stitch with the metadata-driven cloud stitcher.
+        // One frame per pass, resumable. The naive pano stays live until the
+        // cloud result passes validation and replaces the scene image.
         case 'uploadFrames':
           final i = job['frameIndex'] as int? ?? 0;
           final frames = asset.framePaths;
@@ -241,8 +257,7 @@ class UploadQueue {
                 tourId: job['tourId'] as String,
                 fileSize: file.lengthSync(),
               );
-              await _api.uploadToCloudinary(
-                  presigned: presigned, file: file);
+              await _api.uploadToCloudinary(presigned: presigned, file: file);
               await _api.confirmUpload(presigned['upload_id'] as String);
               (job['frameUrls'] as List).add(presigned['public_url']);
             }
@@ -250,29 +265,135 @@ class UploadQueue {
           }
         case 'requestStitch':
           final urls = List<String>.from(job['frameUrls'] as List? ?? []);
-          if (urls.length >= 2) {
-            await _api.requestCloudStitch(
+          if (urls.length < 2) {
+            // Frames disappeared; refinement is impossible but the local
+            // panorama is already published.
+            await _saveIfAlive(
+              asset.id,
+              (c) => c.copyWith(status: AssetStatus.ready),
+            );
+            job['step'] = 'done';
+          } else {
+            // Only legacy captures (no recorded orientations) skip the
+            // metadata payload — the backend falls back to its legacy path.
+            final metadata = asset.frameOrientations.isNotEmpty
+                ? _frameMetadata(asset, urls)
+                : null;
+            final response = await _api.requestCloudStitch(
               sceneId: job['sceneId'] as String,
               frameUrls: urls,
+              frames: metadata,
+              cameraProfile: metadata != null ? _cameraProfile(asset) : null,
             );
+            job['stitchJobId'] = response['id'];
+            job['pollCount'] = 0;
+            job['step'] = 'pollStitch';
           }
-          // The naive pano stays until the server swaps in the OpenCV one.
-          await _saveIfAlive(
-              asset.id, (c) => c.copyWith(status: AssetStatus.ready));
-          job['step'] = 'done';
+        case 'pollStitch':
+          final jobId = job['stitchJobId'] as String?;
+          if (jobId == null) {
+            await _markStitchFailed(asset);
+            job['step'] = 'stitchFailed';
+          } else {
+            final status = await _api.getAiJob(jobId);
+            final state = status['status'] as String? ?? 'unknown';
+            if (state == 'completed') {
+              // The backend replaces the scene image only when the cloud
+              // panorama passed its own quality validation.
+              final result = Map<String, dynamic>.from(
+                status['result'] as Map? ?? {},
+              );
+              final imageUrl = result['image_url'] as String?;
+              await _saveIfAlive(
+                asset.id,
+                (c) => c.copyWith(
+                  status: AssetStatus.ready,
+                  cloudStitchFailed: false,
+                  panoramaUrl: imageUrl ?? c.panoramaUrl,
+                ),
+              );
+              job['step'] = 'done';
+            } else if (state == 'failed' || state == 'cancelled') {
+              await _markStitchFailed(asset);
+              job['step'] = 'stitchFailed';
+            } else {
+              // Still pending/processing: poll again with a bounded interval.
+              final polls = (job['pollCount'] as int? ?? 0) + 1;
+              job['pollCount'] = polls;
+              if (polls > maxStitchPolls) {
+                await _markStitchFailed(asset);
+                job['step'] = 'stitchFailed';
+              } else {
+                await _store.upsert(_collection, job);
+                final seconds = min(20, 3 * pow(2, min(polls ~/ 5, 3))).toInt();
+                Timer(Duration(seconds: seconds), pump);
+                return _Step.idle;
+              }
+            }
+          }
       }
       job['attempts'] = 0;
       await _store.upsert(_collection, job);
       return _Step.progressed;
     } catch (e) {
+      // Cloud refinement never loses the user's capture: on give-up the
+      // local panorama stays published (`ready`) and the failure is flagged
+      // for the "retry refinement / use current panorama" UX.
+      final stitchStep =
+          job['step'] == 'requestStitch' || job['step'] == 'pollStitch';
       final gaveUp = await _failWithBackoff(
         job,
         e,
-        onGiveUp: () => _saveIfAlive(
-            asset.id, (c) => c.copyWith(status: AssetStatus.failed)),
+        onGiveUp: stitchStep
+            ? () async {
+                await _markStitchFailed(asset);
+                job['step'] = 'stitchFailed';
+                await _store.upsert(_collection, job);
+              }
+            : () => _saveIfAlive(
+                asset.id,
+                (c) => c.copyWith(status: AssetStatus.failed),
+              ),
       );
       return gaveUp ? _Step.progressed : _Step.errored;
     }
+  }
+
+  /// Marks the asset "published with the local panorama; cloud refinement
+  /// failed" — never `failed` (the tour is live).
+  Future<void> _markStitchFailed(ScanAsset asset) => _saveIfAlive(
+    asset.id,
+    (c) => c.copyWith(status: AssetStatus.ready, cloudStitchFailed: true),
+  );
+
+  /// Per-frame metadata for the cloud stitcher, parallel to [urls].
+  List<Map<String, dynamic>> _frameMetadata(
+    ScanAsset asset,
+    List<String> urls,
+  ) {
+    final orientations = asset.frameOrientations;
+    final indices = asset.frameTargetIndices;
+    final lowQuality = asset.frameLowQuality;
+    return [
+      for (var i = 0; i < urls.length; i++)
+        {
+          'url': urls[i],
+          'yaw': i < orientations.length ? orientations[i].yaw : 0.0,
+          'pitch': i < orientations.length ? orientations[i].pitch : 0.0,
+          'roll': i < orientations.length ? orientations[i].roll : 0.0,
+          'target_index': indices != null && i < indices.length
+              ? indices[i]
+              : null,
+          'low_quality':
+              lowQuality != null && i < lowQuality.length && lowQuality[i],
+        },
+    ];
+  }
+
+  Map<String, dynamic>? _cameraProfile(ScanAsset asset) {
+    final h = asset.captureHFovDeg;
+    if (h == null || h <= 0) return null;
+    return {'horizontal_fov': h, 'vertical_fov': asset.captureVFovDeg ?? 69.0};
   }
 
   /// Room (additional scene) pipeline: presign → put → confirm → createScene.
@@ -323,10 +444,12 @@ class UploadQueue {
             title: room.name,
             orderIndex: rooms.indexWhere((r) => r.id == room.id) + 1,
           );
-          await saveRoom(room.copyWith(
-            remoteSceneId: scene['id'] as String,
-            panoramaUrl: job['panoramaUrl'] as String?,
-          ));
+          await saveRoom(
+            room.copyWith(
+              remoteSceneId: scene['id'] as String,
+              panoramaUrl: job['panoramaUrl'] as String?,
+            ),
+          );
           job['step'] = 'done';
       }
       job['attempts'] = 0;
@@ -369,6 +492,13 @@ class UploadQueue {
   /// `presign` once a tour already exists (duplicate-tour risk), and
   /// re-presigns when the stored Cloudinary signature is likely expired.
   String _resumeStep(Map<String, dynamic> job) {
+    // Cloud refinement is optional: a failed/abandoned stitch job re-requests
+    // a fresh stitch (frames stay uploaded; the local panorama is live).
+    if (job['step'] == 'stitchFailed' || job['stitchJobId'] != null) {
+      job.remove('stitchJobId');
+      job.remove('pollCount');
+      return 'requestStitch';
+    }
     final defaultStep = job['kind'] == 'room' ? 'presign' : 'createTour';
     var step = (job['lastStep'] as String?) ?? defaultStep;
     // A tour already exists — don't recreate it.
@@ -381,11 +511,15 @@ class UploadQueue {
     return step;
   }
 
-  /// Manual retry for a failed job.
+  /// Manual retry for a failed job (upload failure or cloud refinement).
   Future<void> retry(String assetId) async {
     final jobs = await _store.readAll(_collection);
     final failed = jobs
-        .where((j) => j['assetId'] == assetId && j['step'] == 'failed')
+        .where(
+          (j) =>
+              j['assetId'] == assetId &&
+              (j['step'] == 'failed' || j['step'] == 'stitchFailed'),
+        )
         .map(Map<String, dynamic>.from)
         .toList();
     for (final fresh in failed) {

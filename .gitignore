@@ -18,3 +18,9 @@
 .claude/skills/*-workspace/
 .agents/skills/*-workspace/
 .playwright-mcp/
+
+# Sibling backend repo (separate git repo, self-managed)
+/backend/
+
+# Flutter/Gradle build outputs (regenerated every build)
+/mobile/app/android/build/

@@ -18,7 +18,6 @@ import {
   Sparkles,
   Wand2,
   Lightbulb,
-  Film,
   Users,
   Activity,
   X,
@@ -78,7 +77,6 @@ import {
   SceneAnalysis,
   DescriptionGenerator,
   HotspotSuggestions,
-  ReelGeneratorModal,
 } from '@/components/features/ai';
 import { ActivityFeed } from '@/components/features';
 import { cn } from '@/utils';
@@ -106,7 +104,6 @@ export function TourEditPage() {
   const [showSceneAnalysis, setShowSceneAnalysis] = useState(false);
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [showHotspotSuggestions, setShowHotspotSuggestions] = useState(false);
-  const [showReelGenerator, setShowReelGenerator] = useState(false);
   const [isPlacingHotspot, setIsPlacingHotspot] = useState(false);
   const [placementPosition, setPlacementPosition] = useState<{ yaw: number; pitch: number } | null>(
     null
@@ -908,10 +905,6 @@ export function TourEditPage() {
                   <Lightbulb className="h-4 w-4" />
                   AI Hotspots
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowReelGenerator(true)}>
-                  <Film className="h-4 w-4" />
-                  Create 360 Reel
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => duplicateMutation.mutate()}
@@ -1160,13 +1153,6 @@ export function TourEditPage() {
               tourId={currentTour.id}
               scenes={currentTour.scenes ?? []}
               onApply={handleApplyDescriptions}
-            />
-
-            <ReelGeneratorModal
-              open={showReelGenerator}
-              onOpenChange={setShowReelGenerator}
-              tourId={currentTour.id}
-              scenes={currentTour.scenes ?? []}
             />
           </>
         )}

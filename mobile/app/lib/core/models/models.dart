@@ -55,18 +55,18 @@ class AppUser {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'email': email,
-        'displayName': displayName,
-        'photoUrl': photoUrl,
-      };
+    'id': id,
+    'email': email,
+    'displayName': displayName,
+    'photoUrl': photoUrl,
+  };
 
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
-        id: json['id'] as String,
-        email: json['email'] as String? ?? '',
-        displayName: json['displayName'] as String?,
-        photoUrl: json['photoUrl'] as String?,
-      );
+    id: json['id'] as String,
+    email: json['email'] as String? ?? '',
+    displayName: json['displayName'] as String?,
+    photoUrl: json['photoUrl'] as String?,
+  );
 }
 
 /// A captured scan: one 360 panorama (Phase 1) that can grow into a
@@ -98,6 +98,22 @@ class ScanAsset {
   /// Per-frame device orientation, parallel to [framePaths].
   final List<FrameOrientation> frameOrientations;
 
+  /// Camera FOV the capture was planned with (null = legacy capture →
+  /// documented fallback at stitch time). Plain doubles on purpose: core
+  /// models must not depend on feature types.
+  final double? captureHFovDeg;
+  final double? captureVFovDeg;
+
+  /// Plan target index per frame, parallel to [framePaths] (cloud stitch).
+  final List<int>? frameTargetIndices;
+
+  /// Per-frame low-quality flags, parallel to [framePaths] (cloud stitch).
+  final List<bool>? frameLowQuality;
+
+  /// True when cloud refinement failed after the local panorama was
+  /// published — the tour is still live, refinement is optional.
+  final bool cloudStitchFailed;
+
   const ScanAsset({
     required this.id,
     required this.ownerId,
@@ -113,6 +129,11 @@ class ScanAsset {
     this.model3dUrl,
     this.remoteTourId,
     this.frameOrientations = const [],
+    this.captureHFovDeg,
+    this.captureVFovDeg,
+    this.frameTargetIndices,
+    this.frameLowQuality,
+    this.cloudStitchFailed = false,
   });
 
   ScanAsset copyWith({
@@ -127,78 +148,103 @@ class ScanAsset {
     Object? model3dUrl = _sentinel,
     Object? remoteTourId = _sentinel,
     List<FrameOrientation>? frameOrientations,
-  }) =>
-      ScanAsset(
-        id: id,
-        ownerId: ownerId,
-        name: name ?? this.name,
-        type: type ?? this.type,
-        status: status ?? this.status,
-        createdAt: createdAt,
-        panoramaPath: identical(panoramaPath, _sentinel)
-            ? this.panoramaPath
-            : panoramaPath as String?,
-        panoramaUrl: identical(panoramaUrl, _sentinel)
-            ? this.panoramaUrl
-            : panoramaUrl as String?,
-        framePaths: framePaths ?? this.framePaths,
-        thumbnailPath: identical(thumbnailPath, _sentinel)
-            ? this.thumbnailPath
-            : thumbnailPath as String?,
-        shareCode: identical(shareCode, _sentinel)
-            ? this.shareCode
-            : shareCode as String?,
-        model3dUrl: identical(model3dUrl, _sentinel)
-            ? this.model3dUrl
-            : model3dUrl as String?,
-        remoteTourId: identical(remoteTourId, _sentinel)
-            ? this.remoteTourId
-            : remoteTourId as String?,
-        frameOrientations: frameOrientations ?? this.frameOrientations,
-      );
+    Object? captureHFovDeg = _sentinel,
+    Object? captureVFovDeg = _sentinel,
+    Object? frameTargetIndices = _sentinel,
+    Object? frameLowQuality = _sentinel,
+    bool? cloudStitchFailed,
+  }) => ScanAsset(
+    id: id,
+    ownerId: ownerId,
+    name: name ?? this.name,
+    type: type ?? this.type,
+    status: status ?? this.status,
+    createdAt: createdAt,
+    panoramaPath: identical(panoramaPath, _sentinel)
+        ? this.panoramaPath
+        : panoramaPath as String?,
+    panoramaUrl: identical(panoramaUrl, _sentinel)
+        ? this.panoramaUrl
+        : panoramaUrl as String?,
+    framePaths: framePaths ?? this.framePaths,
+    thumbnailPath: identical(thumbnailPath, _sentinel)
+        ? this.thumbnailPath
+        : thumbnailPath as String?,
+    shareCode: identical(shareCode, _sentinel)
+        ? this.shareCode
+        : shareCode as String?,
+    model3dUrl: identical(model3dUrl, _sentinel)
+        ? this.model3dUrl
+        : model3dUrl as String?,
+    remoteTourId: identical(remoteTourId, _sentinel)
+        ? this.remoteTourId
+        : remoteTourId as String?,
+    frameOrientations: frameOrientations ?? this.frameOrientations,
+    captureHFovDeg: identical(captureHFovDeg, _sentinel)
+        ? this.captureHFovDeg
+        : captureHFovDeg as double?,
+    captureVFovDeg: identical(captureVFovDeg, _sentinel)
+        ? this.captureVFovDeg
+        : captureVFovDeg as double?,
+    frameTargetIndices: identical(frameTargetIndices, _sentinel)
+        ? this.frameTargetIndices
+        : frameTargetIndices as List<int>?,
+    frameLowQuality: identical(frameLowQuality, _sentinel)
+        ? this.frameLowQuality
+        : frameLowQuality as List<bool>?,
+    cloudStitchFailed: cloudStitchFailed ?? this.cloudStitchFailed,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'ownerId': ownerId,
-        'name': name,
-        'type': type.name,
-        'status': status.name,
-        'createdAt': createdAt.toIso8601String(),
-        'panoramaPath': panoramaPath,
-        'panoramaUrl': panoramaUrl,
-        'framePaths': framePaths,
-        'thumbnailPath': thumbnailPath,
-        'shareCode': shareCode,
-        'model3dUrl': model3dUrl,
-        'remoteTourId': remoteTourId,
-        'frameOrientations':
-            frameOrientations.map((o) => o.toJson()).toList(),
-      };
+    'id': id,
+    'ownerId': ownerId,
+    'name': name,
+    'type': type.name,
+    'status': status.name,
+    'createdAt': createdAt.toIso8601String(),
+    'panoramaPath': panoramaPath,
+    'panoramaUrl': panoramaUrl,
+    'framePaths': framePaths,
+    'thumbnailPath': thumbnailPath,
+    'shareCode': shareCode,
+    'model3dUrl': model3dUrl,
+    'remoteTourId': remoteTourId,
+    'frameOrientations': frameOrientations.map((o) => o.toJson()).toList(),
+    'captureHFovDeg': captureHFovDeg,
+    'captureVFovDeg': captureVFovDeg,
+    'frameTargetIndices': frameTargetIndices,
+    'frameLowQuality': frameLowQuality,
+    'cloudStitchFailed': cloudStitchFailed,
+  };
 
   factory ScanAsset.fromJson(Map<String, dynamic> json) => ScanAsset(
-        id: json['id'] as String,
-        ownerId: json['ownerId'] as String? ?? '',
-        name: json['name'] as String? ?? 'Untitled',
-        type: AssetType.values.asNameMap()[json['type']] ?? AssetType.pano360,
-        status: AssetStatus.values.asNameMap()[json['status']] ??
-            AssetStatus.ready,
-        createdAt:
-            DateTime.tryParse(json['createdAt'] as String? ?? '') ??
-                DateTime.now(),
-        panoramaPath: json['panoramaPath'] as String?,
-        panoramaUrl: json['panoramaUrl'] as String?,
-        framePaths:
-            (json['framePaths'] as List?)?.cast<String>() ?? const [],
-        thumbnailPath: json['thumbnailPath'] as String?,
-        shareCode: json['shareCode'] as String?,
-        model3dUrl: json['model3dUrl'] as String?,
-        remoteTourId: json['remoteTourId'] as String?,
-        frameOrientations: (json['frameOrientations'] as List?)
-                ?.map((o) =>
-                    FrameOrientation.fromJson(Map<String, dynamic>.from(o)))
-                .toList() ??
-            const [],
-      );
+    id: json['id'] as String,
+    ownerId: json['ownerId'] as String? ?? '',
+    name: json['name'] as String? ?? 'Untitled',
+    type: AssetType.values.asNameMap()[json['type']] ?? AssetType.pano360,
+    status: AssetStatus.values.asNameMap()[json['status']] ?? AssetStatus.ready,
+    createdAt:
+        DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+    panoramaPath: json['panoramaPath'] as String?,
+    panoramaUrl: json['panoramaUrl'] as String?,
+    framePaths: (json['framePaths'] as List?)?.cast<String>() ?? const [],
+    thumbnailPath: json['thumbnailPath'] as String?,
+    shareCode: json['shareCode'] as String?,
+    model3dUrl: json['model3dUrl'] as String?,
+    remoteTourId: json['remoteTourId'] as String?,
+    frameOrientations:
+        (json['frameOrientations'] as List?)
+            ?.map(
+              (o) => FrameOrientation.fromJson(Map<String, dynamic>.from(o)),
+            )
+            .toList() ??
+        const [],
+    captureHFovDeg: (json['captureHFovDeg'] as num?)?.toDouble(),
+    captureVFovDeg: (json['captureVFovDeg'] as num?)?.toDouble(),
+    frameTargetIndices: (json['frameTargetIndices'] as List?)?.cast<int>(),
+    frameLowQuality: (json['frameLowQuality'] as List?)?.cast<bool>(),
+    cloudStitchFailed: json['cloudStitchFailed'] as bool? ?? false,
+  );
 }
 
 /// One room inside a multi-room tour. Each room has its own panorama and
@@ -230,45 +276,45 @@ class Room {
     Object? panoramaUrl = _sentinel,
     List<Hotspot>? hotspots,
     Object? remoteSceneId = _sentinel,
-  }) =>
-      Room(
-        id: id,
-        assetId: assetId,
-        name: name ?? this.name,
-        panoramaPath: identical(panoramaPath, _sentinel)
-            ? this.panoramaPath
-            : panoramaPath as String?,
-        panoramaUrl: identical(panoramaUrl, _sentinel)
-            ? this.panoramaUrl
-            : panoramaUrl as String?,
-        hotspots: hotspots ?? this.hotspots,
-        remoteSceneId: identical(remoteSceneId, _sentinel)
-            ? this.remoteSceneId
-            : remoteSceneId as String?,
-      );
+  }) => Room(
+    id: id,
+    assetId: assetId,
+    name: name ?? this.name,
+    panoramaPath: identical(panoramaPath, _sentinel)
+        ? this.panoramaPath
+        : panoramaPath as String?,
+    panoramaUrl: identical(panoramaUrl, _sentinel)
+        ? this.panoramaUrl
+        : panoramaUrl as String?,
+    hotspots: hotspots ?? this.hotspots,
+    remoteSceneId: identical(remoteSceneId, _sentinel)
+        ? this.remoteSceneId
+        : remoteSceneId as String?,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'assetId': assetId,
-        'name': name,
-        'panoramaPath': panoramaPath,
-        'panoramaUrl': panoramaUrl,
-        'hotspots': hotspots.map((h) => h.toJson()).toList(),
-        'remoteSceneId': remoteSceneId,
-      };
+    'id': id,
+    'assetId': assetId,
+    'name': name,
+    'panoramaPath': panoramaPath,
+    'panoramaUrl': panoramaUrl,
+    'hotspots': hotspots.map((h) => h.toJson()).toList(),
+    'remoteSceneId': remoteSceneId,
+  };
 
   factory Room.fromJson(Map<String, dynamic> json) => Room(
-        id: json['id'] as String,
-        assetId: json['assetId'] as String? ?? '',
-        name: json['name'] as String? ?? 'Room',
-        panoramaPath: json['panoramaPath'] as String?,
-        panoramaUrl: json['panoramaUrl'] as String?,
-        hotspots: (json['hotspots'] as List?)
-                ?.map((h) => Hotspot.fromJson(Map<String, dynamic>.from(h)))
-                .toList() ??
-            const [],
-        remoteSceneId: json['remoteSceneId'] as String?,
-      );
+    id: json['id'] as String,
+    assetId: json['assetId'] as String? ?? '',
+    name: json['name'] as String? ?? 'Room',
+    panoramaPath: json['panoramaPath'] as String?,
+    panoramaUrl: json['panoramaUrl'] as String?,
+    hotspots:
+        (json['hotspots'] as List?)
+            ?.map((h) => Hotspot.fromJson(Map<String, dynamic>.from(h)))
+            .toList() ??
+        const [],
+    remoteSceneId: json['remoteSceneId'] as String?,
+  );
 }
 
 /// A clickable marker placed on a room's panorama at (yaw, pitch) degrees
@@ -293,22 +339,22 @@ class Hotspot {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'targetRoomId': targetRoomId,
-        'label': label,
-        'yawDeg': yawDeg,
-        'pitchDeg': pitchDeg,
-        'remoteId': remoteId,
-      };
+    'id': id,
+    'targetRoomId': targetRoomId,
+    'label': label,
+    'yawDeg': yawDeg,
+    'pitchDeg': pitchDeg,
+    'remoteId': remoteId,
+  };
 
   factory Hotspot.fromJson(Map<String, dynamic> json) => Hotspot(
-        id: json['id'] as String,
-        targetRoomId: json['targetRoomId'] as String? ?? '',
-        label: json['label'] as String? ?? '',
-        yawDeg: (json['yawDeg'] as num?)?.toDouble() ?? 0,
-        pitchDeg: (json['pitchDeg'] as num?)?.toDouble() ?? 0,
-        remoteId: json['remoteId'] as String?,
-      );
+    id: json['id'] as String,
+    targetRoomId: json['targetRoomId'] as String? ?? '',
+    label: json['label'] as String? ?? '',
+    yawDeg: (json['yawDeg'] as num?)?.toDouble() ?? 0,
+    pitchDeg: (json['pitchDeg'] as num?)?.toDouble() ?? 0,
+    remoteId: json['remoteId'] as String?,
+  );
 }
 
 class ShareLink {
@@ -336,19 +382,19 @@ class ShareLink {
       'frameborder="0" allowfullscreen></iframe>';
 
   Map<String, dynamic> toJson() => {
-        'code': code,
-        'assetId': assetId,
-        'createdAt': createdAt.toIso8601String(),
-        'overrideUrl': overrideUrl,
-      };
+    'code': code,
+    'assetId': assetId,
+    'createdAt': createdAt.toIso8601String(),
+    'overrideUrl': overrideUrl,
+  };
 
   factory ShareLink.fromJson(Map<String, dynamic> json) => ShareLink(
-        code: json['code'] as String,
-        assetId: json['assetId'] as String? ?? '',
-        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
-            DateTime.now(),
-        overrideUrl: json['overrideUrl'] as String?,
-      );
+    code: json['code'] as String,
+    assetId: json['assetId'] as String? ?? '',
+    createdAt:
+        DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+    overrideUrl: json['overrideUrl'] as String?,
+  );
 }
 
 class ViewAnalytics {
@@ -367,19 +413,18 @@ class ViewAnalytics {
   });
 
   Map<String, dynamic> toJson() => {
-        'assetId': assetId,
-        'views': views,
-        'totalSeconds': totalSeconds,
-        'showingRequests': showingRequests,
-        'lastViewedAt': lastViewedAt?.toIso8601String(),
-      };
+    'assetId': assetId,
+    'views': views,
+    'totalSeconds': totalSeconds,
+    'showingRequests': showingRequests,
+    'lastViewedAt': lastViewedAt?.toIso8601String(),
+  };
 
   factory ViewAnalytics.fromJson(Map<String, dynamic> json) => ViewAnalytics(
-        assetId: json['assetId'] as String? ?? '',
-        views: (json['views'] as num?)?.toInt() ?? 0,
-        totalSeconds: (json['totalSeconds'] as num?)?.toInt() ?? 0,
-        showingRequests: (json['showingRequests'] as num?)?.toInt() ?? 0,
-        lastViewedAt:
-            DateTime.tryParse(json['lastViewedAt'] as String? ?? ''),
-      );
+    assetId: json['assetId'] as String? ?? '',
+    views: (json['views'] as num?)?.toInt() ?? 0,
+    totalSeconds: (json['totalSeconds'] as num?)?.toInt() ?? 0,
+    showingRequests: (json['showingRequests'] as num?)?.toInt() ?? 0,
+    lastViewedAt: DateTime.tryParse(json['lastViewedAt'] as String? ?? ''),
+  );
 }

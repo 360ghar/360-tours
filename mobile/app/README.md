@@ -28,7 +28,17 @@ device, publish it to the 360ghar backend, and share a public link.
 ## Run
 
 ```sh
+flutter run
+```
+
+Supabase credentials ship in the bundled `.env` asset (publishable/anon keys
+only — they are public by design). Precedence in `core/env.dart`:
+`--dart-define` > `.env` > default. To point at a local backend or another
+Supabase project:
+
+```sh
 flutter run \
+  --dart-define=API_BASE=http://localhost:3600/api/v1 \
   --dart-define=SUPABASE_URL=https://<project>.supabase.co \
   --dart-define=SUPABASE_ANON_KEY=<anon-key>
 ```

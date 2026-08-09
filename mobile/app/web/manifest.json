@@ -1,6 +1,6 @@
 {
-    "name": "tours360",
-    "short_name": "tours360",
+    "name": "360 Tours",
+    "short_name": "360 Tours",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

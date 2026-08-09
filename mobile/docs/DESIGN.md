@@ -5,9 +5,9 @@ Mobile product UX principles for the Tours360 Flutter client. This is not a mark
 ## Surfaces
 
 | Surface | Feel |
-|---------|------|
-| Auth / list / settings | Standard Material, calm, high contrast ink on light/dark theme from `core/theme/app_theme.dart` |
-| Capture | Full-screen, dark, instrument-like: target overlay, orientation feedback, minimal chrome |
+|---------|-------|
+| Auth / list / settings | Standard Material, calm, high contrast ink on the light theme from `core/theme/app_theme.dart` |
+| Capture | Full-screen, instrument-like: camera preview stays dark behind the target overlay, orientation feedback, minimal chrome |
 | Viewer | WebView chrome thin; content is the web viewer (`../web` in this monorepo; deployed separately, loaded by URL at runtime) |
 | Share | Practical: link, copy, embed snippet, system share sheet |
 
@@ -20,6 +20,7 @@ Mobile product UX principles for the Tours360 Flutter client. This is not a mark
 ## Capture overlay
 
 - Targets guide the user through yaw/pitch samples (`capture_targets` + `target_overlay`).
+- Orientation comes from the OS rotation-vector sensor (gyro-fused) with an accel/mag fallback (`orientation_engine`), so the reticle stays steady on real devices.
 - Feedback must stay legible on camera preview (high contrast strokes, not low-contrast grey on grey).
 - Avoid decorative motion that hides whether a frame was accepted.
 

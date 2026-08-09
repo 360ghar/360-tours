@@ -66,15 +66,6 @@ const EmbedTourPage = lazy(() =>
 const LocalTourPage = lazy(() =>
   import('@/pages/LocalTourPage').then(m => ({ default: m.LocalTourPage }))
 );
-const SplatLabPage = lazy(() =>
-  import('@/pages/lab/SplatLabPage').then(m => ({ default: m.SplatLabPage }))
-);
-const DollhouseEditorPage = lazy(() =>
-  import('@/pages/lab/DollhouseEditorPage').then(m => ({ default: m.DollhouseEditorPage }))
-);
-const KitchenTourPage = lazy(() =>
-  import('@/pages/lab/KitchenTourPage').then(m => ({ default: m.KitchenTourPage }))
-);
 const View3DPage = lazy(() =>
   import('@/pages/View3DPage').then(m => ({ default: m.View3DPage }))
 );
@@ -248,31 +239,6 @@ export const router = createBrowserRouter([
         element: (
           <LazyPage>
             <SettingsPage />
-          </LazyPage>
-        ),
-      },
-
-      {
-        path: ROUTES.LAB,
-        element: (
-          <LazyPage>
-            <SplatLabPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.LAB_EDITOR,
-        element: (
-          <LazyPage>
-            <DollhouseEditorPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.LAB_KITCHEN_TOUR,
-        element: (
-          <LazyPage>
-            <KitchenTourPage />
           </LazyPage>
         ),
       },

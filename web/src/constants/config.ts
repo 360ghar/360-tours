@@ -25,5 +25,5 @@ export const ALLOWED_IMAGE_TYPES = (
 ).split(',');
 
 // App Configuration
-export const APP_NAME = import.meta.env.VITE_APP_NAME || '360 Viewer';
+export const APP_NAME = import.meta.env.VITE_APP_NAME || '360 Tours';
 export const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';

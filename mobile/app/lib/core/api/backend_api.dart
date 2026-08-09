@@ -15,12 +15,15 @@ class BackendApi {
     required String title,
     String? description,
   }) async {
-    final res = await _dio.post<Map<String, dynamic>>('/tours', data: {
-      'title': title,
-      'description': ?description,
-      'visibility': 'unlisted',
-      'is_public': true,
-    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/tours',
+      data: {
+        'title': title,
+        'description': ?description,
+        'visibility': 'unlisted',
+        'is_public': true,
+      },
+    );
     return res.data ?? {};
   }
 
@@ -30,16 +33,16 @@ class BackendApi {
   }
 
   Future<Map<String, dynamic>> publishTour(String tourId) async {
-    final res =
-        await _dio.post<Map<String, dynamic>>('/tours/$tourId/publish');
+    final res = await _dio.post<Map<String, dynamic>>('/tours/$tourId/publish');
     return res.data ?? {};
   }
 
   Future<void> deleteTour(String tourId) => _dio.delete('/tours/$tourId');
 
   Future<Map<String, dynamic>> getAnalytics(String tourId) async {
-    final res =
-        await _dio.get<Map<String, dynamic>>('/tours/$tourId/analytics');
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/tours/$tourId/analytics',
+    );
     return res.data ?? {};
   }
 
@@ -59,12 +62,14 @@ class BackendApi {
     String? title,
     int? orderIndex,
   }) async {
-    final res = await _dio
-        .post<Map<String, dynamic>>('/tours/$tourId/scenes', data: {
-      'image_url': imageUrl,
-      'title': ?title,
-      'order_index': ?orderIndex,
-    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/tours/$tourId/scenes',
+      data: {
+        'image_url': imageUrl,
+        'title': ?title,
+        'order_index': ?orderIndex,
+      },
+    );
     return res.data ?? {};
   }
 
@@ -75,21 +80,22 @@ class BackendApi {
     required String targetSceneId,
     String? title,
   }) async {
-    final res = await _dio
-        .post<Map<String, dynamic>>('/scenes/$sceneId/hotspots', data: {
-      'type': 'navigation',
-      'position': {'yaw': yaw, 'pitch': pitch},
-      'target_scene_id': targetSceneId,
-      'title': ?title,
-    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/scenes/$sceneId/hotspots',
+      data: {
+        'type': 'navigation',
+        'position': {'yaw': yaw, 'pitch': pitch},
+        'target_scene_id': targetSceneId,
+        'title': ?title,
+      },
+    );
     return res.data ?? {};
   }
 
   Future<void> deleteHotspot(String hotspotId) =>
       _dio.delete('/hotspots/$hotspotId');
 
-  Future<void> deleteScene(String sceneId) =>
-      _dio.delete('/scenes/$sceneId');
+  Future<void> deleteScene(String sceneId) => _dio.delete('/scenes/$sceneId');
 
   // ---- Floor plans ---------------------------------------------------------
 
@@ -112,23 +118,26 @@ class BackendApi {
     String? sceneId,
     int? fileSize,
   }) async {
-    final res =
-        await _dio.post<Map<String, dynamic>>('/upload/presigned', data: {
-      'files': [
-        {
-          'filename': filename,
-          'content_type': 'image/jpeg',
-          'file_size': ?fileSize,
-          'folder_type': folderType,
-          'tour_id': ?tourId,
-          'scene_id': ?sceneId,
-        }
-      ],
-    });
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/upload/presigned',
+      data: {
+        'files': [
+          {
+            'filename': filename,
+            'content_type': 'image/jpeg',
+            'file_size': ?fileSize,
+            'folder_type': folderType,
+            'tour_id': ?tourId,
+            'scene_id': ?sceneId,
+          },
+        ],
+      },
+    );
     final items = (res.data ?? {})['items'] as List? ?? const [];
     if (items.isEmpty) {
       throw StateError(
-          'createPresignedUpload: backend returned no presigned items');
+        'createPresignedUpload: backend returned no presigned items',
+      );
     }
     return Map<String, dynamic>.from(items.first as Map);
   }
@@ -146,16 +155,19 @@ class BackendApi {
       'public_id': presigned['public_id'],
     });
     // Bare Dio: Cloudinary must not receive our Authorization header.
-    await Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 60),
-      sendTimeout: const Duration(seconds: 60),
-    )).post<dynamic>(presigned['signed_url'] as String, data: form);
+    await Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 60),
+        sendTimeout: const Duration(seconds: 60),
+      ),
+    ).post<dynamic>(presigned['signed_url'] as String, data: form);
   }
 
   Future<Map<String, dynamic>> confirmUpload(String uploadId) async {
-    final res =
-        await _dio.post<Map<String, dynamic>>('/upload/confirm/$uploadId');
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/upload/confirm/$uploadId',
+    );
     return res.data ?? {};
   }
 
@@ -164,18 +176,24 @@ class BackendApi {
   Future<Map<String, dynamic>> requestCloudStitch({
     required String sceneId,
     required List<String> frameUrls,
+    List<Map<String, dynamic>>? frames,
+    Map<String, dynamic>? cameraProfile,
   }) async {
+    final data = <String, dynamic>{'frame_urls': frameUrls};
+    if (frames != null) data['frames'] = frames;
+    if (cameraProfile != null) data['camera_profile'] = cameraProfile;
     final res = await _dio.post<Map<String, dynamic>>(
       '/scenes/$sceneId/stitch',
-      data: {'frame_urls': frameUrls},
+      data: data,
     );
     final m = res.data ?? {};
     return Map<String, dynamic>.from((m['job'] as Map?) ?? m);
   }
 
   Future<Map<String, dynamic>> generate3dWorld(String tourId) async {
-    final res =
-        await _dio.post<Map<String, dynamic>>('/tours/$tourId/generate-3d');
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/tours/$tourId/generate-3d',
+    );
     final m = res.data ?? {};
     return Map<String, dynamic>.from((m['job'] as Map?) ?? m);
   }

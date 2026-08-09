@@ -2,13 +2,14 @@
 
 Grades for product domains and shared layers. Scale: **A** (solid + tested) … **D** (incomplete / high risk) · **F** (broken / unusable). Re-grade after major changes.
 
-Last reviewed: 2026-07-25 (full codebase audit + fix pass).
+Last reviewed: 2026-08-09 (Phase 3 hardening pass; prior: Stitching V2, Smart Capture V2, gyro-fused orientation + light theme).
 
 ## Domains
 
 | Domain | Grade | Notes |
 |--------|-------|-------|
-| capture (math + targets) | **A** | Orientation snapshotted at shutter; init re-entrancy guard; sensor pause on lifecycle; haptic feedback; dead code removed |
+| capture (targets + quality) | **A** | Smart Capture V2: adaptive plan from documented FOV profile (no fixed 16-shot layout, zero azimuthal holes, zero pole gap, 24 targets on fallback profile), on-device quality gate (sharpness/brightness, hysteresis accept-after-3, Phase 3 recalibrated sharpness threshold 60→30 on photo-like room fixtures), single-target retake, crash-safe persisted session with Resume/Discard, movement warning, 1080p capture with 720p fallback, completion coverage gate; planner/quality/session all deterministically unit-tested |
+| stitching | **A-** | Stitching V2: metadata-driven equirect blend is the primary local stitch (roll-correct rays, bilinear sampling, coverage-aware weighted blending, per-frame exposure gains, honest coverage/seam/exposure/sharpness metrics); OpenCV rung ranked by measured quality via the extracted `openCvWins` policy (a worse candidate can never replace a better panorama), never trusted on status alone; cloud refinement carries per-frame metadata + camera profile, quality-gated before replacing the scene, and the mobile queue polls the AI job instead of assuming success ("retry refinement / use current panorama" UX). Phase 3: production-resolution blend benchmarked at ~5s for 24 frames in the test VM (~200ms/frame; AOT devices faster) — no optimization needed. Deterministic geometry/blend/quality tests on both sides. OpenCV rung and cloud runtime still need a real-device pass |
 | upload queue | **A** | Backoff bypass, stale-write, retry-default, and expired-presign bugs fixed; shared failure helper extracted |
 | local store / models | **A-** | Durable write-before-cache, corrupt-JSON quarantine, copyWith null-reset sentinel |
 | auth | **B+** | Stream error handling, tri-state restoring/splash, force-unwrap fixes, Google init race, loading feedback |
@@ -39,7 +40,7 @@ Last reviewed: 2026-07-25 (full codebase audit + fix pass).
 1. Google iOS OAuth client id missing from backend config / Info.plist placeholder (TD-002).
 2. Insta360 SDK linkage points incomplete by design (NDA) (TD-001).
 3. Cross-cutting `BackendApi` maps not always mapped to models at the boundary (TD-005).
-4. Sparse widget/integration tests for capture UI and full publish E2E (TD-007).
+4. Sparse widget/integration tests for capture UI and full publish E2E (TD-007) — capture state-machine/quality/session now have deterministic unit coverage; on-device behavior still needs a real-device pass.
 5. Deep link AASA coordination is backend-side (TD-004).
 6. `Room` model has no status field; room upload/stitch failures are not distinctly surfaceable (TD-011).
 7. No hotspot list/delete/edit UI; orphaned hotspots remain after room deletion (TD-012).

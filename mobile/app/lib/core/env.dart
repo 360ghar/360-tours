@@ -1,23 +1,59 @@
-// Build-time environment. Override with --dart-define; defaults point at prod.
+import 'package:flutter/services.dart' show rootBundle;
+
+// App environment, resolved in priority order:
+//   1. --dart-define flags (build time)
+//   2. the bundled `.env` asset (see pubspec.yaml), loaded by [load]
+//   3. hardcoded default
+// The bundled `.env` carries publishable Supabase keys only — see SECURITY.md.
 class Env {
-  static const apiBase = String.fromEnvironment(
-    'API_BASE',
-    defaultValue: 'https://api.360ghar.com/api/v1',
-  );
+  static const apiBaseDefine = String.fromEnvironment('API_BASE');
+  static const apiRootDefine = String.fromEnvironment('API_ROOT');
+  static const viewerBaseDefine = String.fromEnvironment('VIEWER_BASE');
+  static const supabaseUrlDefine = String.fromEnvironment('SUPABASE_URL');
+  static const supabaseAnonKeyDefine =
+      String.fromEnvironment('SUPABASE_ANON_KEY');
+
+  static Map<String, String>? _fileValues;
+
+  /// Read the bundled `.env` asset. Safe to call once before use; missing
+  /// asset (tests, old builds) just leaves file values empty.
+  static Future<void> load() async {
+    try {
+      final raw = await rootBundle.loadString('.env');
+      final values = <String, String>{};
+      for (final line in raw.split('\n')) {
+        final l = line.trim();
+        if (l.isEmpty || l.startsWith('#')) continue;
+        final eq = l.indexOf('=');
+        if (eq <= 0) continue;
+        values[l.substring(0, eq).trim()] = l.substring(eq + 1).trim();
+      }
+      _fileValues = values;
+    } catch (_) {
+      _fileValues = const {};
+    }
+  }
+
+  static String _resolve(String define, String key, String fallback) =>
+      define.isNotEmpty
+          ? define
+          : (_fileValues?[key] ?? fallback);
+
+  static String get apiBase => _resolve(
+      apiBaseDefine, 'API_BASE', 'https://api.360ghar.com/api/v1');
 
   /// Root of the API host (share links live at /v/{code}, not under /api/v1).
-  static const apiRoot = String.fromEnvironment(
-    'API_ROOT',
-    defaultValue: 'https://api.360ghar.com',
-  );
+  static String get apiRoot =>
+      _resolve(apiRootDefine, 'API_ROOT', 'https://api.360ghar.com');
 
-  static const viewerBase = String.fromEnvironment(
-    'VIEWER_BASE',
-    defaultValue: 'https://360viewer.360ghar.com',
-  );
+  static String get viewerBase => _resolve(
+      viewerBaseDefine, 'VIEWER_BASE', 'https://360viewer.360ghar.com');
 
-  static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-  static const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  static String get supabaseUrl =>
+      _resolve(supabaseUrlDefine, 'SUPABASE_URL', '');
+
+  static String get supabaseAnonKey =>
+      _resolve(supabaseAnonKeyDefine, 'SUPABASE_ANON_KEY', '');
 
   static bool get hasSupabase =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;

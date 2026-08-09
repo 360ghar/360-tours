@@ -1,35 +1,36 @@
 import 'package:flutter/material.dart';
 
-/// Dark, monochrome real-estate UI. One accent, used sparingly and tonally.
+/// Light, warm real-estate UI. One accent (brass), used sparingly and tonally.
+/// The capture overlay is the exception: it stays dark-on-camera by design.
 abstract final class AppColors {
-  static const background = Color(0xFF0A0A0A);
-  static const surface = Color(0xFF161616);
-  static const surfaceRaised = Color(0xFF1F1F1F);
-  static const ink = Color(0xFFF4F2EE);
-  static const inkDim = Color(0xFF9A9691);
-  static const inkFaint = Color(0xFF565350);
+  static const background = Color(0xFFFAF8F5);
+  static const surface = Color(0xFFFFFFFF);
+  static const surfaceRaised = Color(0xFFF2EFE9);
+  static const ink = Color(0xFF1D1B17);
+  static const inkDim = Color(0xFF6E6A61);
+  static const inkFaint = Color(0xFFA8A399);
 
   /// The single brand accent: warm brass. Never paired with a second hue.
-  static const accent = Color(0xFFD9B98C);
-  static const accentDim = Color(0xFF8A7457);
+  static const accent = Color(0xFFB08852);
+  static const accentDim = Color(0xFF8C6E41);
 
-  static const danger = Color(0xFFCF6A5E);
-  static const success = Color(0xFF9CB98A);
+  static const danger = Color(0xFFC25E4C);
+  static const success = Color(0xFF6E8F5A);
 }
 
 abstract final class AppTheme {
-  static ThemeData dark() {
-    const scheme = ColorScheme.dark(
+  static ThemeData light() {
+    const scheme = ColorScheme.light(
       surface: AppColors.background,
       surfaceContainer: AppColors.surface,
       surfaceContainerHigh: AppColors.surfaceRaised,
       primary: AppColors.accent,
-      onPrimary: Color(0xFF14100A),
+      onPrimary: Color(0xFFFFFDF9),
       secondary: AppColors.accentDim,
       onSurface: AppColors.ink,
       onSurfaceVariant: AppColors.inkDim,
       error: AppColors.danger,
-      outline: Color(0xFF2A2A2A),
+      outline: Color(0xFFE4E0D8),
     );
 
     final base = ThemeData(
@@ -80,7 +81,7 @@ abstract final class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surface,
+        fillColor: AppColors.surfaceRaised,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
@@ -94,7 +95,7 @@ abstract final class AppTheme {
         hintStyle: const TextStyle(color: AppColors.inkFaint),
       ),
       dividerTheme: const DividerThemeData(
-        color: Color(0xFF232323),
+        color: Color(0xFFE7E3DC),
         thickness: 1,
         space: 1,
       ),

@@ -7,9 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tours360/core/theme/app_theme.dart';
 
 void main() {
-  testWidgets('dark theme renders a scaffold', (tester) async {
+  testWidgets('light theme renders a scaffold', (tester) async {
     await tester.pumpWidget(MaterialApp(
-      theme: AppTheme.dark(),
+      theme: AppTheme.light(),
       home: const Scaffold(body: Text('360 Tours')),
     ));
     expect(find.text('360 Tours'), findsOneWidget);

@@ -12,5 +12,15 @@ This is a two-app monorepo: `web/` (React) and `mobile/` (Flutter). Each is self
 360-tours/
 ├── web/      # React 19 + TypeScript SPA — see web/CLAUDE.md
 ├── mobile/   # Flutter client — see mobile/AGENTS.md
+├── backend/  # LOCAL CHECKOUT of the canonical backend (gitignored, not tracked)
 └── .github/  # CI for both apps (path-filtered per app)
 ```
+
+## Backend source of truth
+
+The backend is a **separate repository**: `https://github.com/360ghar/360ghar-backend` (canonical, production). It is NOT part of the monorepo and is NOT tracked here (`backend/` is a gitignored local checkout for development).
+
+- **Production deploys from canonical `main`** (Railway). Do not assume the `backend/` checkout is production — always `git -C backend pull` (or reset) to canonical `main` before trusting it.
+- The old fork `chrg613/360ghar-backend` is **abandoned**. Do NOT create another backend fork inside this monorepo, do not restore removed fork features (Daytona, the `/lab` API, `spatial-connect`, `floor_plan_ai`, Cloudinary local fallback), and do not merge/cherry-pick fork commits — canonical has already absorbed the useful work.
+- Backend API contract used by both clients: see `backend/docs/repo-contract.json` and the live OpenAPI at `https://api.360ghar.com/api/v1/openapi.json`.
+- Backend local setup: `cd backend && uv sync --extra dev && cp .env.example .env.dev` (Cloudinary credentials are mandatory — canonical has no local-storage fallback).
