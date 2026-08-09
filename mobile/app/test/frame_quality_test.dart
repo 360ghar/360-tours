@@ -466,6 +466,29 @@ void main() {
         'f5-new.jpg',
       ], reason: 'the retake replaced the old frame');
       expect(s.state.framePaths.length, 3);
+      expect(
+        s.replacedPath,
+        'f5-old.jpg',
+        reason: 'the caller must delete the orphaned JPEG',
+      );
+    });
+
+    test('first capture of a target reports no replaced path', () {
+      final s = decideCapture(
+        state: const CaptureState(
+          phase: CapturePhase.aiming,
+          targetIndex: 3,
+          capturedTargets: [0, 1, 2],
+          framePaths: ['f0.jpg', 'f1.jpg', 'f2.jpg'],
+          frameOrientations: [oriented, oriented, oriented],
+        ),
+        path: 'f3.jpg',
+        orientation: oriented,
+        qualityResult: ok(),
+        duplicate: false,
+        consecutiveRejects: 0,
+      );
+      expect(s.replacedPath, isNull);
     });
   });
 

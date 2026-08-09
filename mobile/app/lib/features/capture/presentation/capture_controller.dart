@@ -424,6 +424,16 @@ class CaptureController extends Notifier<CaptureState> {
       _consecutiveRejects = decision.consecutiveRejects;
       state = decision.state;
       await _persistSession();
+      // A retake replaced an existing frame: remove the orphaned JPEG so
+      // repeated retakes do not leak full-resolution files.
+      final replaced = decision.replacedPath;
+      if (replaced != null && replaced != path) {
+        try {
+          File(replaced).deleteSync();
+        } catch (_) {
+          // best-effort cleanup; the session record no longer references it
+        }
+      }
     } catch (e) {
       if (!ref.mounted) return;
       state = state.copyWith(phase: CapturePhase.aiming);

@@ -149,7 +149,16 @@ class CaptureState {
 class CaptureDecision {
   final CaptureState state;
   final int consecutiveRejects;
-  const CaptureDecision(this.state, this.consecutiveRejects);
+
+  /// Path of the frame this accept REPLACED, if any (the caller deletes the
+  /// orphaned JPEG so retakes don't leak full-resolution files).
+  final String? replacedPath;
+
+  const CaptureDecision(
+    this.state,
+    this.consecutiveRejects, {
+    this.replacedPath,
+  });
 }
 
 /// True when [orientation] duplicates an already-captured frame belonging to
@@ -227,10 +236,13 @@ CaptureDecision decideCapture({
   final framePaths = [...state.framePaths];
   final frameOrientations = [...state.frameOrientations];
   final pos = capturedTargets.indexOf(targetIndex);
+  final String? replacedPath;
   if (pos >= 0) {
+    replacedPath = framePaths[pos];
     framePaths[pos] = path;
     frameOrientations[pos] = orientation;
   } else {
+    replacedPath = null;
     capturedTargets.add(targetIndex);
     framePaths.add(path);
     frameOrientations.add(orientation);
@@ -254,6 +266,7 @@ CaptureDecision decideCapture({
           needMoreShots: false,
         ),
         0,
+        replacedPath: replacedPath,
       );
     }
     // Last target captured but angles are still missing (skips): stay aiming
@@ -270,6 +283,7 @@ CaptureDecision decideCapture({
         needMoreShots: false,
       ),
       0,
+      replacedPath: replacedPath,
     );
   }
   return CaptureDecision(
@@ -284,5 +298,6 @@ CaptureDecision decideCapture({
       needMoreShots: false,
     ),
     0,
+    replacedPath: replacedPath,
   );
 }
