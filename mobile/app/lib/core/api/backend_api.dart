@@ -32,6 +32,17 @@ class BackendApi {
     return res.data ?? {};
   }
 
+  /// List a tour's scenes (used to reconcile an interrupted createScene
+  /// instead of duplicating the scene).
+  Future<List<Map<String, dynamic>>> getTourScenes(String tourId) async {
+    final res = await _dio.get<dynamic>('/tours/$tourId/scenes');
+    final data = res.data;
+    if (data is List) {
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return const [];
+  }
+
   Future<Map<String, dynamic>> publishTour(String tourId) async {
     final res = await _dio.post<Map<String, dynamic>>('/tours/$tourId/publish');
     return res.data ?? {};
@@ -143,9 +154,16 @@ class BackendApi {
   }
 
   /// Direct multipart upload to Cloudinary using the presigned params.
+  ///
+  /// A single long-lived client is reused (not one bare `Dio()` per call) so
+  /// TCP/TLS connection reuse makes the 24-frame upload faster, and the
+  /// generous send timeout covers large panoramas on slow mobile networks.
+  /// [onProgress] reports sent bytes (0..1) of the current file — the queue
+  /// surfaces it as honest byte progress, never a fake percentage.
   Future<void> uploadToCloudinary({
     required Map<String, dynamic> presigned,
     required File file,
+    void Function(double fraction)? onProgress,
   }) async {
     final form = FormData.fromMap({
       'file': await MultipartFile.fromFile(file.path),
@@ -155,14 +173,27 @@ class BackendApi {
       'public_id': presigned['public_id'],
     });
     // Bare Dio: Cloudinary must not receive our Authorization header.
-    await Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 60),
-        sendTimeout: const Duration(seconds: 60),
-      ),
-    ).post<dynamic>(presigned['signed_url'] as String, data: form);
+    await _cloudinaryDio.post<dynamic>(
+      presigned['signed_url'] as String,
+      data: form,
+      onSendProgress: onProgress == null
+          ? null
+          : (sent, total) {
+              if (total > 0) onProgress(sent / total);
+            },
+    );
   }
+
+  /// Shared Dio for direct-to-Cloudinary uploads. Cloudinary is slow to
+  /// acknowledge large uploads on mobile data: 15s connect, no fixed send
+  /// cap below 5 minutes, 60s receive.
+  static final Dio _cloudinaryDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      sendTimeout: const Duration(minutes: 5),
+      receiveTimeout: const Duration(seconds: 60),
+    ),
+  );
 
   Future<Map<String, dynamic>> confirmUpload(String uploadId) async {
     final res = await _dio.post<Map<String, dynamic>>(

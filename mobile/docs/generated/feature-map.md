@@ -15,7 +15,9 @@ Inventory of `app/lib` for agent navigation. Update when features are added, ren
 | `router.dart` | go_router |
 | `storage/local_store.dart` | JSON collections on disk |
 | `theme/app_theme.dart` | Theme + colors |
-| `upload/upload_queue.dart` | Resumable publish pipeline |
+| `upload/upload_queue.dart` | Resumable publish pipeline (publish-first; Phase 4) |
+| `upload/upload_queue_steps.dart` | Per-step pipeline logic (`UploadStepsRunner`) |
+| `upload/upload_retry_helpers.dart` | Failure/retry helpers (4xx policy, resume step) |
 
 ## features
 

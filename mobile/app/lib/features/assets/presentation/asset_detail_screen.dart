@@ -45,8 +45,8 @@ class _Body extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ready = asset.status == AssetStatus.ready;
-    final hasRemote = asset.remoteTourId != null;
+    final job = ref.watch(uploadJobProvider(asset.id)).value;
+    final viewable = asset.canViewTour;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
       children: [
@@ -78,81 +78,36 @@ class _Body extends ConsumerWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          _statusLine(asset),
+          _statusLine(job),
           style: const TextStyle(color: AppColors.inkDim),
         ),
-        if (asset.status == AssetStatus.failed) ...[
+        if (_showProgress(job)) ...[
           const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: () => _retryUpload(context, ref),
-            child: const Text('Retry upload'),
-          ),
+          _progressBar(job!),
         ],
-        if (asset.cloudStitchFailed && ready) ...[
+        if (_bannerWidget(context, ref) != null) ...[
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceRaised,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 18,
-                      color: AppColors.danger,
-                    ),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Panorama refinement failed.\nYour tour is still saved.',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.tonal(
-                      onPressed: () => _retryRefinement(context, ref),
-                      child: const Text('Retry refinement'),
-                    ),
-                    TextButton(
-                      onPressed: () => _useCurrentPanorama(context, ref),
-                      child: const Text('Use current panorama'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          _bannerWidget(context, ref)!,
         ],
         const SizedBox(height: 24),
         _Action(
           icon: Icons.threesixty,
           label: 'View 360°',
-          enabled: ready && hasRemote,
-          disabledHint: 'Available after upload completes',
+          enabled: viewable,
+          disabledHint: _viewDisabledHint(),
           onTap: () => context.push('/asset/${asset.id}/view'),
         ),
         _Action(
           icon: Icons.ios_share,
           label: 'Share link',
-          enabled: ready && hasRemote,
-          disabledHint: 'Available after upload completes',
+          enabled: viewable,
+          disabledHint: _viewDisabledHint(),
           onTap: () => context.push('/asset/${asset.id}/share'),
         ),
         _Action(
           icon: Icons.meeting_room_outlined,
           label: 'Rooms & hotspots',
-          enabled: hasRemote,
+          enabled: asset.remoteTourId != null,
           disabledHint: 'Available after upload completes',
           onTap: () => context.push('/asset/${asset.id}/rooms'),
         ),
@@ -161,21 +116,21 @@ class _Body extends ConsumerWidget {
           label: asset.model3dUrl != null
               ? 'View 3D world'
               : 'Generate 3D world',
-          enabled: ready && hasRemote,
-          disabledHint: 'Available after upload completes',
+          enabled: viewable,
+          disabledHint: 'Available after the tour is published',
           onTap: () => context.push('/asset/${asset.id}/generate3d'),
         ),
         _Action(
           icon: Icons.grid_on_outlined,
           label: 'Floor plan',
-          enabled: hasRemote,
+          enabled: asset.remoteTourId != null,
           disabledHint: 'Available after upload completes',
           onTap: () => context.push('/asset/${asset.id}/floorplan'),
         ),
         _Action(
           icon: Icons.query_stats,
           label: 'Analytics',
-          enabled: hasRemote,
+          enabled: asset.remoteTourId != null,
           disabledHint: 'Available after upload completes',
           onTap: () => context.push('/asset/${asset.id}/analytics'),
         ),
@@ -192,32 +147,157 @@ class _Body extends ConsumerWidget {
     );
   }
 
-  String _statusLine(ScanAsset asset) => switch (asset.status) {
-    AssetStatus.capturing => 'Capture incomplete',
-    AssetStatus.stitching =>
-      'Stitching and uploading. The share link is minutes away.',
-    AssetStatus.pendingCloudStitch => 'Uploading frames for cloud stitch…',
-    AssetStatus.processing3d => 'Building the 3D world…',
-    AssetStatus.ready => 'Ready to share',
-    AssetStatus.failed => 'Something went wrong.',
-  };
+  /// The user always knows what is happening: distinct wording for every
+  /// pipeline stage (spec §3, §14). A published tour stays "ready" regardless
+  /// of cloud refinement state.
+  String _statusLine(Map<String, dynamic>? job) {
+    if (asset.published) {
+      if (asset.cloudStitchPending) {
+        return 'Tour ready — improving panorama quality…';
+      }
+      if (asset.cloudStitchFailed) {
+        return 'Tour ready. Panorama refinement could not be completed.';
+      }
+      if (asset.status == AssetStatus.failed) {
+        return 'Tour is live; an upload job failed.';
+      }
+      return 'Virtual tour ready';
+    }
+    return switch (asset.status) {
+      AssetStatus.capturing => 'Capture incomplete',
+      AssetStatus.stitching => 'Preparing panorama…',
+      AssetStatus.uploading => _uploadingLine(job),
+      AssetStatus.pendingCloudStitch => 'Preparing panorama…',
+      AssetStatus.processing3d => 'Building the 3D world…',
+      AssetStatus.ready => 'Ready to share',
+      AssetStatus.failed =>
+        asset.panoramaPath != null && File(asset.panoramaPath!).existsSync()
+            ? 'Upload could not be completed. Your panorama is saved on this device.'
+            : 'Upload could not be completed.',
+    };
+  }
+
+  /// Exact sub-step while the pre-publish upload pipeline runs.
+  String _uploadingLine(Map<String, dynamic>? job) {
+    if (job == null) return 'Uploading your virtual tour…';
+    return switch (job['step']) {
+      'createTour' => 'Uploading — creating your tour…',
+      'presign' || 'putCloudinary' => 'Uploading panorama…',
+      'confirm' => 'Uploading — finalizing…',
+      'createScene' => 'Uploading — creating scene…',
+      'publish' => 'Publishing your tour…',
+      'uploadFrames' => 'Uploading source frames…',
+      'requestStitch' || 'pollStitch' => 'Refining panorama in the cloud…',
+      _ => 'Uploading your virtual tour…',
+    };
+  }
+
+  bool _showProgress(Map<String, dynamic>? job) {
+    if (job == null) return false;
+    return job['step'] == 'uploadFrames' ||
+        job['step'] == 'putCloudinary' ||
+        job['bytesFraction'] != null;
+  }
+
+  Widget _progressBar(Map<String, dynamic> job) {
+    final fraction = job['bytesFraction'] as double?;
+    final framesTotal = job['framesTotal'] as int? ?? 0;
+    final framesDone = (job['frameUrlsByIndex'] as Map?)?.length ?? 0;
+    if (job['step'] == 'uploadFrames' && framesTotal > 0) {
+      return _ProgressCard(
+        label: 'Uploading source frames',
+        fraction: framesDone / framesTotal,
+        detail: '$framesDone of $framesTotal frames',
+      );
+    }
+    final bytes = fraction ?? 0.0;
+    return _ProgressCard(
+      label: 'Uploading panorama',
+      fraction: bytes,
+      detail: '${(bytes * 100).round()}%',
+    );
+  }
+
+  Widget? _bannerWidget(BuildContext context, WidgetRef ref) {
+    if (asset.published && asset.cloudStitchPending) {
+      return _Banner(
+        icon: Icons.auto_awesome,
+        color: AppColors.accent,
+        title: 'Your tour is live — panorama refinement is running in the '
+            'background. You can view the tour now.',
+        actions: const [],
+      );
+    }
+    if (asset.published && asset.cloudStitchFailed) {
+      return _Banner(
+        icon: Icons.warning_amber_rounded,
+        color: AppColors.danger,
+        title: 'Your virtual tour is ready. Panorama refinement could not be '
+            'completed.',
+        actions: [
+          FilledButton.tonal(
+            onPressed: () => _retryRefinement(context, ref),
+            child: const Text('Retry refinement'),
+          ),
+          TextButton(
+            onPressed: () => _useCurrentPanorama(context, ref),
+            child: const Text('Use current panorama'),
+          ),
+        ],
+      );
+    }
+    if (!asset.published && asset.status == AssetStatus.failed) {
+      return _Banner(
+        icon: Icons.cloud_off,
+        color: AppColors.danger,
+        title: asset.panoramaPath != null &&
+                File(asset.panoramaPath!).existsSync()
+            ? 'Upload could not be completed. Your panorama is saved on this '
+                'device.'
+            : 'Upload could not be completed.',
+        actions: [
+          FilledButton.tonal(
+            onPressed: () => _retryUpload(context, ref),
+            child: const Text('Retry upload'),
+          ),
+        ],
+      );
+    }
+    if (asset.published && asset.status == AssetStatus.failed) {
+      return _Banner(
+        icon: Icons.cloud_off,
+        color: AppColors.danger,
+        title: 'Your tour is live, but an upload job failed.',
+        actions: [
+          FilledButton.tonal(
+            onPressed: () => _retryUpload(context, ref),
+            child: const Text('Retry upload'),
+          ),
+        ],
+      );
+    }
+    return null;
+  }
+
+  String _viewDisabledHint() {
+    if (asset.published) return '';
+    if (asset.status == AssetStatus.failed) {
+      return 'Upload failed — retry upload above';
+    }
+    return 'Available after the tour is published';
+  }
 
   Future<void> _retryUpload(BuildContext context, WidgetRef ref) async {
     final repo = ref.read(assetRepositoryProvider);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final retried = asset.copyWith(status: AssetStatus.stitching);
+      final retried = asset.copyWith(
+        status: asset.published ? asset.status : AssetStatus.stitching,
+      );
       await repo.saveAsset(retried);
       await repo.enqueueUpload(retried);
       messenger.showSnackBar(const SnackBar(content: Text('Retrying upload…')));
     } catch (e) {
-      // Best effort: revert the status so the UI does not claim an upload
-      // is in flight when the enqueue actually failed.
-      try {
-        await repo.saveAsset(asset.copyWith(status: AssetStatus.failed));
-      } catch (_) {
-        // Revert is best-effort; the original failed state is acceptable.
-      }
       messenger.showSnackBar(
         const SnackBar(content: Text('Could not retry the upload.')),
       );
@@ -250,7 +330,10 @@ class _Body extends ConsumerWidget {
 
   /// Dismisses the refinement-failure notice; the published local panorama
   /// stays live.
-  Future<void> _useCurrentPanorama(BuildContext context, WidgetRef ref) async {
+  Future<void> _useCurrentPanorama(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final repo = ref.read(assetRepositoryProvider);
     await repo.saveAsset(asset.copyWith(cloudStitchFailed: false));
   }
@@ -282,6 +365,104 @@ class _Body extends ConsumerWidget {
     if (confirmed != true) return;
     await ref.read(assetRepositoryProvider).deleteAsset(asset.id);
     if (context.mounted) context.go('/');
+  }
+}
+
+/// Honest, step-specific progress: real byte/percent data when the backend
+/// or dio provides it, otherwise an indeterminate bar with the step message.
+class _ProgressCard extends StatelessWidget {
+  const _ProgressCard({
+    required this.label,
+    required this.fraction,
+    required this.detail,
+  });
+
+  final String label;
+  final double fraction;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Text(
+                detail,
+                style: const TextStyle(
+                  color: AppColors.inkDim,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: fraction > 0 && fraction < 1 ? fraction : null,
+            backgroundColor: AppColors.surface,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Banner extends StatelessWidget {
+  const _Banner({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.actions,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: actions),
+        ],
+      ),
+    );
   }
 }
 

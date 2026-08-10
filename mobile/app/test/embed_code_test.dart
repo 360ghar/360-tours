@@ -5,15 +5,15 @@ import 'package:tours360/features/share/domain/embed_code.dart';
 void main() {
   test('embed url carries the viewer host and params', () {
     expect(generateEmbedUrl('t1'),
-        'https://360viewer.360ghar.com/embed/t1');
+        'https://tours.360ghar.com/embed/t1');
     expect(generateEmbedUrl('t1', minimal: true, branding: false),
-        'https://360viewer.360ghar.com/embed/t1?minimal=1&branding=0');
+        'https://tours.360ghar.com/embed/t1?minimal=1&branding=0');
   });
 
   test('iframe matches the web viewer generator attributes', () {
     final code = generateEmbedCode('t1');
     // Attribute values mirror 360-viewer/src/utils/embedCode.ts constants.
-    expect(code, contains('src="https://360viewer.360ghar.com/embed/t1"'));
+    expect(code, contains('src="https://tours.360ghar.com/embed/t1"'));
     expect(code, contains('width="100%"'));
     expect(code, contains('height="480"'));
     expect(
@@ -41,8 +41,9 @@ void main() {
       code: '',
       assetId: 'a',
       createdAt: DateTime(2026),
-      overrideUrl: 'https://360viewer.360ghar.com/view/tour-1',
+      overrideUrl: 'https://tours.360ghar.com/view/tour-1',
     );
-    expect(link.url, 'https://360viewer.360ghar.com/view/tour-1');
+    expect(link.url, 'https://tours.360ghar.com/view/tour-1');
   });
 }
+

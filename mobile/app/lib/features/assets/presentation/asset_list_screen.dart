@@ -238,6 +238,7 @@ class _StatusBadge extends StatelessWidget {
     final (label, color) = switch (status) {
       AssetStatus.capturing => ('Capturing', AppColors.inkDim),
       AssetStatus.stitching => ('Stitching…', AppColors.accent),
+      AssetStatus.uploading => ('Uploading…', AppColors.accent),
       AssetStatus.pendingCloudStitch => ('Uploading…', AppColors.accent),
       AssetStatus.processing3d => ('Building 3D…', AppColors.accent),
       AssetStatus.failed => ('Failed', AppColors.danger),

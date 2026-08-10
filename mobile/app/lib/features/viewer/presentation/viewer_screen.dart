@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -22,32 +24,76 @@ class ViewerScreen extends ConsumerStatefulWidget {
 }
 
 class _ViewerScreenState extends ConsumerState<ViewerScreen> {
+  /// Generous load budget for the SPA shell + tour fetch + panorama bytes;
+  /// a dead viewer host or a stalled request must surface an error instead
+  /// of an endless spinner.
+  static const _loadTimeout = Duration(seconds: 45);
+
   WebViewController? _controller;
   bool _loading = true;
   String? _error;
   String? _tourId;
   bool _loadStarted = false;
+  Timer? _timeout;
 
   void _load(String tourId) {
     _tourId = tourId;
+    // Single canonical viewer host (Env.viewerBase) — never fall back to a
+    // dead domain. Verified live: https://tours.360ghar.com.
     final url = widget.mode == '3d'
         ? '${Env.viewerBase}/view3d/$tourId'
         : '${Env.viewerBase}/embed/$tourId?minimal=1&branding=0';
+    debugPrint('[viewer] loading $url');
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(AppColors.background)
       ..setNavigationDelegate(NavigationDelegate(
+        onPageStarted: (_) {
+          if (mounted) {
+            setState(() {
+              _loading = true;
+              _error = null;
+            });
+          }
+          _timeout?.cancel();
+          _timeout = Timer(_loadTimeout, () {
+            if (!mounted) return;
+            setState(() {
+              _loading = false;
+              _error =
+                  'The tour is taking too long to load. Check your connection and try again.';
+            });
+          });
+        },
         onPageFinished: (_) {
+          _timeout?.cancel();
           if (mounted) setState(() => _loading = false);
+        },
+        onHttpError: (e) {
+          final code = e.response?.statusCode;
+          _fail(
+            'The tour could not be loaded (HTTP ${code ?? 'error'}). '
+            'Check your connection and try again.',
+          );
         },
         onWebResourceError: (e) {
           if (e.isForMainFrame ?? true) {
-            if (mounted) setState(() => _error = 'Could not load the tour.');
+            _fail('Could not load the tour. Check your connection and try '
+                'again.');
           }
         },
       ))
       ..loadRequest(Uri.parse(url));
     _controller = controller;
+  }
+
+  void _fail(String message) {
+    _timeout?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _error = message;
+    });
   }
 
   /// Starts loading the panorama once the remote tour id is known. Guarded so
@@ -70,6 +116,12 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
     );
   }
 
+  @override
+  void dispose() {
+    _timeout?.cancel();
+    super.dispose();
+  }
+
   void _retry() {
     final tourId = _tourId;
     if (tourId == null) return;
@@ -77,8 +129,9 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
       _error = null;
       _loading = true;
       _controller = null;
+      _loadStarted = false;
     });
-    _load(tourId);
+    _maybeStartLoad(tourId);
   }
 
   @override
@@ -114,18 +167,30 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
                   ),
                 if (_error != null)
                   Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_error!,
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.cloud_off,
+                            size: 40,
+                            color: AppColors.inkFaint,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            _error!,
+                            textAlign: TextAlign.center,
                             style:
-                                const TextStyle(color: AppColors.inkDim)),
-                        const SizedBox(height: 16),
-                        FilledButton.tonal(
-                          onPressed: _retry,
-                          child: const Text('Retry'),
-                        ),
-                      ],
+                                const TextStyle(color: AppColors.inkDim),
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton.tonal(
+                            onPressed: _retry,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -141,7 +206,7 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
     if (assetAsync.isLoading || asset == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_isStillUploading(asset.status)) {
+    if (_isStillUploading(asset.status) || asset.cloudStitchPending) {
       return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -151,6 +216,19 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
             Text('This tour is still uploading…',
                 style: TextStyle(color: AppColors.inkDim)),
           ],
+        ),
+      );
+    }
+    if (asset.status == AssetStatus.failed) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text(
+            'This tour could not be uploaded. Return to the scan and retry '
+            'the upload.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.inkDim),
+          ),
         ),
       );
     }
@@ -170,6 +248,7 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
   bool _isStillUploading(AssetStatus status) => switch (status) {
         AssetStatus.capturing => true,
         AssetStatus.stitching => true,
+        AssetStatus.uploading => true,
         AssetStatus.pendingCloudStitch => true,
         AssetStatus.processing3d => true,
         AssetStatus.ready => false,

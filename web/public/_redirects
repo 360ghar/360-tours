@@ -1,0 +1,8 @@
+# Netlify SPA fallback: the viewer is a client-side-routed Vite SPA. Without
+# these rewrites every deep link (/view/:id, /embed/:id, /view3d/:id) hits a
+# server-side 404 at the Netlify edge and the tour never loads. The SPA's own
+# routes render the proper "Tour not found"/"Tour not available" states for
+# invalid ids.
+/view/*      /index.html  200
+/embed/*     /index.html  200
+/view3d/*    /index.html  200

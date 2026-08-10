@@ -50,8 +50,9 @@ function getBaseUrl(): string {
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
-  // Fallback for SSR or tests
-  return import.meta.env.VITE_APP_URL || 'https://360viewer.360ghar.com';
+  // Fallback for SSR or tests. Canonical live viewer host (verified
+  // 2026-08-09); 360viewer.360ghar.com does not resolve in DNS.
+  return import.meta.env.VITE_APP_URL || 'https://tours.360ghar.com';
 }
 
 function getBackendBaseUrl(): string | null {

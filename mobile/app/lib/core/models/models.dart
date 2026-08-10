@@ -1,6 +1,8 @@
 // Shared domain models for 360 Tours. Single file on purpose — this is the
 // contract every feature codes against. Plain immutable classes, JSON maps.
 
+import 'dart:io';
+
 import '../env.dart';
 
 /// Sentinel used by `copyWith` so nullable fields can be reset to `null`
@@ -35,6 +37,9 @@ class FrameOrientation {
 enum AssetStatus {
   capturing,
   stitching,
+
+  /// Tour/scene/publish are being created remotely (pre-publish upload).
+  uploading,
   pendingCloudStitch,
   processing3d,
   ready,
@@ -114,6 +119,19 @@ class ScanAsset {
   /// published — the tour is still live, refinement is optional.
   final bool cloudStitchFailed;
 
+  /// True while cloud refinement (frame upload + stitch job) is running in
+  /// the background after the tour was published.
+  final bool cloudStitchPending;
+
+  /// Backend Scene id once the asset's first scene has been created
+  /// remotely. Persisted immediately so a crash mid-pipeline can reconcile
+  /// instead of duplicating the scene.
+  final String? remoteSceneId;
+
+  /// True once the backend tour has been published (publicly viewable).
+  /// The single source of truth for the "View 360 Tour" gate.
+  final bool published;
+
   const ScanAsset({
     required this.id,
     required this.ownerId,
@@ -134,7 +152,19 @@ class ScanAsset {
     this.frameTargetIndices,
     this.frameLowQuality,
     this.cloudStitchFailed = false,
+    this.cloudStitchPending = false,
+    this.remoteSceneId,
+    this.published = false,
   });
+
+  /// A tour is viewable when a published backend tour exists and a panorama
+  /// is available (remote URL, falling back to the local file). Cloud
+  /// refinement state is intentionally NOT part of this predicate: the local
+  /// panorama stays live whether refinement is running or failed.
+  bool get canViewTour =>
+      published &&
+      remoteTourId != null &&
+      (panoramaUrl != null || (panoramaPath != null && File(panoramaPath!).existsSync()));
 
   ScanAsset copyWith({
     String? name,
@@ -153,6 +183,9 @@ class ScanAsset {
     Object? frameTargetIndices = _sentinel,
     Object? frameLowQuality = _sentinel,
     bool? cloudStitchFailed,
+    bool? cloudStitchPending,
+    Object? remoteSceneId = _sentinel,
+    bool? published,
   }) => ScanAsset(
     id: id,
     ownerId: ownerId,
@@ -193,6 +226,11 @@ class ScanAsset {
         ? this.frameLowQuality
         : frameLowQuality as List<bool>?,
     cloudStitchFailed: cloudStitchFailed ?? this.cloudStitchFailed,
+    cloudStitchPending: cloudStitchPending ?? this.cloudStitchPending,
+    remoteSceneId: identical(remoteSceneId, _sentinel)
+        ? this.remoteSceneId
+        : remoteSceneId as String?,
+    published: published ?? this.published,
   );
 
   Map<String, dynamic> toJson() => {
@@ -215,6 +253,9 @@ class ScanAsset {
     'frameTargetIndices': frameTargetIndices,
     'frameLowQuality': frameLowQuality,
     'cloudStitchFailed': cloudStitchFailed,
+    'cloudStitchPending': cloudStitchPending,
+    'remoteSceneId': remoteSceneId,
+    'published': published,
   };
 
   factory ScanAsset.fromJson(Map<String, dynamic> json) => ScanAsset(
@@ -244,6 +285,9 @@ class ScanAsset {
     frameTargetIndices: (json['frameTargetIndices'] as List?)?.cast<int>(),
     frameLowQuality: (json['frameLowQuality'] as List?)?.cast<bool>(),
     cloudStitchFailed: json['cloudStitchFailed'] as bool? ?? false,
+    cloudStitchPending: json['cloudStitchPending'] as bool? ?? false,
+    remoteSceneId: json['remoteSceneId'] as String?,
+    published: json['published'] as bool? ?? false,
   );
 }
 

@@ -46,8 +46,12 @@ class Env {
   static String get apiRoot =>
       _resolve(apiRootDefine, 'API_ROOT', 'https://api.360ghar.com');
 
+  /// Canonical viewer host (verified live 2026-08-09: serves the deployed
+  /// Vite viewer; `/view/:id`, `/embed/:id`, `/view3d/:id`). The legacy
+  /// 360viewer.360ghar.com domain does NOT resolve in DNS and must never be
+  /// used as a fallback.
   static String get viewerBase => _resolve(
-      viewerBaseDefine, 'VIEWER_BASE', 'https://360viewer.360ghar.com');
+      viewerBaseDefine, 'VIEWER_BASE', 'https://tours.360ghar.com');
 
   static String get supabaseUrl =>
       _resolve(supabaseUrlDefine, 'SUPABASE_URL', '');

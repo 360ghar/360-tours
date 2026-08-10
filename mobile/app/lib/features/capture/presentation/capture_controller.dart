@@ -43,10 +43,9 @@ class CaptureController extends Notifier<CaptureState> {
   Timer? _movementClearTimer;
   FrameQualityGate _qualityGate = const FrameQualityGate();
 
-  /// The documented capture resolution: ~1080p (was 720p) — the OpenCV
-  /// stitch rung downscales to <=1600px long side anyway, so memory is
-  /// bounded regardless. Falls back to [ResolutionPreset.high] on devices
-  /// that cannot open veryHigh.
+  /// The documented capture resolution: ~1080p (was 720p). The OpenCV stitch
+  /// rung downscales to <=1600px long side anyway, so memory stays bounded;
+  /// falls back to [ResolutionPreset.high] when veryHigh cannot open.
   static const ResolutionPreset kCaptureResolution = ResolutionPreset.veryHigh;
   static const ResolutionPreset kCaptureResolutionFallback =
       ResolutionPreset.high;
@@ -68,8 +67,7 @@ class CaptureController extends Notifier<CaptureState> {
 
   Future<void> pauseCamera() async {
     // Pause the orientation stream too: sensors keep firing during
-    // AppLifecycleState.inactive otherwise, wasting battery and feeding
-    // stale samples into the stability window on resume.
+    // AppLifecycleState.inactive, wasting battery and feeding stale samples.
     _orientationSub?.pause();
     _movementSub?.pause();
     await camera?.dispose();
@@ -78,9 +76,8 @@ class CaptureController extends Notifier<CaptureState> {
   }
 
   Future<void> initialize() async {
-    // Re-entrancy guard: initialize() has many awaits and can be kicked off
-    // concurrently from _start(), the error-retry button and the app
-    // lifecycle callback. Only one run at a time.
+    // Re-entrancy guard: initialize() awaits many times and can be kicked
+    // off concurrently by _start(), the error-retry button and the lifecycle.
     if (_initializing) return;
     _initializing = true;
     try {
@@ -127,7 +124,7 @@ class CaptureController extends Notifier<CaptureState> {
               ),
             );
           } else {
-            // Unrecoverable (frames deleted, zero progress, or corrupt):
+            // Unrecoverable (frames deleted, zero progress, corrupt):
             // surface a clear message; a fresh session starts below.
             await _sessionStore!.clear();
             state = state.copyWith(
@@ -164,9 +161,8 @@ class CaptureController extends Notifier<CaptureState> {
       } else {
         _orientationSub ??= _engine!.stream.listen(_onOrientation);
         _movementSub ??= _engine!.movementStream.listen(_onMovement);
-        // Resume the subscription paused in pauseCamera(). A broadcast
-        // subscription buffers while paused, so resume rather than re-listen
-        // to avoid a stale-sample flood.
+        // Resume the subscription paused in pauseCamera() (broadcast subs
+        // buffer while paused, so resume rather than re-listen).
         if (_orientationSub!.isPaused) _orientationSub!.resume();
         if (_movementSub!.isPaused) _movementSub!.resume();
       }
@@ -175,9 +171,7 @@ class CaptureController extends Notifier<CaptureState> {
       if (state.phase == CapturePhase.initializing ||
           state.phase == CapturePhase.error) {
         state = state.copyWith(
-          // Hold the spinner while a resume offer/error is pending: the
-          // camera is live but aiming (and auto-capture) must not start
-          // before the user resolves it.
+          // Hold the spinner while a resume offer/error is pending.
           phase: (state.resumeOffer != null || state.resumeError != null)
               ? CapturePhase.initializing
               : CapturePhase.aiming,
@@ -376,13 +370,13 @@ class CaptureController extends Notifier<CaptureState> {
         try {
           await cam.setExposureMode(ExposureMode.locked);
         } catch (_) {
-          // best-effort; not all devices support exposure lock
+          // best-effort; some devices lack exposure lock
         }
         if (!ref.mounted) return;
       }
-      // Snapshot the shutter pose BEFORE the capture: takePicture() can take
-      // 100-500ms while the user keeps rotating, so reading _engine?.current
-      // afterwards would lag the actual frame pose and create stitch seams.
+      // Snapshot the shutter pose BEFORE the capture: takePicture() takes
+      // 100-500ms while the user keeps rotating, so a late _engine read
+      // would lag the actual frame pose and create stitch seams.
       final orientation =
           _engine?.current ?? const FrameOrientation(yaw: 0, pitch: 0);
       final shot = await cam.takePicture();
@@ -394,7 +388,6 @@ class CaptureController extends Notifier<CaptureState> {
       await File(shot.path).copy(path);
       if (!ref.mounted) return;
 
-      // Quality gate: single downscaled decode of the saved frame.
       final quality = _qualityGate.evaluate(path);
       final result = _qualityGate.assess(
         quality,
@@ -402,10 +395,9 @@ class CaptureController extends Notifier<CaptureState> {
       );
 
       // Duplicate-angle check: a frame aimed at a direction already captured
-      // for a DIFFERENT target (adjacent targets are >= spacing - 2*tolerance
-      // apart, so this only trips on a mis-tapped retake or sensor drift).
-      // Positional lookup: capturedTargets holds TARGET indices, which are
-      // not list positions once targets were skipped or retaken.
+      // for a DIFFERENT target (>= spacing - 2*tolerance apart, so this only
+      // trips on a mis-tapped retake or sensor drift). capturedTargets holds
+      // TARGET indices, not list positions once targets were skipped/retaken.
       final duplicate = isDuplicateCapture(
         capturedTargets: state.capturedTargets,
         frameOrientations: state.frameOrientations,
@@ -501,7 +493,7 @@ class CaptureController extends Notifier<CaptureState> {
     String ownerId, {
     String? intoAssetId,
   }) async {
-    // Read everything needed by the background work BEFORE any await —
+    // Read everything needed by the background work BEFORE any await -
     // this is an autoDispose notifier and `ref` dies with the screen.
     final assets = ref.read(assetRepositoryProvider);
     final queue = ref.read(uploadQueueProvider);
@@ -572,8 +564,7 @@ class CaptureController extends Notifier<CaptureState> {
     );
   }
 
-  Future<void> _persistSession() async {
-    final session = _session;
+  Future<void> _persistSession() async {    final session = _session;
     final store = _sessionStore;
     if (session == null || store == null) return;
     final s = state;
