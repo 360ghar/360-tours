@@ -87,6 +87,51 @@ export interface AIJobStatusResponse {
   };
 }
 
+// Deterministic tour quality report (Phase 5)
+export interface TourQualityReport {
+  version: number;
+  overall_score: number;
+  dimensions: Record<string, number | null>;
+  warnings: string[];
+}
+
+// Result of a spatial-generation job
+export interface SpatialGenerationResult {
+  tour_id: string;
+  generator: string;
+  quality: TourQualityReport;
+  graph: {
+    scene_count: number;
+    edge_count: number;
+    reciprocal_edge_count: number;
+    reachable_scenes: number;
+    start_scene_id?: string | null;
+  };
+  applied: {
+    created_hotspots: string[];
+    removed_ai_spatial_hotspots: number;
+  };
+  scenes: Array<{
+    scene_id?: string;
+    room_type?: string;
+    room_confidence?: number;
+    opening_count: number;
+    hotspot_count: number;
+  }>;
+  unanalysed_scene_ids: string[];
+}
+
+// Optional per-scene capture metrics (mobile client) for the quality score
+export interface CaptureMetricsEntry {
+  scene_id: string;
+  coverage_percent?: number;
+  seam_score?: number;
+  exposure_score?: number;
+  sharpness_score?: number;
+  low_quality?: { total: number; low_quality: number };
+  skipped?: { total: number; skipped: number };
+}
+
 /**
  * Generate a complete tour from uploaded images using AI
  */
@@ -162,6 +207,23 @@ export async function suggestTourHotspots(tourId: string): Promise<AIJobResponse
 }
 
 /**
+ * Generate AI spatial navigation for an existing tour (Phase 5).
+ *
+ * Runs scene classification + doorway detection + navigation graph + quality
+ * score in a tracked, retryable job. Retryable: calling again after a failed
+ * job regenerates safely (manual navigation is preserved).
+ */
+export async function requestSpatialGeneration(
+  tourId: string,
+  captureMetrics?: CaptureMetricsEntry[]
+): Promise<AIJobResponse> {
+  const response = await apiClient.post<AIJobResponse>(`/ai/tours/${tourId}/spatial`, 
+    captureMetrics && captureMetrics.length > 0 ? { capture_metrics: captureMetrics } : undefined
+  );
+  return response.data;
+}
+
+/**
  * Generate AI descriptions for scenes in a tour
  */
 export async function generateDescriptions(
@@ -215,6 +277,7 @@ export async function cancelJob(jobId: string): Promise<{ success: boolean }> {
  */
 export async function getJobs(options?: {
   status?: 'pending' | 'processing' | 'completed' | 'failed';
+  tour_id?: string;
   cursor?: string | null;
   limit?: number;
 }): Promise<CursorPaginatedResponse<AIProcessingJob>> {
@@ -262,6 +325,7 @@ export const aiApi = {
   analyzeScene,
   suggestHotspots,
   suggestTourHotspots,
+  requestSpatialGeneration,
   generateDescriptions,
   generateSceneDescription,
   generateReel,

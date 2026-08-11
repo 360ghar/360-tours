@@ -2,7 +2,7 @@
 
 Grades for product domains and shared layers. Scale: **A** (solid + tested) … **D** (incomplete / high risk) · **F** (broken / unusable). Re-grade after major changes.
 
-Last reviewed: 2026-08-10 (Phase 4 production E2E hardening; prior: Phase 3 device validation, Stitching V2, Smart Capture V2).
+Last reviewed: 2026-08-10 (Phase 5 AI spatial navigation; prior: Phase 4 production E2E hardening, Phase 3 device validation, Stitching V2, Smart Capture V2).
 
 ## Domains
 
@@ -10,10 +10,10 @@ Last reviewed: 2026-08-10 (Phase 4 production E2E hardening; prior: Phase 3 devi
 |--------|-------|-------|
 | capture (targets + quality) | **A** | Smart Capture V2: adaptive plan from documented FOV profile (no fixed 16-shot layout, zero azimuthal holes, zero pole gap, 24 targets on fallback profile), on-device quality gate (sharpness/brightness, hysteresis accept-after-3, Phase 3 recalibrated sharpness threshold 60→30 on photo-like room fixtures), single-target retake, crash-safe persisted session with Resume/Discard, movement warning, 1080p capture with 720p fallback, completion coverage gate; planner/quality/session all deterministically unit-tested |
 | stitching | **A-** | Stitching V2: metadata-driven equirect blend is the primary local stitch (roll-correct rays, bilinear sampling, coverage-aware weighted blending, per-frame exposure gains, honest coverage/seam/exposure/sharpness metrics); OpenCV rung ranked by measured quality via the extracted `openCvWins` policy (a worse candidate can never replace a better panorama), never trusted on status alone; cloud refinement carries per-frame metadata + camera profile, quality-gated before replacing the scene, and the mobile queue polls the AI job instead of assuming success ("retry refinement / use current panorama" UX). Phase 3: production-resolution blend benchmarked at ~5s for 24 frames in the test VM (~200ms/frame; AOT devices faster) — no optimization needed. Deterministic geometry/blend/quality tests on both sides. OpenCV rung and cloud runtime still need a real-device pass |
-| upload queue | **A+** | Phase 4: publish-first (tour live before refinement), bounded 2-wide frame concurrency with per-frame resume, idempotent createScene/stitchJobId, permanent-4xx fast-fail, 401 replay via interceptor, structured redacted logs, upload progress stream; restart/network/5xx/4xx/duplicate-avoidance covered by tests |
-| local store / models | **A-** | Durable write-before-cache, corrupt-JSON quarantine, copyWith null-reset sentinel |
+| upload queue | **A+** | Phase 4: publish-first (tour live before refinement), bounded 2-wide frame concurrency with per-frame resume, idempotent createScene/stitchJobId, permanent-4xx fast-fail, 401 replay via interceptor, structured redacted logs, upload progress stream; restart/network/5xx/4xx/duplicate-avoidance covered by tests. Phase 5: non-fatal AI spatial job (separate kind, publish-enqueued, crash-resume, retry-after-failure re-requests, drain-safe terminal step) — 9 dedicated tests incl. the AI-failure-keeps-tour-live regression |
+| local store / models | **A-** | Durable write-before-cache, corrupt-JSON quarantine, copyWith null-reset sentinel; Phase 5 capture-metrics + spatial-state fields round-trip tested, legacy JSON defaults safe |
 | auth | **B+** | Stream error handling, tri-state restoring/splash, force-unwrap fixes, Google init race, loading feedback |
-| assets list/detail | **A-** | Phase 4: correct viewability predicate (canViewTour — published + panorama, refinement-independent), step-specific status lines, honest progress (bytes/frames), specific retry actions, refinement-failure banner with tour still live |
+| assets list/detail | **A-** | Phase 4: correct viewability predicate (canViewTour — published + panorama, refinement-independent), step-specific status lines, honest progress (bytes/frames), specific retry actions, refinement-failure banner with tour still live. Phase 5: AI-spatial state lines + non-fatal failure banner with "Retry AI navigation" |
 | share / embed | **A** | Phase 4: canonical viewer host in embed codes and share fallback (dead 360viewer.360ghar.com removed); backend /v/{code} short-link contract verified |
 | viewer | **A-** | Phase 4: canonical viewer host, load timeout, onHttpError, resource-error retry UI, canViewTour gating; URL/error/retry covered by platform-fake widget tests |
 | tours (rooms/hotspots/floor) | **B-** | Delete confirmation, yaw/pitch clamp, web error handling, floor-plan CTA; Room status + hotspot mgmt still debt (TD-011/012) |

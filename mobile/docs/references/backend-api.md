@@ -38,6 +38,7 @@ Thin typed wrappers live in `app/lib/core/api/backend_api.dart`. Base URL: `Env.
 | Method | HTTP |
 |--------|------|
 | `getAiJob` | `GET /ai/jobs/{jobId}` |
+| `requestSpatialAi` | `POST /ai/tours/{tourId}/spatial` (Phase 5; optional `capture_metrics` body) |
 
 ## Auth helpers
 

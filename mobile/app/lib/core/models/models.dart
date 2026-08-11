@@ -128,6 +128,39 @@ class ScanAsset {
   /// instead of duplicating the scene.
   final String? remoteSceneId;
 
+  // ---- Capture quality metrics (persisted from the local stitch) ----------
+  // Feeds the backend tour-quality score (Phase 5) and the asset detail UI.
+
+  /// Equirect coverage % of the local blend.
+  final double? captureCoveragePercent;
+  /// Seam score 0..100 of the local blend (null when unmeasured).
+  final double? captureSeamScore;
+  /// Exposure score 0..100 of the local blend (null when unmeasured).
+  final double? captureExposureScore;
+  /// Sharpness score 0..100 of the local blend.
+  final double? captureSharpnessScore;
+  /// Number of captured frames (denominator for the low-quality ratio).
+  final int? captureFrameCount;
+  /// Frames flagged low-quality during capture.
+  final int? captureLowQualityCount;
+  /// Number of plan target angles (denominator for the skipped ratio).
+  final int? capturePlanTargetCount;
+  /// Target angles skipped during capture.
+  final int? captureSkippedCount;
+
+  // ---- AI spatial navigation state (Phase 5) ------------------------------
+
+  /// True while the backend AI spatial-navigation job is running. The tour
+  /// is live either way — this never blocks viewing.
+  final bool spatialAiPending;
+
+  /// True when AI navigation could not be generated. Non-fatal: manual
+  /// navigation and the published tour remain available.
+  final bool spatialAiFailed;
+
+  /// Deterministic tour quality score (0..100) from the AI job result.
+  final double? spatialQualityScore;
+
   /// True once the backend tour has been published (publicly viewable).
   /// The single source of truth for the "View 360 Tour" gate.
   final bool published;
@@ -154,6 +187,17 @@ class ScanAsset {
     this.cloudStitchFailed = false,
     this.cloudStitchPending = false,
     this.remoteSceneId,
+    this.captureCoveragePercent,
+    this.captureSeamScore,
+    this.captureExposureScore,
+    this.captureSharpnessScore,
+    this.captureFrameCount,
+    this.captureLowQualityCount,
+    this.capturePlanTargetCount,
+    this.captureSkippedCount,
+    this.spatialAiPending = false,
+    this.spatialAiFailed = false,
+    this.spatialQualityScore,
     this.published = false,
   });
 
@@ -185,6 +229,17 @@ class ScanAsset {
     bool? cloudStitchFailed,
     bool? cloudStitchPending,
     Object? remoteSceneId = _sentinel,
+    Object? captureCoveragePercent = _sentinel,
+    Object? captureSeamScore = _sentinel,
+    Object? captureExposureScore = _sentinel,
+    Object? captureSharpnessScore = _sentinel,
+    Object? captureFrameCount = _sentinel,
+    Object? captureLowQualityCount = _sentinel,
+    Object? capturePlanTargetCount = _sentinel,
+    Object? captureSkippedCount = _sentinel,
+    bool? spatialAiPending,
+    bool? spatialAiFailed,
+    Object? spatialQualityScore = _sentinel,
     bool? published,
   }) => ScanAsset(
     id: id,
@@ -230,6 +285,35 @@ class ScanAsset {
     remoteSceneId: identical(remoteSceneId, _sentinel)
         ? this.remoteSceneId
         : remoteSceneId as String?,
+    captureCoveragePercent: identical(captureCoveragePercent, _sentinel)
+        ? this.captureCoveragePercent
+        : (captureCoveragePercent as num?)?.toDouble(),
+    captureSeamScore: identical(captureSeamScore, _sentinel)
+        ? this.captureSeamScore
+        : (captureSeamScore as num?)?.toDouble(),
+    captureExposureScore: identical(captureExposureScore, _sentinel)
+        ? this.captureExposureScore
+        : (captureExposureScore as num?)?.toDouble(),
+    captureSharpnessScore: identical(captureSharpnessScore, _sentinel)
+        ? this.captureSharpnessScore
+        : (captureSharpnessScore as num?)?.toDouble(),
+    captureFrameCount: identical(captureFrameCount, _sentinel)
+        ? this.captureFrameCount
+        : captureFrameCount as int?,
+    captureLowQualityCount: identical(captureLowQualityCount, _sentinel)
+        ? this.captureLowQualityCount
+        : captureLowQualityCount as int?,
+    capturePlanTargetCount: identical(capturePlanTargetCount, _sentinel)
+        ? this.capturePlanTargetCount
+        : capturePlanTargetCount as int?,
+    captureSkippedCount: identical(captureSkippedCount, _sentinel)
+        ? this.captureSkippedCount
+        : captureSkippedCount as int?,
+    spatialAiPending: spatialAiPending ?? this.spatialAiPending,
+    spatialAiFailed: spatialAiFailed ?? this.spatialAiFailed,
+    spatialQualityScore: identical(spatialQualityScore, _sentinel)
+        ? this.spatialQualityScore
+        : (spatialQualityScore as num?)?.toDouble(),
     published: published ?? this.published,
   );
 
@@ -255,6 +339,17 @@ class ScanAsset {
     'cloudStitchFailed': cloudStitchFailed,
     'cloudStitchPending': cloudStitchPending,
     'remoteSceneId': remoteSceneId,
+    'captureCoveragePercent': captureCoveragePercent,
+    'captureSeamScore': captureSeamScore,
+    'captureExposureScore': captureExposureScore,
+    'captureSharpnessScore': captureSharpnessScore,
+    'captureFrameCount': captureFrameCount,
+    'captureLowQualityCount': captureLowQualityCount,
+    'capturePlanTargetCount': capturePlanTargetCount,
+    'captureSkippedCount': captureSkippedCount,
+    'spatialAiPending': spatialAiPending,
+    'spatialAiFailed': spatialAiFailed,
+    'spatialQualityScore': spatialQualityScore,
     'published': published,
   };
 
@@ -287,6 +382,17 @@ class ScanAsset {
     cloudStitchFailed: json['cloudStitchFailed'] as bool? ?? false,
     cloudStitchPending: json['cloudStitchPending'] as bool? ?? false,
     remoteSceneId: json['remoteSceneId'] as String?,
+    captureCoveragePercent: (json['captureCoveragePercent'] as num?)?.toDouble(),
+    captureSeamScore: (json['captureSeamScore'] as num?)?.toDouble(),
+    captureExposureScore: (json['captureExposureScore'] as num?)?.toDouble(),
+    captureSharpnessScore: (json['captureSharpnessScore'] as num?)?.toDouble(),
+    captureFrameCount: json['captureFrameCount'] as int?,
+    captureLowQualityCount: json['captureLowQualityCount'] as int?,
+    capturePlanTargetCount: json['capturePlanTargetCount'] as int?,
+    captureSkippedCount: json['captureSkippedCount'] as int?,
+    spatialAiPending: json['spatialAiPending'] as bool? ?? false,
+    spatialAiFailed: json['spatialAiFailed'] as bool? ?? false,
+    spatialQualityScore: (json['spatialQualityScore'] as num?)?.toDouble(),
     published: json['published'] as bool? ?? false,
   );
 }

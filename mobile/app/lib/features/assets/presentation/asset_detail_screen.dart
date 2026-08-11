@@ -158,6 +158,12 @@ class _Body extends ConsumerWidget {
       if (asset.cloudStitchFailed) {
         return 'Tour ready. Panorama refinement could not be completed.';
       }
+      if (asset.spatialAiPending) {
+        return 'Tour ready — building AI navigation…';
+      }
+      if (asset.spatialAiFailed) {
+        return 'Tour ready. AI navigation could not be generated.';
+      }
       if (asset.status == AssetStatus.failed) {
         return 'Tour is live; an upload job failed.';
       }
@@ -219,6 +225,29 @@ class _Body extends ConsumerWidget {
   }
 
   Widget? _bannerWidget(BuildContext context, WidgetRef ref) {
+    if (asset.published && asset.spatialAiPending) {
+      return _Banner(
+        icon: Icons.auto_awesome,
+        color: AppColors.accent,
+        title: 'Your tour is live — AI navigation is being generated in the '
+            'background. You can view the tour now.',
+        actions: const [],
+      );
+    }
+    if (asset.published && asset.spatialAiFailed) {
+      return _Banner(
+        icon: Icons.warning_amber_rounded,
+        color: AppColors.danger,
+        title: 'Your virtual tour is ready. AI navigation could not be '
+            'generated — manual navigation still works.',
+        actions: [
+          FilledButton.tonal(
+            onPressed: () => _retrySpatialAi(context, ref),
+            child: const Text('Retry AI navigation'),
+          ),
+        ],
+      );
+    }
     if (asset.published && asset.cloudStitchPending) {
       return _Banner(
         icon: Icons.auto_awesome,
@@ -336,6 +365,27 @@ class _Body extends ConsumerWidget {
   ) async {
     final repo = ref.read(assetRepositoryProvider);
     await repo.saveAsset(asset.copyWith(cloudStitchFailed: false));
+  }
+
+  /// Re-queues the non-fatal AI spatial-navigation job (a failed spatial job
+  /// resumes at a fresh request). The published tour is unaffected either way.
+  Future<void> _retrySpatialAi(BuildContext context, WidgetRef ref) async {
+    final queue = ref.read(uploadQueueProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await queue.retry(asset.id);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'AI navigation queued — you will be notified when it finishes.',
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not queue AI navigation.')),
+      );
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {

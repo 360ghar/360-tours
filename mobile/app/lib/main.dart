@@ -49,6 +49,7 @@ Future<void> main() async {
     saveAsset: (a) => assets.saveAsset(a),
     getRooms: (assetId) => assets.getRooms(assetId),
     saveRoom: (r) => assets.saveRoom(r),
+    spatialAiEnabled: Env.spatialAiEnabled,
   );
   assets = LocalAssetRepository(
     store,

@@ -23,11 +23,16 @@ class StitchPipeline {
   /// Stitch a full asset scan and enqueue its upload. A naive local stitch
   /// is shipped immediately and the raw frames ride along so the backend can
   /// re-stitch with the cloud (metadata-driven) stitcher.
+  ///
+  /// [skippedTargetCount]/[planTargetCount] (when known) are persisted as
+  /// capture metrics and later reported to the backend tour-quality score.
   Future<void> stitchAndUpload(
     AssetRepository assets,
     ScanAsset asset,
     String outDir, {
     bool preferDevice = true,
+    int? skippedTargetCount,
+    int? planTargetCount,
   }) async {
     try {
       final result = await const StitcherService().stitch(
@@ -49,12 +54,25 @@ class StitchPipeline {
         'sharp=${m.sharpnessScore} overall=${m.overallScore} '
         'warnings=${m.warnings.join('; ')}',
       );
+      // Phase 5: persist the measured capture metrics so the asset can
+      // report them to the backend tour-quality score (and the UI can show
+      // them). Ratios use the captured-frame counts, never fabricated.
+      final lowQualityCount = asset.frameLowQuality?.where((q) => q).length ?? 0;
+      final frameCount = asset.framePaths.length;
       final stitched = asset.copyWith(
         status: result.naive
             ? AssetStatus.pendingCloudStitch
             : AssetStatus.stitching,
         panoramaPath: result.panoramaPath,
         thumbnailPath: result.thumbnailPath,
+        captureCoveragePercent: m.coveragePercent,
+        captureSeamScore: m.seamScore,
+        captureExposureScore: m.exposureScore,
+        captureSharpnessScore: m.sharpnessScore,
+        captureFrameCount: frameCount > 0 ? frameCount : null,
+        captureLowQualityCount: lowQualityCount > 0 ? lowQualityCount : null,
+        capturePlanTargetCount: planTargetCount,
+        captureSkippedCount: skippedTargetCount,
       );
       await assets.saveAsset(stitched);
       await assets.enqueueUpload(stitched);

@@ -5,11 +5,13 @@ Failure modes and recovery for the capture → publish pipeline.
 ## Upload queue
 
 `core/upload/upload_queue.dart` (+ `upload_queue_steps.dart`,
-`upload_retry_helpers.dart`) is a **persistent, sequential** pipeline:
+`upload_queue_spatial.dart`, `upload_retry_helpers.dart`) is a **persistent,
+sequential** pipeline:
 
 ```text
 createTour → presign → putCloudinary → confirm → createScene → publish
            → (background) uploadFrames → requestStitch → pollStitch
+           → (separate job, Phase 5) requestSpatial → pollSpatial
 ```
 
 - Job step is persisted after each success (`LocalStore` collection `upload_queue`).
@@ -22,20 +24,30 @@ createTour → presign → putCloudinary → confirm → createScene → publish
   publish succeeds; cloud refinement runs in the background and its failure
   (`cloudStitchFailed`) never marks the asset failed and never hides the
   View button (`ScanAsset.canViewTour`).
+- **AI spatial navigation (Phase 5):** a SEPARATE `kind: 'spatial'` job is
+  enqueued at publish (gated by `UploadQueue.spatialAiEnabled`, production
+  default on via `Env.spatialAiEnabled`). It runs independently of cloud
+  refinement, polls the backend job (`requestSpatial → pollSpatial → done |
+  spatialFailed`), persists `spatialJobId` for crash-resume, and is strictly
+  NON-FATAL: give-up or backend failure sets `spatialAiFailed` (retryable via
+  "Retry AI navigation" → `queue.retry`), never `AssetStatus.failed`, and the
+  published tour + manual navigation remain available. Retry after a
+  definitive failure clears the stale `spatialJobId` and requests a fresh job.
 - **Frame uploads:** bounded concurrency 2 (never 24 parallel), each frame
   persists its own success keyed by ORIGINAL frame index
   (`frameUrlsByIndex`), so a restart/retry never re-uploads completed frames.
-- **Idempotency:** server-generated ids (tourId, sceneId, stitchJobId) are
-  persisted immediately; createScene reconciles against the tour's scenes by
-  image_url before POSTing; a stored stitchJobId resumes polling instead of
-  re-requesting; publish is idempotent server-side (short_code minted once).
+- **Idempotency:** server-generated ids (tourId, sceneId, stitchJobId,
+  spatialJobId) are persisted immediately; createScene reconciles against the
+  tour's scenes by image_url before POSTing; a stored stitch/spatial job id
+  resumes polling instead of re-requesting; publish is idempotent server-side
+  (short_code minted once).
 - **Failure policy:** permanent 4xx (except 408/429) fail immediately with the
   backend detail; 5xx/network errors retry with exponential backoff (5s→5min
   cap), then give up. 401 is replayed exactly once by the api_client
   interceptor (single-flight refresh).
 - Structured logs: `[backend] [cloudinary] [publish] [upload]
-  [stitch-refinement]` with asset/tour/scene ids, step, attempt and elapsed —
-  never JWTs, secrets or full signed URLs.
+  [stitch-refinement] [spatial-ai]` with asset/tour/scene ids, step, attempt
+  and elapsed — never JWTs, secrets or full signed URLs.
 
 **Rule:** Do not bypass the queue with one-off multi-parallel uploads from UI for the main panorama path.
 
@@ -60,8 +72,8 @@ Asset/scene remote deletes are best-effort (errors swallowed in places). Local d
 
 ## Agent validation
 
-When changing queue or stitch:
+When changing queue or stitch or the spatial-ai job:
 
 ```sh
-cd app && flutter test test/upload_queue_test.dart test/stitcher_test.dart test/orientation_engine_test.dart
+cd app && flutter test test/upload_queue_test.dart test/stitcher_test.dart test/orientation_engine_test.dart test/spatial_ai_queue_test.dart
 ```

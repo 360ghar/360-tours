@@ -37,6 +37,7 @@ class UploadStepsRunner {
     required this.pollInterval,
     required this.progress,
     required this.pump,
+    this.spatialAiEnabled = false,
   });
 
   static const _collection = 'upload_queue';
@@ -60,6 +61,10 @@ class UploadStepsRunner {
   final Duration Function(int polls) pollInterval;
   final StreamController<UploadProgress> progress;
   final Future<void> Function() pump;
+
+  /// When true, a non-fatal `kind: 'spatial'` AI job is enqueued at publish
+  /// (Phase 5). Injectable so tests can exercise both paths.
+  final bool spatialAiEnabled;
 
   /// Re-reads the asset and applies [apply] to the FRESH copy before saving,
   /// so fields changed concurrently are not clobbered. False when gone.
@@ -112,6 +117,33 @@ class UploadStepsRunner {
       cloudStitchPending: false,
     ),
   );
+
+  /// Enqueues the non-fatal AI spatial-navigation job (idempotent: one job
+  /// per asset; a done/failed spatial job is only re-run on manual retry).
+  ///
+  /// Runs from INSIDE the drain (the publish step), so the pump must not be
+  /// awaited — the drain self-discovers the new job on its next pass.
+  Future<void> _enqueueSpatialJob(ScanAsset asset) async {
+    final jobs = await store.readAll(_collection);
+    final existing = jobs.any(
+      (j) => j['assetId'] == asset.id && j['kind'] == 'spatial',
+    );
+    if (existing) return;
+    await store.upsert(_collection, {
+      'id': 'spatial-${asset.id}',
+      'kind': 'spatial',
+      'assetId': asset.id,
+      'step': 'requestSpatial',
+      'attempts': 0,
+      'startedAtMs': DateTime.now().millisecondsSinceEpoch,
+    });
+    log(
+      {'assetId': asset.id, 'step': 'publish'},
+      'spatial-ai',
+      'spatial navigation job enqueued',
+    );
+    unawaited(pump());
+  }
 
   /// Shared failure handler: bumps attempts, records the error and step,
   /// then either marks the job failed (after [_maxAttempts], running
@@ -273,6 +305,12 @@ class UploadStepsRunner {
           job['step'] = 'uploadFrames';
         } else {
           job['step'] = 'done';
+        }
+        // Phase 5: AI spatial navigation runs as a SEPARATE non-fatal job —
+        // independent of cloud refinement, never blocking the live tour.
+        if (spatialAiEnabled && job['spatialEnqueued'] != true) {
+          job['spatialEnqueued'] = true;
+          await _enqueueSpatialJob(asset);
         }
       // The local stitch was the naive blend: ship the raw frames and ask
       // the backend to re-stitch with the metadata-driven cloud stitcher.

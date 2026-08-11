@@ -229,6 +229,25 @@ class BackendApi {
     return Map<String, dynamic>.from((m['job'] as Map?) ?? m);
   }
 
+  /// Phase 5: request AI spatial navigation (doorway detection + navigation
+  /// graph + quality score) for a published tour. Non-fatal — the tour is
+  /// live regardless of the outcome. [captureMetrics] (per-scene local
+  /// panorama metrics + capture counts) feeds the deterministic quality
+  /// score before cloud-stitch reports exist.
+  Future<Map<String, dynamic>> requestSpatialAi(
+    String tourId, {
+    List<Map<String, dynamic>>? captureMetrics,
+  }) async {
+    final res = await _dio.post<Map<String, dynamic>>(
+      '/ai/tours/$tourId/spatial',
+      data: captureMetrics == null || captureMetrics.isEmpty
+          ? null
+          : {'capture_metrics': captureMetrics},
+    );
+    final m = res.data ?? {};
+    return Map<String, dynamic>.from((m['job'] as Map?) ?? m);
+  }
+
   Future<Map<String, dynamic>> getAiJob(String jobId) async {
     final res = await _dio.get<Map<String, dynamic>>('/ai/jobs/$jobId');
     final m = res.data ?? {};

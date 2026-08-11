@@ -14,10 +14,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui';
 import { toursApi } from '@/api';
-import { QUERY_KEYS, ROUTES } from '@/constants';
+import { QUERY_KEYS, ROUTES, ENABLE_AI_FEATURES } from '@/constants';
 import { formatCompactNumber, formatDate } from '@/utils/format';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { ShareModal } from '@/components/features/ShareModal';
+import { SpatialNavigationPanel } from '@/components/features/ai/SpatialNavigationPanel';
 
 export function TourViewPage() {
   const { id } = useParams<{ id: string }>();
@@ -161,6 +162,15 @@ export function TourViewPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Spatial Navigation (Phase 5) — non-blocking */}
+      {ENABLE_AI_FEATURES && id && (
+        <SpatialNavigationPanel
+          tourId={id}
+          sceneCount={scenes?.length || 0}
+          tourStatus={tour.status}
+        />
+      )}
 
       {/* Scenes Grid */}
       {sortedScenes && sortedScenes.length > 0 && (

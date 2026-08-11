@@ -62,7 +62,7 @@ import {
   AvatarFallback,
   Separator,
 } from '@/components/ui';
-import { toursApi } from '@/api';
+import { toursApi, aiApi } from '@/api';
 import { QUERY_KEYS, ROUTES } from '@/constants';
 import { useTourEditorStore, useCollaborationStore, confirm } from '@/stores';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
@@ -266,6 +266,14 @@ export function TourEditPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
       toast('success', 'Your tour is now live and can be shared.', { title: 'Tour published' });
+      // Phase 5: kick off AI spatial navigation automatically after publish.
+      // Non-blocking and non-fatal — if it fails the published tour stands.
+      void aiApi
+        .requestSpatialGeneration(id!)
+        .catch(() => undefined)
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.AI_JOBS, 'spatial', id] });
+        });
     },
     onError: () => {
       toast('error', 'Something went wrong. Please try again.', { title: 'Failed to publish' });

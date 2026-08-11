@@ -7,6 +7,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../api/backend_api.dart';
 import '../models/models.dart';
 import '../storage/local_store.dart';
+import 'upload_queue_spatial.dart';
 import 'upload_queue_steps.dart';
 import 'upload_retry_helpers.dart';
 
@@ -59,7 +60,8 @@ class UploadProgress {
 /// ponytail: single-flight sequential queue — plenty for one-panorama jobs.
 ///
 /// The per-step logic lives in [UploadStepsRunner] (upload_queue_steps.dart)
-/// so both files stay under the ARCHITECTURE.md size limits.
+/// and [SpatialAiStepsRunner] (upload_queue_spatial.dart) so these files
+/// stay under the ARCHITECTURE.md size limits.
 class UploadQueue {
   UploadQueue(
     this._store,
@@ -70,6 +72,7 @@ class UploadQueue {
     this._saveRoom,
     Stream<List<ConnectivityResult>>? connectivityChanges,
     Duration Function(int polls)? pollInterval,
+    this.spatialAiEnabled = false,
   }) : _pollInterval = pollInterval ?? _defaultPollInterval {
     _steps = UploadStepsRunner(
       store: _store,
@@ -80,6 +83,15 @@ class UploadQueue {
       saveRoom: _saveRoom,
       pollInterval: _pollInterval,
       progress: _progress,
+      pump: pump,
+      spatialAiEnabled: spatialAiEnabled,
+    );
+    _spatialSteps = SpatialAiStepsRunner(
+      store: _store,
+      api: _api,
+      getAsset: _getAsset,
+      saveAsset: _saveAsset,
+      pollInterval: _pollInterval,
       pump: pump,
     );
     (connectivityChanges ?? Connectivity().onConnectivityChanged).listen(
@@ -104,7 +116,13 @@ class UploadQueue {
   final Future<List<Room>> Function(String assetId)? _getRooms;
   final Future<void> Function(Room room)? _saveRoom;
 
+  /// When true (production default), a non-fatal AI spatial-navigation job
+  /// is enqueued at publish. Injectable so tests and opt-out builds disable
+  /// it without touching the pipeline.
+  final bool spatialAiEnabled;
+
   late final UploadStepsRunner _steps;
+  late final SpatialAiStepsRunner _spatialSteps;
 
   /// Live progress for the UI (byte progress cannot be persisted).
   final _progress = StreamController<UploadProgress>.broadcast();
@@ -117,7 +135,7 @@ class UploadQueue {
       .watch(_collection)
       .map(
         (items) => items
-            .where((j) => j['assetId'] == assetId && j['kind'] != 'room')
+            .where((j) => j['assetId'] == assetId && j['kind'] == 'asset')
             .map(Map<String, dynamic>.from)
             .firstOrNull,
       );
@@ -145,13 +163,15 @@ class UploadQueue {
         .where(
           (j) =>
               j['assetId'] == asset.id &&
-              j['kind'] != 'room' &&
+              j['kind'] == 'asset' &&
               j['step'] != 'done',
         )
         .map(Map<String, dynamic>.from)
         .firstOrNull;
     if (existing != null) {
-      if (existing['step'] == 'failed' || existing['step'] == 'stitchFailed') {
+      if (existing['step'] == 'failed' ||
+          existing['step'] == 'stitchFailed' ||
+          existing['step'] == 'spatialFailed') {
         existing['step'] = resumeStepFor(existing);
         existing['attempts'] = 0;
         existing['lastError'] = null;
@@ -219,7 +239,8 @@ class UploadQueue {
               (j) =>
                   j['step'] != 'done' &&
                   j['step'] != 'failed' &&
-                  j['step'] != 'stitchFailed',
+                  j['step'] != 'stitchFailed' &&
+                  j['step'] != 'spatialFailed',
             )
             .map(Map<String, dynamic>.from)
             .toList();
@@ -253,6 +274,7 @@ class UploadQueue {
       return StepResult.progressed;
     }
     if (job['kind'] == 'room') return _advanceRoomStep(job, asset);
+    if (job['kind'] == 'spatial') return _advanceSpatialJob(job, asset);
     // The step being processed (the switch mutates job['step']): progress
     // events must name the step that ran, not the next one.
     final stepBefore = job['step'] as String;
@@ -291,6 +313,33 @@ class UploadQueue {
     }
   }
 
+  /// AI spatial navigation is a SEPARATE, non-fatal job kind: it never
+  /// blocks the published tour, never marks the asset failed, and its
+  /// failure is surfaced only as `spatialAiFailed` (retryable).
+  Future<StepResult> _advanceSpatialJob(
+    Map<String, dynamic> job,
+    ScanAsset asset,
+  ) async {
+    try {
+      final outcome = await _spatialSteps.runSpatialStep(job, asset);
+      if (outcome != null) return outcome;
+      job['attempts'] = 0;
+      await _store.upsert(_collection, job);
+      return StepResult.progressed;
+    } catch (e) {
+      final gaveUp = await _steps.failWithBackoff(
+        job,
+        e,
+        onGiveUp: () async {
+          await _spatialSteps.markSpatialAiFailed(asset);
+          job['step'] = 'spatialFailed';
+          await _store.upsert(_collection, job);
+        },
+      );
+      return gaveUp ? StepResult.progressed : StepResult.errored;
+    }
+  }
+
   void _emitProgress(Map<String, dynamic> job, String step) {
     if (step == 'done' || step == 'failed' || step == 'stitchFailed') return;
     final uploaded = Map<String, dynamic>.from(
@@ -305,14 +354,17 @@ class UploadQueue {
     ));
   }
 
-  /// Manual retry for a failed job (upload failure or cloud refinement).
+  /// Manual retry for a failed job (upload failure, cloud refinement, or
+  /// AI spatial navigation).
   Future<void> retry(String assetId) async {
     final jobs = await _store.readAll(_collection);
     final failed = jobs
         .where(
           (j) =>
               j['assetId'] == assetId &&
-              (j['step'] == 'failed' || j['step'] == 'stitchFailed'),
+              (j['step'] == 'failed' ||
+                  j['step'] == 'stitchFailed' ||
+                  j['step'] == 'spatialFailed'),
         )
         .map(Map<String, dynamic>.from)
         .toList();

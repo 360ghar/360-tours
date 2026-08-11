@@ -15,9 +15,10 @@ Inventory of `app/lib` for agent navigation. Update when features are added, ren
 | `router.dart` | go_router |
 | `storage/local_store.dart` | JSON collections on disk |
 | `theme/app_theme.dart` | Theme + colors |
-| `upload/upload_queue.dart` | Resumable publish pipeline (publish-first; Phase 4) |
-| `upload/upload_queue_steps.dart` | Per-step pipeline logic (`UploadStepsRunner`) |
-| `upload/upload_retry_helpers.dart` | Failure/retry helpers (4xx policy, resume step) |
+| `upload/upload_queue.dart` | Resumable publish pipeline (publish-first; Phase 4) + non-fatal AI spatial job routing (Phase 5) |
+| `upload/upload_queue_steps.dart` | Per-step pipeline logic (`UploadStepsRunner`) + spatial-job enqueue at publish |
+| `upload/upload_queue_spatial.dart` | AI spatial-navigation steps (`SpatialAiStepsRunner`; Phase 5) |
+| `upload/upload_retry_helpers.dart` | Failure/retry helpers (4xx policy, resume step incl. spatial) |
 
 ## features
 
@@ -46,6 +47,7 @@ Inventory of `app/lib` for agent navigation. Update when features are added, ren
 | File | Covers |
 |------|--------|
 | `capture_controller_test.dart` | Capture controller skip/retake-missing |
+| `spatial_ai_queue_test.dart` | AI spatial job: enqueue at publish, non-fatal failure, retry, resume, metrics payload, model round-trip (Phase 5) |
 | `capture_plan_test.dart` | Planner coverage/overlap/bounds invariants |
 | `capture_session_test.dart` | Session persist/resume/discard |
 | `capture_targets_test.dart` | Target geometry + default plan |

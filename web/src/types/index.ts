@@ -461,6 +461,7 @@ export type AIJobType =
   | 'description_generation'
   | 'quality_checks'
   | 'generate_reel'
+  | 'spatial_generation'
   // Accepted for older backend responses while the API is converging on the PRD names.
   | 'hotspot_placement'
   | 'optimization';

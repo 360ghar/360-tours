@@ -37,6 +37,21 @@ bool isPermanent4xx(Object e) {
 /// `presign` once a tour already exists (duplicate-tour risk), and
 /// re-presigns when the stored Cloudinary signature is likely expired.
 String resumeStepFor(Map<String, dynamic> job) {
+  // AI spatial navigation (Phase 5): non-fatal, independently retryable.
+  // A definitively-failed spatial job clears its job id and re-requests a
+  // fresh one; a stored job id from a crash resumes polling instead.
+  if (job['kind'] == 'spatial') {
+    if (job['step'] == 'spatialFailed' || job['lastStep'] == 'spatialFailed') {
+      job.remove('spatialJobId');
+      job.remove('pollCount');
+      return 'requestSpatial';
+    }
+    if (job['spatialJobId'] != null) {
+      job['pollCount'] = 0;
+      return 'pollSpatial';
+    }
+    return 'requestSpatial';
+  }
   // Cloud refinement is optional: a failed/abandoned stitch job re-requests
   // a fresh stitch (frames stay uploaded; the local panorama is live).
   if (job['step'] == 'stitchFailed') {

@@ -12,6 +12,8 @@ class Env {
   static const supabaseUrlDefine = String.fromEnvironment('SUPABASE_URL');
   static const supabaseAnonKeyDefine =
       String.fromEnvironment('SUPABASE_ANON_KEY');
+  static const spatialAiEnabledDefine =
+      String.fromEnvironment('SPATIAL_AI_ENABLED');
 
   static Map<String, String>? _fileValues;
 
@@ -61,4 +63,10 @@ class Env {
 
   static bool get hasSupabase =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+
+  /// Phase 5: automatically trigger AI spatial navigation after publish.
+  /// Defaults to ENABLED; set `SPATIAL_AI_ENABLED=false` to opt out. The AI
+  /// job is strictly non-fatal (the published tour never depends on it).
+  static bool get spatialAiEnabled =>
+      _resolve(spatialAiEnabledDefine, 'SPATIAL_AI_ENABLED', 'true') != 'false';
 }

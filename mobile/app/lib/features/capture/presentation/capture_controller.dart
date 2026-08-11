@@ -511,8 +511,7 @@ class CaptureController extends Notifier<CaptureState> {
     _sessionDir = null;
     await _sessionStore?.clear();
 
-    if (intoAssetId != null) {
-      final room = Room(
+    if (intoAssetId != null) {      final room = Room(
         id: const Uuid().v4(),
         assetId: intoAssetId,
         name: cleanName,
@@ -560,6 +559,8 @@ class CaptureController extends Notifier<CaptureState> {
         asset,
         outDir,
         preferDevice: preferDevice,
+        skippedTargetCount: state.skippedTargets.length,
+        planTargetCount: state.total,
       ),
     );
   }
@@ -589,7 +590,6 @@ class CaptureController extends Notifier<CaptureState> {
     _session = next;
     await store.save(next);
   }
-
   Future<void> _teardown() async {
     await _orientationSub?.cancel();
     await _movementSub?.cancel();
