@@ -65,8 +65,14 @@ class Env {
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 
   /// Phase 5: automatically trigger AI spatial navigation after publish.
-  /// Defaults to ENABLED; set `SPATIAL_AI_ENABLED=false` to opt out. The AI
-  /// job is strictly non-fatal (the published tour never depends on it).
+  /// Currently DISABLED by default — the backend endpoint
+  /// (`POST /ai/tours/{tourId}/spatial`) is not deployed to production yet
+  /// (canonical `main` lacks it; it exists only on
+  /// `feat/metadata-stitching-v2`), so enabling it 404s the AI job on every
+  /// publish. Set `SPATIAL_AI_ENABLED=true` to opt in once the backend
+  /// deploys. The AI job is strictly non-fatal (the published tour never
+  /// depends on it).
   static bool get spatialAiEnabled =>
-      _resolve(spatialAiEnabledDefine, 'SPATIAL_AI_ENABLED', 'true') != 'false';
+      _resolve(spatialAiEnabledDefine, 'SPATIAL_AI_ENABLED', 'false') ==
+      'true';
 }

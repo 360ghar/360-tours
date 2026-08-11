@@ -85,9 +85,9 @@ class _Body extends ConsumerWidget {
           const SizedBox(height: 12),
           _progressBar(job!),
         ],
-        if (_bannerWidget(context, ref) != null) ...[
+        if (_bannerWidget(context, ref, job) != null) ...[
           const SizedBox(height: 12),
-          _bannerWidget(context, ref)!,
+          _bannerWidget(context, ref, job)!,
         ],
         const SizedBox(height: 24),
         _Action(
@@ -224,7 +224,11 @@ class _Body extends ConsumerWidget {
     );
   }
 
-  Widget? _bannerWidget(BuildContext context, WidgetRef ref) {
+  Widget? _bannerWidget(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic>? job,
+  ) {
     if (asset.published && asset.spatialAiPending) {
       return _Banner(
         icon: Icons.auto_awesome,
@@ -284,6 +288,7 @@ class _Body extends ConsumerWidget {
             ? 'Upload could not be completed. Your panorama is saved on this '
                 'device.'
             : 'Upload could not be completed.',
+        detail: _jobError(job),
         actions: [
           FilledButton.tonal(
             onPressed: () => _retryUpload(context, ref),
@@ -297,6 +302,7 @@ class _Body extends ConsumerWidget {
         icon: Icons.cloud_off,
         color: AppColors.danger,
         title: 'Your tour is live, but an upload job failed.',
+        detail: _jobError(job),
         actions: [
           FilledButton.tonal(
             onPressed: () => _retryUpload(context, ref),
@@ -306,6 +312,14 @@ class _Body extends ConsumerWidget {
       );
     }
     return null;
+  }
+
+  /// Last recorded pipeline error (HTTP status + backend detail), so a
+  /// failing upload is diagnosable from the device without logs.
+  String? _jobError(Map<String, dynamic>? job) {
+    final error = job?['lastError'] as String?;
+    if (error == null || error.isEmpty) return null;
+    return error.length > 200 ? error.substring(0, 200) : error;
   }
 
   String _viewDisabledHint() {
@@ -478,11 +492,13 @@ class _Banner extends StatelessWidget {
     required this.color,
     required this.title,
     required this.actions,
+    this.detail,
   });
 
   final IconData icon;
   final Color color;
   final String title;
+  final String? detail;
   final List<Widget> actions;
 
   @override
@@ -508,6 +524,13 @@ class _Banner extends StatelessWidget {
               ),
             ],
           ),
+          if (detail != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              detail!,
+              style: const TextStyle(color: AppColors.inkDim, fontSize: 12.5),
+            ),
+          ],
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 8, children: actions),
         ],

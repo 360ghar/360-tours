@@ -14,9 +14,12 @@ doorways, and produces a deterministic tour-quality score.
 This client's role:
 
 1. **Trigger** — `UploadQueue` enqueues a separate `kind: 'spatial'` job at
-   the `publish` step (gated by `UploadQueue.spatialAiEnabled`, production
-   default on via `Env.spatialAiEnabled`; `SPATIAL_AI_ENABLED=false` opts
-   out).
+   the `publish` step (gated by `UploadQueue.spatialAiEnabled`; production
+   default OFF via `Env.spatialAiEnabled` until `POST /ai/tours/{tour_id}/
+   spatial` is deployed to canonical `main` — set `SPATIAL_AI_ENABLED=true`
+   to opt in once it is; the endpoint currently exists only on backend
+   `feat/metadata-stitching-v2`, so the default-off protects uploads from
+   404ing the non-fatal AI job).
 2. **Report capture metrics** — the local stitch's measured metrics
    (coverage, seam, exposure, sharpness) plus honest capture counts
    (frames, low-quality frames, plan targets, skipped angles) are persisted
