@@ -6,6 +6,7 @@ import { sessionReady, supabaseAuth, type SupabaseSession } from '@/lib/supabase
 import { setLastAuthMethod, type AuthMethod } from '@/lib/lastAuthMethod';
 import { ERROR_MESSAGES } from '@/constants';
 import { mapSupabaseAuthError } from '@/lib/authErrors';
+import { purgeAccountCaches } from '@/lib/accountCache';
 
 /**
  * Determine whether an error represents a genuine authentication failure
@@ -89,6 +90,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     method: AuthMethod,
     identifier: string
   ) => {
+    // A different account signing in on the same tab must not see the cached
+    // data of the previous one.
+    const previous = get().user;
+    if (previous && previous.id !== auth.user.id) purgeAccountCaches();
     set({
       user: auth.user,
       tokens: auth.tokens,
@@ -108,15 +113,49 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     commitCompletedSession(auth, method, identifier);
   };
 
+  /**
+   * Compensation for a failed login. Only a genuine auth error (bad
+   * credentials, 401/403, session expired) justifies destroying the session:
+   * the credential step may already have succeeded and a transient 5xx/network
+   * failure from `completeSession`'s GET /users/me must NOT revoke a valid
+   * refresh token — the same invariant `fetchCurrentUser`/`checkAuth` hold.
+   */
+  const discardSessionOnAuthError = async (error: unknown) => {
+    // Supabase rejects credentials with its own AuthApiError (marked
+    // `__isAuthError`, status 400/401/403 — never wrapped in an Axios
+    // `.response`), so accept those alongside the shared isAuthError check.
+    const supabaseStatus =
+      error && typeof error === 'object' && '__isAuthError' in error
+        ? (error as { status?: unknown }).status
+        : undefined;
+    const isCredentialRejection =
+      typeof supabaseStatus === 'number' && supabaseStatus >= 400 && supabaseStatus < 500;
+
+    if (!isAuthError(error) && !isCredentialRejection) {
+      console.error(
+        'Transient error completing login (session preserved):',
+        error instanceof Error ? error.message : error
+      );
+      return;
+    }
+    try {
+      await authApi.logout();
+    } catch {
+      // Best-effort: clear any dangling partial session after failed login.
+    }
+    get().clearAuth();
+  };
+
   return {
     user: null,
     tokens: null,
     isAuthenticated: false,
-    // Boot starts in the "checking" state: AuthInitializer gates the whole
-    // router on isLoading, so the first render must not mount the router (and
-    // let ProtectedRoute redirect to /login) before checkAuth has settled the
-    // restored session. Initial false here caused a cold-load race that
-    // dumped users with valid sessions on the login page.
+    // Boot starts in the "checking" state so auth-dependent routes can wait for
+    // checkAuth to settle the restored session: ProtectedRoute and RootRedirect
+    // render a PageLoader while this is true. Initial false here caused a
+    // cold-load race that dumped users with valid sessions on the login page.
+    // The router itself is NOT gated on this — public viewer routes must render
+    // without waiting on the session (see App.tsx).
     isLoading: true,
     error: null,
 
@@ -134,12 +173,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         commitCompletedSession(auth, 'phone_password', phone);
       } catch (error) {
         const message = mapSupabaseAuthError(error);
-        try {
-          await authApi.logout();
-        } catch {
-          // Best-effort: clear any dangling partial session after failed login.
-        }
-        get().clearAuth();
+        await discardSessionOnAuthError(error);
         set({ isLoading: false, error: message });
         throw error;
       }
@@ -156,12 +190,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         await completeSupabaseSession(session, passwordMethodFor(channel), identifier);
       } catch (error) {
         const message = mapSupabaseAuthError(error);
-        try {
-          await authApi.logout();
-        } catch {
-          // Best-effort: clear any dangling partial session after failed login.
-        }
-        get().clearAuth();
+        await discardSessionOnAuthError(error);
         set({ isLoading: false, error: message });
         throw error;
       }
@@ -370,6 +399,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     },
 
     clearAuth: () => {
+      // Sign-out purges the account's caches: query data and account-scoped storage.
+      // An anonymous visit has nothing to purge, and clearing the query cache then
+      // would drop the public viewer's in-flight request.
+      const wasSignedIn = get().user !== null || get().tokens !== null;
+      if (wasSignedIn) purgeAccountCaches();
       set({
         user: null,
         tokens: null,

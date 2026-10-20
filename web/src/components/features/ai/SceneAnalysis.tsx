@@ -34,7 +34,7 @@ import type { Scene } from '@/types';
 import type { SceneAnalysisResult } from '@/api';
 import { AIJobStatus } from './AIJobStatus';
 import { AiRetryError } from './AiRetryError';
-import { aiApi } from '@/api';
+import { aiApi, readSceneAnalysis } from '@/api';
 
 interface SceneAnalysisProps {
   open: boolean;
@@ -113,13 +113,8 @@ export function SceneAnalysis({
   const handleJobComplete = (job: unknown, result: unknown) => {
     setIsAnalyzing(false);
     setJobId(null);
-    if (
-      result &&
-      typeof result === 'object' &&
-      'analysis' in result &&
-      Array.isArray((result as { analysis: unknown }).analysis)
-    ) {
-      const analysis = (result as { analysis: SceneAnalysisResult[] }).analysis;
+    const analysis = readSceneAnalysis(result);
+    if (analysis) {
       setAnalysisResults(analysis);
       // Select all scenes by default
       setSelectedScenes(new Set(analysis.map(a => a.scene_id)));

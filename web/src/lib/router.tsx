@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { lazy, Suspense, Component } from 'react';
 import type { ReactNode } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, redirect } from 'react-router-dom';
 import { ROUTES } from '@/constants';
 import { Button, PageLoader } from '@/components/ui';
 import { useAuthStore } from '@/stores/authStore';
@@ -66,18 +66,6 @@ const EmbedTourPage = lazy(() =>
 const LocalTourPage = lazy(() =>
   import('@/pages/LocalTourPage').then(m => ({ default: m.LocalTourPage }))
 );
-const SplatLabPage = lazy(() =>
-  import('@/pages/lab/SplatLabPage').then(m => ({ default: m.SplatLabPage }))
-);
-const DollhouseEditorPage = lazy(() =>
-  import('@/pages/lab/DollhouseEditorPage').then(m => ({ default: m.DollhouseEditorPage }))
-);
-const KitchenTourPage = lazy(() =>
-  import('@/pages/lab/KitchenTourPage').then(m => ({ default: m.KitchenTourPage }))
-);
-const View3DPage = lazy(() =>
-  import('@/pages/View3DPage').then(m => ({ default: m.View3DPage }))
-);
 
 // 404 page (eagerly loaded — users hitting unknown routes shouldn't see a spinner)
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -119,6 +107,11 @@ function LazyPage({ children }: { children: ReactNode }) {
  */
 function RootRedirect({ children }: { children: ReactNode }) {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  const isLoading = useAuthStore(s => s.isLoading);
+  // The router now mounts before checkAuth settles (public routes must not wait
+  // on it), so `/` has to wait here instead — otherwise a returning user sees a
+  // flash of the marketing page before the dashboard redirect.
+  if (isLoading) return <PageLoader message="Loading..." />;
   if (isAuthenticated) return <Navigate to={ROUTES.DASHBOARD} replace />;
   return <>{children}</>;
 }
@@ -252,35 +245,8 @@ export const router = createBrowserRouter([
         ),
       },
 
-      {
-        path: ROUTES.LAB,
-        element: (
-          <LazyPage>
-            <SplatLabPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.LAB_EDITOR,
-        element: (
-          <LazyPage>
-            <DollhouseEditorPage />
-          </LazyPage>
-        ),
-      },
-      {
-        path: ROUTES.LAB_KITCHEN_TOUR,
-        element: (
-          <LazyPage>
-            <KitchenTourPage />
-          </LazyPage>
-        ),
-      },
-
     ],
   },
-
-  // OAuth (Google) redirect landing — no chrome, runs the code exchange
   {
     path: ROUTES.AUTH_CALLBACK,
     element: <AuthCallbackPage />,
@@ -296,14 +262,10 @@ export const router = createBrowserRouter([
     ),
   },
 
-  // Minimal 3D world viewer (no auth required)
+  // Legacy 3D link (the 3D viewer was removed): send old shared URLs to the 360 viewer.
   {
-    path: ROUTES.VIEW_3D,
-    element: (
-      <LazyPage>
-        <View3DPage />
-      </LazyPage>
-    ),
+    path: '/view3d/:id',
+    loader: ({ params }) => redirect(`/view/${encodeURIComponent(params.id ?? '')}`),
   },
 
   // Embedded tour (no chrome, just viewer)

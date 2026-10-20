@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import type { Tour, Scene } from '@/types';
+import type { TourWithScenes, Scene } from '@/types';
 
 interface TourEditorState {
   // Current tour being edited
-  currentTour: Tour | null;
+  currentTour: TourWithScenes | null;
   currentSceneId: string | null;
   selectedHotspotId: string | null;
 
@@ -19,14 +19,14 @@ interface TourEditorState {
   // their feature components and are intentionally not exposed here as drafts.
   hasUnsavedChanges: boolean;
   pendingChanges: {
-    tour?: Partial<Tour>;
+    tour?: Partial<TourWithScenes>;
   };
 }
 
 interface TourEditorActions {
   // Tour actions
-  setCurrentTour: (tour: Tour | null) => void;
-  updateTourDraft: (updates: Partial<Tour>) => void;
+  setCurrentTour: (tour: TourWithScenes | null) => void;
+  updateTourDraft: (updates: Partial<TourWithScenes>) => void;
 
   // Scene actions
   setCurrentScene: (sceneId: string | null) => void;
@@ -67,7 +67,7 @@ const initialState: TourEditorState = {
   isEditing: false,
   isPreviewing: false,
   showScenePanel: true,
-  showHotspotPanel: false,
+  showHotspotPanel: true,
   showSettingsPanel: false,
   hasUnsavedChanges: false,
   pendingChanges: {},

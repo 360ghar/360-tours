@@ -1,20 +1,15 @@
 import { apiClient, extractData } from './client';
-import type { User } from '@/types';
-
-export interface UpdateProfileData {
-  full_name?: string;
-  phone?: string;
-  date_of_birth?: string;
-  notification_settings?: Record<string, boolean>;
-  privacy_settings?: Record<string, boolean>;
-  preferences?: Record<string, unknown>;
-}
+import type { User, UserUpdate } from '@/types';
 
 export const usersApi = {
   /**
-   * Update the current user's profile
+   * Update the current user's profile (`PUT /users/me`, returns `SelfUser`).
+   * Send only the keys that changed: an unknown key, `email` or an empty
+   * `phone` is rejected, and `notification_settings` takes the four contract
+   * keys (`push_notifications`, `email_notifications`, `sms_notifications`,
+   * `promotional_emails`), merged into the stored settings.
    */
-  async updateProfile(data: UpdateProfileData): Promise<User> {
+  async updateProfile(data: UserUpdate): Promise<User> {
     const response = await apiClient.put<User>('/users/me', data);
     return extractData(response);
   },
@@ -25,15 +20,9 @@ export const usersApi = {
   async uploadProfileImage(file: File): Promise<User> {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await apiClient.post<User>(
-      '/users/me/profile-image',
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
-    );
+    // Content-Type is intentionally unset: the request interceptor clears it
+    // for FormData so the browser emits the multipart boundary.
+    const response = await apiClient.post<User>('/users/me/profile-image', formData);
     return extractData(response);
   },
 };

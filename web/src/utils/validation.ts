@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from '@/constants';
+import { API_LIMITS } from '@/lib/api/limits.gen';
 
 // Email validation (optional for registration)
 export const emailSchema = z.string().email('Please enter a valid email address');
@@ -68,74 +69,96 @@ export const resetPasswordSchema = z
     path: ['confirm_password'],
   });
 
-// Tour creation/update schema
+// Tour creation/update schema. `status` is not a field: a new tour is a draft and
+// publish/unpublish change the status. Length limits come from the OpenAPI schema.
 export const tourSchema = z.object({
   title: z
     .string()
     .min(1, 'Title is required')
-    .max(255, 'Title must be less than 255 characters'),
-  description: z.string().max(5000, 'Description must be less than 5000 characters').optional(),
-  status: z.enum(['draft', 'published', 'archived']).optional(),
+    .max(API_LIMITS.tour.titleMax, `Title must be at most ${API_LIMITS.tour.titleMax} characters`),
+  description: z
+    .string()
+    .max(
+      API_LIMITS.tour.descriptionMax,
+      `Description must be at most ${API_LIMITS.tour.descriptionMax} characters`
+    )
+    .optional(),
   visibility: z.enum(['private', 'unlisted', 'public']).optional(),
   settings: z
     .object({
-      auto_rotate: z.boolean().optional(),
-      auto_rotate_speed: z.number().min(0.1).max(10).optional(),
-      show_navbar: z.boolean().optional(),
-      enable_fullscreen: z.boolean().optional(),
-      enable_vr: z.boolean().optional(),
+      auto_rotate: z.boolean().nullish(),
+      auto_rotate_speed: z.number().min(0.1).max(10).nullish(),
+      show_navbar: z.boolean().nullish(),
+      enable_fullscreen: z.boolean().nullish(),
+      enable_vr: z.boolean().nullish(),
     })
     .optional(),
 });
 
-// Scene schema
+// Scene schema. `order_index` is server-owned (reorder through `/scenes/reorder`) and
+// the metadata key is `scene_metadata`.
 export const sceneSchema = z.object({
-  title: z.string().max(255, 'Title must be less than 255 characters').optional(),
-  description: z.string().max(2000, 'Description must be less than 2000 characters').optional(),
-  order_index: z.number().int().min(0).optional(),
-  metadata: z
+  title: z
+    .string()
+    .max(API_LIMITS.scene.titleMax, `Title must be at most ${API_LIMITS.scene.titleMax} characters`)
+    .optional(),
+  description: z
+    .string()
+    .max(
+      API_LIMITS.scene.descriptionMax,
+      `Description must be at most ${API_LIMITS.scene.descriptionMax} characters`
+    )
+    .optional(),
+  scene_metadata: z
     .object({
       initial_view: z
         .object({
-          yaw: z.number(),
-          pitch: z.number(),
-          zoom: z.number().optional(),
+          yaw: z.number().min(-180).max(180),
+          pitch: z.number().min(-90).max(90),
+          zoom: z.number().min(0).max(100).optional(),
         })
         .optional(),
     })
     .optional(),
 });
 
-// Hotspot schema
+// Hotspot schema. Limits are the backend limits (a longer value is a 422).
 export const hotspotSchema = z.object({
   type: z.enum(['navigation', 'info', 'audio', 'video', 'link', 'custom']),
   position: z.object({
     yaw: z.number().min(-180).max(180),
     pitch: z.number().min(-90).max(90),
-    radius: z.number().positive().optional(),
   }),
-  target_scene_id: z.string().uuid().optional().nullable(),
-  title: z.string().max(255).optional(),
-  description: z.string().max(2000).optional(),
-  icon: z.string().optional(),
+  target_scene_id: z.string().max(36).optional().nullable(),
+  title: z.string().max(API_LIMITS.hotspot.titleMax).optional().nullable(),
+  description: z.string().max(API_LIMITS.hotspot.descriptionMax).optional().nullable(),
+  icon: z.string().max(API_LIMITS.hotspot.iconMax).optional().nullable(),
+  icon_name: z.string().max(API_LIMITS.hotspot.iconNameMax).optional().nullable(),
   icon_color: z
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format')
+    .optional()
+    .nullable(),
+  icon_size: z
+    .number()
+    .int()
+    .min(API_LIMITS.hotspot.iconSizeMin)
+    .max(API_LIMITS.hotspot.iconSizeMax)
     .optional(),
-  icon_size: z.number().int().min(16).max(100).optional(),
   custom_data: z.record(z.string(), z.unknown()).optional(),
 });
 
-// Profile update schema
+// Profile update schema. The four notification keys are the whole contract.
 export const profileSchema = z.object({
   full_name: z.string().min(2, 'Name must be at least 2 characters').optional(),
   phone: optionalPhoneSchema,
   date_of_birth: z.string().optional(),
   notification_settings: z
     .object({
-      email_notifications: z.boolean().optional(),
       push_notifications: z.boolean().optional(),
-      marketing_emails: z.boolean().optional(),
+      email_notifications: z.boolean().optional(),
+      sms_notifications: z.boolean().optional(),
+      promotional_emails: z.boolean().optional(),
     })
     .optional(),
 });

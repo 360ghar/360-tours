@@ -1,9 +1,11 @@
 import { toursApi, uploadApi } from '@/api';
 import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_SIZE_BYTES } from '@/constants';
+import { API_LIMITS } from '@/lib/api/limits.gen';
 import { validateImageFile } from '@/utils/validation';
 import type { Scene } from '@/types';
 
-export const SCENE_UPLOAD_FOLDER = 'scenes';
+/** `/upload` rejects the `scene` folder (it needs a scene id); a tour panorama is `tour_original` + `tour_id`. */
+export const SCENE_UPLOAD_FOLDER_TYPE = 'tour_original' as const;
 export const SCENE_UPLOAD_VISIBILITY = 'public';
 export const SCENE_UPLOAD_MAX_CONCURRENT = 4;
 export const SCENE_UPLOAD_MAX_FILE_COUNT = 50;
@@ -52,12 +54,30 @@ export function validateSceneUploadFile(file: File): SceneUploadValidation {
   return validateImageFile(file);
 }
 
+export type SceneUploadRowStatus = 'pending' | 'uploading' | 'completed' | 'error';
+
+/**
+ * Continue into the editor only when at least one file became a scene and
+ * nothing is still uploading. An empty list, a total failure, or in-flight
+ * rows must not look like a successful upload.
+ */
+export function canContinueToEditor(
+  files: Array<{ status: SceneUploadRowStatus }>
+): boolean {
+  const completedCount = files.filter(file => file.status === 'completed').length;
+  const hasInFlight = files.some(
+    file => file.status === 'pending' || file.status === 'uploading'
+  );
+  return completedCount > 0 && !hasInFlight;
+}
+
 export function isSceneUploadValidationError(error?: string): boolean {
   return !!error && (error.includes('Invalid file type') || error.includes('File size exceeds'));
 }
 
+/** The file name without its extension, cut to the scene title limit (a longer title is a 422). */
 export function getSceneTitleFromFile(file: File): string {
-  return file.name.replace(/\.[^/.]+$/, '');
+  return file.name.replace(/\.[^/.]+$/, '').slice(0, API_LIMITS.scene.titleMax);
 }
 
 export async function uploadSceneFile(
@@ -66,7 +86,8 @@ export async function uploadSceneFile(
   options: UploadSceneFileOptions = {}
 ): Promise<Scene> {
   const uploadResult = await uploadApi.uploadFile(file, {
-    folder: SCENE_UPLOAD_FOLDER,
+    folderType: SCENE_UPLOAD_FOLDER_TYPE,
+    tourId,
     visibility: SCENE_UPLOAD_VISIBILITY,
     onProgress: options.onProgress,
   });

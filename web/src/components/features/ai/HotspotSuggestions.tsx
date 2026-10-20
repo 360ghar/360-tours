@@ -26,7 +26,7 @@ import type { Scene } from '@/types';
 import type { HotspotSuggestion } from '@/api';
 import { AIJobStatus } from './AIJobStatus';
 import { AiRetryError } from './AiRetryError';
-import { aiApi } from '@/api';
+import { aiApi, readHotspotSuggestions } from '@/api';
 
 interface HotspotSuggestionsProps {
   open: boolean;
@@ -34,7 +34,9 @@ interface HotspotSuggestionsProps {
   sceneId: string;
   scene: Scene;
   allScenes: Scene[];
-  onApply: (suggestions: HotspotSuggestion[]) => void;
+  /** Receives the scene the suggestions were computed FOR, never the scene
+   * that happens to be selected when Apply is pressed. */
+  onApply: (sceneId: string, suggestions: HotspotSuggestion[]) => void;
   isLoading?: boolean;
 }
 
@@ -55,6 +57,22 @@ export function HotspotSuggestions({
   const [error, setError] = useState<string | null>(null);
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
+  // The dialog stays mounted across scene switches (TourEditPage only toggles
+  // `open`), so results computed for one scene would otherwise still be on
+  // screen — and appliable — after the user selects another one. Reset during
+  // render (React's "adjusting state when a prop changes" pattern) so the stale
+  // list can never be painted, not even for a frame.
+  const [analyzedSceneId, setAnalyzedSceneId] = useState(sceneId);
+  if (sceneId !== analyzedSceneId) {
+    setAnalyzedSceneId(sceneId);
+    setSuggestions([]);
+    setSelectedSuggestions(new Set());
+    setHasAnalyzed(false);
+    setError(null);
+    setJobId(null);
+    setIsAnalyzing(false);
+  }
+
   const handleStartSuggestion = async () => {
     setIsAnalyzing(true);
     setError(null);
@@ -73,8 +91,8 @@ export function HotspotSuggestions({
   const handleJobComplete = (job: unknown, result: unknown) => {
     setIsAnalyzing(false);
     setJobId(null);
-    if (result && typeof result === 'object' && 'hotspots' in result && Array.isArray((result as { hotspots: unknown }).hotspots)) {
-      const hotspots = (result as { hotspots: HotspotSuggestion[] }).hotspots;
+    const hotspots = readHotspotSuggestions(result);
+    if (hotspots) {
       setSuggestions(hotspots);
       // Select all suggestions by default
       setSelectedSuggestions(new Set(hotspots.map((h) => h.id)));
@@ -115,7 +133,7 @@ export function HotspotSuggestions({
 
   const handleApply = () => {
     const selected = suggestions.filter((s) => selectedSuggestions.has(s.id));
-    onApply(selected);
+    onApply(sceneId, selected);
     onOpenChange(false);
   };
 

@@ -1,6 +1,7 @@
 import { createClient, type AuthChangeEvent, type Session } from '@supabase/supabase-js';
 import { STORAGE_KEYS, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/constants';
 import { mapSupabaseAuthError, type AuthErrorContext } from '@/lib/authErrors';
+import { isSameOriginPath } from '@/utils/url';
 import type { AuthTokens } from '@/types';
 
 function mappedError(error: unknown, context: AuthErrorContext = 'login'): Error {
@@ -88,7 +89,7 @@ export const OAUTH_NEXT_STORAGE_KEY = STORAGE_KEYS.OAUTH_NEXT;
  * `//host` strings that would escape the origin). Shared by stash/consume.
  */
 function isSafeSameSitePath(path: string | null | undefined): path is string {
-  return !!path && path.startsWith('/') && !path.startsWith('//');
+  return isSameOriginPath(path);
 }
 
 /**

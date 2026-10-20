@@ -2,12 +2,7 @@ import { useEffect } from 'react';
 import { useUIStore, useAuthStore } from '@/stores';
 import { ROUTES, ERROR_MESSAGES } from '@/constants';
 import type { AxiosError } from 'axios';
-
-interface ApiError {
-  message?: string;
-  detail?: string;
-  code?: string;
-}
+import { envelopeMessage, readErrorEnvelope } from '@/api/errors';
 
 // Auth flows that must never receive a `next=` return path.
 const AUTH_REDIRECT_BLOCKLIST: readonly string[] = [
@@ -25,7 +20,7 @@ export function GlobalErrorHandler() {
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       console.error('Unhandled promise rejection:', event.reason);
 
-      const error = event.reason as AxiosError<ApiError>;
+      const error = event.reason as AxiosError<unknown>;
 
       // Check for authentication errors
       if (error?.response?.status === 401) {
@@ -84,11 +79,12 @@ export function GlobalErrorHandler() {
 
       // Check for validation errors
       if (error?.response?.status === 422) {
-        const detail = error?.response?.data?.detail;
+        // A 422 carries the field errors in error.details.fields.
+        const message = envelopeMessage(readErrorEnvelope(error?.response?.data));
         addToast({
           type: 'error',
           title: 'Validation Error',
-          message: typeof detail === 'string' ? detail : ERROR_MESSAGES.VALIDATION,
+          message: message ?? ERROR_MESSAGES.VALIDATION,
         });
         return;
       }
@@ -104,9 +100,9 @@ export function GlobalErrorHandler() {
       }
 
       // Generic error handler
+      // Every non-2xx body is {error: {code, message, details}}; nothing else is read.
       const message =
-        error?.response?.data?.message ||
-        error?.response?.data?.detail ||
+        envelopeMessage(readErrorEnvelope(error?.response?.data)) ||
         error?.message ||
         ERROR_MESSAGES.GENERIC;
 

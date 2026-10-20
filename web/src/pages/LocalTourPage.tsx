@@ -100,7 +100,7 @@ function buildScene(raw: RawScene, propertyId: string, index: number): Scene {
     thumbnail_url: null,
     vr_url: null,
     order_index: raw.order_index ?? index,
-    metadata: raw.metadata ?? { initial_view: { yaw: 0, pitch: 0, zoom: 0 } },
+    scene_metadata: raw.metadata ?? { initial_view: { yaw: 0, pitch: 0, zoom: 50 } },
     is_processed: true,
     processing_error: null,
     created_at: NOW,

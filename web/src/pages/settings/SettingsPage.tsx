@@ -17,6 +17,7 @@ import { useAuthStore, useUIStore } from '@/stores';
 import { useToast } from '@/hooks/useToast';
 import { QUERY_KEYS } from '@/constants';
 import { cn } from '@/utils';
+import type { NotificationSettingsWrite } from '@/types';
 
 export function SettingsPage() {
   const { user } = useAuthStore();
@@ -29,19 +30,23 @@ export function SettingsPage() {
   // Published tours that a custom domain would serve (empty/loading states).
   const { data: publishedTours, isLoading: isLoadingTours } = useQuery({
     queryKey: [QUERY_KEYS.TOURS, { status: 'published', scope: 'custom-domains' }],
-    queryFn: () => toursApi.getTours({ status: 'published', limit: 50 }),
+    // `total` is null unless include_total is set.
+    queryFn: () => toursApi.getTours({ status: 'published', limit: 1, include_total: true }),
   });
   const publishedTourCount = publishedTours?.total ?? publishedTours?.items.length ?? 0;
 
-  // Notification settings state
+  // Notification settings state. The backend knows four keys (push_notifications,
+  // email_notifications, sms_notifications, promotional_emails); marketing consent
+  // is promotional_emails and a missing value means opt-out.
   const [notifications, setNotifications] = useState({
-    email_notifications: (user?.notification_settings?.email_notifications as boolean) ?? true,
-    marketing_emails: (user?.notification_settings?.marketing_emails as boolean) ?? false,
+    email_notifications: user?.notification_settings?.email_notifications ?? true,
+    promotional_emails: user?.notification_settings?.promotional_emails ?? false,
   });
 
-  // Notification settings mutation
+  // Notification settings mutation: the server merges the keys it gets into the
+  // stored settings, so only the key that changed is sent.
   const notificationMutation = useMutation({
-    mutationFn: (settings: Record<string, boolean>) =>
+    mutationFn: (settings: NotificationSettingsWrite) =>
       usersApi.updateProfile({ notification_settings: settings }),
     onSuccess: () => {
       toast('success', 'Notification preferences saved.', { title: 'Settings updated' });
@@ -53,7 +58,7 @@ export function SettingsPage() {
       const previous = notifications;
       const updated = { ...notifications, [key]: value };
       setNotifications(updated);
-      notificationMutation.mutate(updated, {
+      notificationMutation.mutate({ [key]: value }, {
         onError: (error: Error) => {
           setNotifications(previous);
           toast('error', error.message || 'Failed to update notifications.', { title: 'Error' });
@@ -232,8 +237,8 @@ export function SettingsPage() {
               </div>
               <input
                 type="checkbox"
-                checked={notifications.marketing_emails}
-                onChange={e => handleNotificationChange('marketing_emails', e.target.checked)}
+                checked={notifications.promotional_emails}
+                onChange={e => handleNotificationChange('promotional_emails', e.target.checked)}
                 disabled={notificationMutation.isPending}
                 className="h-5 w-5 rounded border-[var(--color-border)] text-[var(--color-primary-600)]"
               />

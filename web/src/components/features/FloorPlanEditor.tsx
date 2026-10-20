@@ -9,6 +9,7 @@ import {
   ChevronUp,
   ChevronDown,
   GripVertical,
+  Sparkles,
   X,
   Check,
   Loader2,
@@ -30,14 +31,28 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { uploadApi } from '@/api';
 import { cn } from '@/utils';
 import { confirm } from '@/stores';
-import type { FloorPlan, FloorPlanMarker, Scene } from '@/types';
+import {
+  floorPlanValidationError,
+  newFloorPlanId,
+  toDraft,
+  type FloorPlanDraft,
+} from '@/lib/floorPlanSync';
+import { API_LIMITS } from '@/lib/api/limits.gen';
+import type { FloorPlan, FloorPlanMarkerInput, Scene } from '@/types';
 
 interface FloorPlanEditorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The tour's floor plans from the `floor_plans` table. */
   floorPlans: FloorPlan[];
   scenes: Scene[];
-  onSave: (floorPlans: FloorPlan[]) => void | Promise<void>;
+  /** Receives the edited list; the caller writes it through the floor-plan routes. */
+  onSave: (floorPlans: FloorPlanDraft[]) => void | Promise<void>;
+  /**
+   * Draws a schematic plan from the tour's analyzed rooms and doorway links and
+   * writes it through the floor-plan routes. Omit to hide the action.
+   */
+  onGenerate?: () => void | Promise<void>;
   isLoading?: boolean;
 }
 
@@ -47,9 +62,12 @@ export function FloorPlanEditor({
   floorPlans,
   scenes,
   onSave,
+  onGenerate,
   isLoading = false,
 }: FloorPlanEditorProps) {
-  const [localFloorPlans, setLocalFloorPlans] = useState<FloorPlan[]>(floorPlans);
+  const [localFloorPlans, setLocalFloorPlans] = useState<FloorPlanDraft[]>(() =>
+    floorPlans.map(toDraft)
+  );
   const [selectedFloorIndex, setSelectedFloorIndex] = useState(0);
   const [isPlacingMarker, setIsPlacingMarker] = useState(false);
   const [pendingSceneId, setPendingSceneId] = useState<string | null>(null);
@@ -57,23 +75,46 @@ export function FloorPlanEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const imageRef = useRef<HTMLDivElement>(null);
 
   const selectedFloorPlan = localFloorPlans[selectedFloorIndex];
 
   useEffect(() => {
     if (!open) return;
-    setLocalFloorPlans(floorPlans);
+    setLocalFloorPlans(floorPlans.map(toDraft));
     setSelectedFloorIndex(index => Math.min(index, Math.max(0, floorPlans.length - 1)));
   }, [floorPlans, open]);
 
-  // Generate unique ID
-  const generateId = () => `fp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  // Ask the caller to draw a plan from the tour, then let the refreshed query
+  // replace the drafts. Unsaved edits would be lost, so confirm first.
+  const handleGenerate = () => {
+    if (!onGenerate) return;
+    void (async () => {
+      const isDirty = JSON.stringify(localFloorPlans) !== JSON.stringify(floorPlans.map(toDraft));
+      if (
+        isDirty &&
+        !(await confirm({
+          message: 'Generate a plan from the tour? Unsaved changes to your floor plans are lost.',
+          confirmLabel: 'Generate',
+        }))
+      ) {
+        return;
+      }
 
-  // Add new floor plan
+      setIsGenerating(true);
+      try {
+        await onGenerate();
+      } finally {
+        setIsGenerating(false);
+      }
+    })();
+  };
+
+  // Add new floor plan. It gets a temporary id; the server assigns the real one on save.
   const handleAddFloorPlan = () => {
-    const newFloorPlan: FloorPlan = {
-      id: generateId(),
+    const newFloorPlan: FloorPlanDraft = {
+      id: newFloorPlanId(),
       name: `Floor ${localFloorPlans.length + 1}`,
       image_url: '',
       floor_number: localFloorPlans.length + 1,
@@ -105,7 +146,7 @@ export function FloorPlanEditor({
   };
 
   // Update floor plan
-  const updateFloorPlan = (index: number, updates: Partial<FloorPlan>) => {
+  const updateFloorPlan = (index: number, updates: Partial<FloorPlanDraft>) => {
     setLocalFloorPlans(prev => prev.map((fp, i) => (i === index ? { ...fp, ...updates } : fp)));
   };
 
@@ -136,7 +177,7 @@ export function FloorPlanEditor({
 
     try {
       const uploadResult = await uploadApi.uploadFile(file, {
-        folder: 'floor-plans',
+        folderType: 'generic',
         visibility: 'public',
         onProgress: progress => setUploadProgress(progress),
       });
@@ -173,13 +214,15 @@ export function FloorPlanEditor({
         m => m.scene_id === pendingSceneId
       );
 
-      const newMarker: FloorPlanMarker = {
+      // The server accepts x and y from 0 to 100 (a percentage of the image).
+      const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
+      const newMarker: FloorPlanMarkerInput = {
         scene_id: pendingSceneId,
-        x: Math.round(x * 100) / 100,
-        y: Math.round(y * 100) / 100,
+        x: clampPercent(Math.round(x * 100) / 100),
+        y: clampPercent(Math.round(y * 100) / 100),
       };
 
-      let newMarkers: FloorPlanMarker[];
+      let newMarkers: FloorPlanMarkerInput[];
       if (existingMarkerIndex >= 0) {
         newMarkers = selectedFloorPlan.markers.map((m, i) =>
           i === existingMarkerIndex ? newMarker : m
@@ -216,8 +259,10 @@ export function FloorPlanEditor({
   };
 
   // Save changes
+  const validationError = floorPlanValidationError(localFloorPlans);
+
   const handleSave = async () => {
-    if (isUploading || isSaving) return;
+    if (isUploading || isSaving || validationError) return;
 
     setIsSaving(true);
     try {
@@ -305,6 +350,7 @@ export function FloorPlanEditor({
                           onClick={e => e.stopPropagation()}
                           className="h-7 text-sm px-2"
                           placeholder="Floor name"
+                          maxLength={API_LIMITS.floorPlan.nameMax}
                         />
                       </div>
                       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -350,6 +396,26 @@ export function FloorPlanEditor({
                 )}
               </div>
             </ScrollArea>
+
+            {onGenerate && (
+              <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={handleGenerate}
+                  isLoading={isGenerating}
+                  data-testid="generate-floor-plan"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Generate from tour
+                </Button>
+                <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                  A schematic sketch from your room names and doorway links. Not to scale — adjust
+                  it here afterwards.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Center - Floor plan image */}
@@ -570,11 +636,26 @@ export function FloorPlanEditor({
           )}
         </div>
 
+        {validationError && localFloorPlans.length > 0 && (
+          <p
+            id="floor-plan-validation-error"
+            role="alert"
+            className="mt-2 text-sm text-[var(--color-error-600)]"
+          >
+            {validationError}
+          </p>
+        )}
+
         <DialogFooter className="mt-4 pt-4 border-t border-[var(--color-border)]">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} isLoading={isLoading || isSaving} disabled={isUploading}>
+          <Button
+            onClick={handleSave}
+            isLoading={isLoading || isSaving}
+            disabled={isUploading || !!validationError}
+            aria-describedby={validationError ? 'floor-plan-validation-error' : undefined}
+          >
             <Save className="h-4 w-4" />
             Save Floor Plans
           </Button>

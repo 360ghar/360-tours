@@ -243,7 +243,7 @@ export function RegisterPage() {
       // Preserve the return path across the OAuth round trip (mirrors
       // LoginPage); auth pages are blocklisted to avoid bounce loops.
       const from = (location.state as { from?: string } | null)?.from;
-      stashOAuthNext(from && !OAUTH_RETURN_BLOCKLIST.includes(from) ? from : null, ROUTES.DASHBOARD);
+      stashOAuthNext(from && !(OAUTH_RETURN_BLOCKLIST as readonly string[]).includes(from) ? from : null, ROUTES.DASHBOARD);
       await supabaseAuth.signInWithGoogle();
       // Browser redirects to Google; nothing else runs here on success.
     } catch (err) {

@@ -32,7 +32,7 @@ import {
 } from '@/components/ui';
 import { toursApi } from '@/api';
 import { QUERY_KEYS, ROUTES } from '@/constants';
-import { formatCompactNumber } from '@/utils/format';
+import { formatCompactNumber, formatDateOnly } from '@/utils/format';
 import { downloadAnalyticsCSV, downloadAnalyticsJSON, formatDuration } from '@/utils/analytics';
 import { useToast } from '@/hooks/useToast';
 import {
@@ -443,12 +443,7 @@ export function TourAnalyticsPage() {
                     fontSize={12}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={value =>
-                      new Date(value).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })
-                    }
+                    tickFormatter={value => formatDateOnly(String(value), 'MMM d')}
                   />
                   <YAxis
                     stroke="var(--color-text-muted)"
@@ -462,14 +457,7 @@ export function TourAnalyticsPage() {
                       border: '1px solid var(--color-border)',
                       borderRadius: '8px',
                     }}
-                    labelFormatter={value =>
-                      new Date(value).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })
-                    }
+                    labelFormatter={value => formatDateOnly(String(value), 'EEEE, MMMM d, yyyy')}
                   />
                   <Area
                     type="monotone"
@@ -688,7 +676,7 @@ export function TourAnalyticsPage() {
           {heatmapExpanded ? (
             <CardContent>
               <div className="h-[350px]">
-                {heatmapData?.heatmap && heatmapData.heatmap.length > 0 ? (
+                {heatmapData && heatmapData.heatmap.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
@@ -722,7 +710,7 @@ export function TourAnalyticsPage() {
                       />
                       <ZAxis
                         type="number"
-                        dataKey="intensity"
+                        dataKey="count"
                         range={[20, 400]}
                         name="Interactions"
                       />

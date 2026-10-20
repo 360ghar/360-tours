@@ -30,6 +30,13 @@ import type { TourFormData } from '@/utils/validation';
 import { validateImageFile } from '@/utils/validation';
 import { ROUTES, QUERY_KEYS, DEFAULT_TOUR_SETTINGS } from '@/constants';
 import { cn } from '@/utils';
+import { resolveTourSettings } from '@/utils/tourSettings';
+import {
+  canContinueToEditor,
+  getSceneTitleFromFile,
+  SCENE_UPLOAD_ACCEPT_ATTRIBUTE,
+  SCENE_UPLOAD_FOLDER_TYPE,
+} from '@/lib/sceneUpload';
 import type { Tour } from '@/types';
 import { AITourWizard } from '@/components/features';
 
@@ -75,7 +82,6 @@ export function TourCreatePage() {
     defaultValues: {
       title: '',
       description: '',
-      status: 'draft',
       visibility: 'private',
       settings: DEFAULT_TOUR_SETTINGS,
     },
@@ -88,9 +94,8 @@ export function TourCreatePage() {
       reset({
         title: createdTour.title,
         description: createdTour.description ?? '',
-        status: createdTour.status,
         visibility: createdTour.visibility,
-        settings: createdTour.settings ?? DEFAULT_TOUR_SETTINGS,
+        settings: resolveTourSettings(createdTour.settings),
       });
     }
   }, [createdTour, step, reset]);
@@ -141,10 +146,10 @@ export function TourCreatePage() {
     }
   };
 
-  const handleAIComplete = (tour: Tour) => {
+  const handleAIComplete = (tourId: string) => {
     queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
-    queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, tour.id] });
-    navigate(`/tours/${tour.id}/edit`);
+    queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, tourId] });
+    navigate(`/tours/${tourId}/edit`);
   };
 
   const addSelectedFiles = useCallback((files: File[]) => {
@@ -201,7 +206,8 @@ export function TourCreatePage() {
     async (item: UploadingFile, tourId: string) => {
       try {
         const uploadResult = await uploadApi.uploadFile(item.file, {
-          folder: 'scenes',
+          folderType: SCENE_UPLOAD_FOLDER_TYPE,
+          tourId,
           visibility: 'public',
           onProgress: progress => {
             setUploadingFiles(prev => prev.map(f => (f.id === item.id ? { ...f, progress } : f)));
@@ -211,7 +217,7 @@ export function TourCreatePage() {
         await addSceneMutation.mutateAsync({
           tourId,
           imageUrl: uploadResult.public_url,
-          title: item.file.name.replace(/\.[^/.]+$/, ''),
+          title: getSceneTitleFromFile(item.file),
         });
 
         setUploadingFiles(prev =>
@@ -314,6 +320,7 @@ export function TourCreatePage() {
   // until at least one upload succeeds or the failed rows are removed.
   const allUploadsFailed =
     uploadingFiles.length > 0 && completedCount === 0 && errorCount === uploadingFiles.length;
+  const canOpenEditor = canContinueToEditor(uploadingFiles);
 
   const totalUploadBytes = uploadingFiles
     .filter(f => f.status === 'pending' || f.status === 'uploading' || f.status === 'completed')
@@ -373,6 +380,7 @@ export function TourCreatePage() {
         <div className="grid gap-4 sm:grid-cols-3">
           <button
             type="button"
+            aria-label="Guided capture"
             onClick={() => navigate(ROUTES.TOUR_CAPTURE)}
             className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-left transition hover:border-[var(--color-primary-400)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-500)]"
           >
@@ -387,6 +395,7 @@ export function TourCreatePage() {
 
           <button
             type="button"
+            aria-label="Upload panoramas"
             onClick={() => setStep('info')}
             className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-left transition hover:border-[var(--color-primary-400)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-500)]"
           >
@@ -401,10 +410,11 @@ export function TourCreatePage() {
 
           <button
             type="button"
+            aria-label="AI generate"
             onClick={() => setShowAIWizard(true)}
             className="group rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 text-left transition hover:border-[var(--color-primary-400)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-500)]"
           >
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-secondary-100)] text-[var(--color-secondary-800)]">
               <Sparkles className="h-5 w-5" />
             </div>
             <h2 className="font-semibold text-[var(--color-text-primary)]">AI generate</h2>
@@ -499,7 +509,7 @@ export function TourCreatePage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept={SCENE_UPLOAD_ACCEPT_ATTRIBUTE}
                 multiple
                 onChange={handleFileSelect}
                 disabled={isUploading}
@@ -629,15 +639,26 @@ export function TourCreatePage() {
                   Uploading
                 </Button>
               )}
-              {!isUploading && pendingCount === 0 && !allUploadsFailed && (
+              {!isUploading && pendingCount === 0 && !canOpenEditor && !allUploadsFailed && (
+                <p
+                  className="max-w-xs text-right text-sm text-[var(--color-text-muted)]"
+                  data-testid="upload-continue-hint"
+                >
+                  Upload at least one JPEG, PNG, or WebP panorama to open the editor.
+                </p>
+              )}
+              {canOpenEditor && (
                 <div className="flex flex-col items-end gap-1.5">
                   {completedCount > 0 && errorCount > 0 && (
                     <span className="text-xs text-[var(--color-text-muted)]">
-                      {errorCount} failed upload{errorCount === 1 ? '' : 's'} skipped — you can
+                      {errorCount} failed upload{errorCount === 1 ? '' : 's'} skipped. You can
                       retry them or continue without them.
                     </span>
                   )}
-                  <Button onClick={() => navigate(`/tours/${createdTour.id}/edit`)}>
+                  <Button
+                    data-testid="continue-to-editor"
+                    onClick={() => navigate(`/tours/${createdTour.id}/edit`)}
+                  >
                     Continue to Editor
                   </Button>
                 </div>

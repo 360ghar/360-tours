@@ -1,112 +1,71 @@
 import { apiClient } from './client';
-import type { AIProcessingJob, Scene, HotspotPosition } from '@/types';
+import type { components } from '@/lib/api/schema.gen';
+import { API_LIMITS } from '@/lib/api/limits.gen';
 
-// AI Job creation response
-interface AIJobResponse {
-  job: AIProcessingJob;
-}
+type Schemas = components['schemas'];
 
-// Scene analysis result
-export interface SceneAnalysisResult {
-  scene_id: string;
-  room_type: string;
-  room_confidence: number;
-  suggested_title: string;
-  suggested_description: string;
-  quality_score: number;
-  quality_issues?: string[];
-  features_detected: string[];
-}
-
-// Hotspot suggestion
-export interface HotspotSuggestion {
-  id: string;
-  type: 'navigation' | 'info';
-  position: HotspotPosition;
-  target_scene_id?: string;
-  suggested_title?: string;
-  reasoning: string;
-  confidence: number;
-}
-
-// Tour generation options
-export interface TourGenerationOptions {
-  images: File[];
-  title?: string;
-  description?: string;
-  auto_detect_rooms?: boolean;
-  auto_place_hotspots?: boolean;
-  auto_generate_descriptions?: boolean;
-}
-
-// Description generation options
-export interface DescriptionOptions {
-  tone?: 'professional' | 'casual' | 'luxury' | 'friendly';
-  length?: 'short' | 'medium' | 'long';
-  include_features?: boolean;
-  target_audience?: string;
-}
-
-// Reel generation options
-export interface ReelOptions {
-  scene_ids?: string[];
-  scene_duration?: number;
-  transition_duration?: number;
-  rotation_degrees?: number;
-}
-
-// Reel generation result
-export interface ReelResult {
-  tour_id: string;
-  video_url: string;
-  thumbnail_url?: string;
-  duration_seconds: number;
-  scene_count: number;
-  width: number;
-  height: number;
-}
-
-// AI Processing status response
-export interface AIJobStatusResponse {
-  job: AIProcessingJob;
-  result?: {
-    scenes?: Scene[];
-    analysis?: SceneAnalysisResult[];
-    hotspots?: HotspotSuggestion[];
-    descriptions?: Record<string, string>;
-  };
-}
+/** `POST /ai/tours/{id}/analyze` and the other job-starting routes: `{job}`. */
+export type AIJobResponse = Schemas['AIJobResponse'];
+/** `POST /ai/tours/generate`: the job plus the ids of the tour and scenes it creates. */
+export type TourGenerationResponse = Schemas['TourGenerationResponse'];
+/** `GET /ai/jobs/{id}` and `POST /ai/jobs/{id}/cancel`: `{job, result}`. */
+export type AIJobStatusResponse = Schemas['AIJobStatusResponse'];
+/** The `result` of a finished job: one model per job type, null while it has none. */
+export type AIJobResult = NonNullable<AIJobStatusResponse['result']>;
+export type DescriptionOptions = Schemas['DescriptionOptions'];
 
 /**
- * Generate a complete tour from uploaded images using AI
+ * Form fields of `POST /ai/tours/generate` (multipart). `spatial` is always sent:
+ * the server default is true, and it decides how hotspots are placed (doorway
+ * detection when true; naive suggestions only when it is false).
+ */
+export type TourGenerationOptions = Omit<
+  Schemas['Body_generate_tour_api_v1_ai_tours_generate_post'],
+  'images'
+> & {
+  images: File[];
+};
+
+/**
+ * Generate a complete tour from uploaded images using AI.
  */
 export async function generateTour(
   options: TourGenerationOptions,
   onProgress?: (progress: number) => void
-): Promise<AIJobResponse> {
+): Promise<TourGenerationResponse> {
   const formData = new FormData();
 
-  options.images.forEach((image) => {
-    formData.append(`images`, image);
+  options.images.forEach(image => {
+    formData.append('images', image);
   });
 
-  if (options.title) formData.append('title', options.title);
-  if (options.description) formData.append('description', options.description);
-  if (options.auto_detect_rooms !== undefined) {
-    formData.append('auto_detect_rooms', String(options.auto_detect_rooms));
+  if (options.title) {
+    formData.append('title', options.title.slice(0, API_LIMITS.tour.titleMax));
   }
-  if (options.auto_place_hotspots !== undefined) {
-    formData.append('auto_place_hotspots', String(options.auto_place_hotspots));
+  if (options.description) {
+    formData.append('description', options.description.slice(0, API_LIMITS.tour.descriptionMax));
   }
-  if (options.auto_generate_descriptions !== undefined) {
-    formData.append('auto_generate_descriptions', String(options.auto_generate_descriptions));
+  if (options.generate_titles !== undefined) {
+    formData.append('generate_titles', String(options.generate_titles));
   }
+  if (options.generate_descriptions !== undefined) {
+    formData.append('generate_descriptions', String(options.generate_descriptions));
+  }
+  if (options.suggest_hotspots !== undefined) {
+    formData.append('suggest_hotspots', String(options.suggest_hotspots));
+  }
+  if (options.spatial !== undefined) {
+    formData.append('spatial', String(options.spatial));
+  }
+  if (options.apply_to_scenes !== undefined) {
+    formData.append('apply_to_scenes', String(options.apply_to_scenes));
+  }
+  if (options.language) formData.append('language', options.language);
 
-  const response = await apiClient.post<AIJobResponse>('/ai/tours/generate', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    onUploadProgress: (progressEvent) => {
+  // Content-Type is intentionally unset: the request interceptor clears it for
+  // FormData so the browser emits the multipart boundary.
+  const response = await apiClient.post<TourGenerationResponse>('/ai/tours/generate', formData, {
+    onUploadProgress: progressEvent => {
       if (onProgress && progressEvent.total) {
         const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
         onProgress(progress);
@@ -145,13 +104,12 @@ export async function generateDescriptions(
 }
 
 /**
- * Generate a 360 reel video from a tour's scenes
+ * Re-run AI doorway linking on an existing tour. Replaces previously
+ * AI-generated navigation hotspots with a fresh, reachable set built from the
+ * scenes' panoramas; manually placed hotspots are kept.
  */
-export async function generateReel(
-  tourId: string,
-  options?: ReelOptions
-): Promise<AIJobResponse> {
-  const response = await apiClient.post<AIJobResponse>(`/ai/tours/${tourId}/reel`, options);
+export async function connectSpatial(tourId: string): Promise<AIJobResponse> {
+  const response = await apiClient.post<AIJobResponse>(`/ai/tours/${tourId}/connect-spatial`);
   return response.data;
 }
 
@@ -164,20 +122,20 @@ export async function getJobStatus(jobId: string): Promise<AIJobStatusResponse> 
 }
 
 /**
- * Cancel a running AI job
+ * Cancel a running AI job. Returns the job with its final state; a job that
+ * already finished or was cancelled answers 409 `JOB_NOT_CANCELLABLE`.
  */
-export async function cancelJob(jobId: string): Promise<{ success: boolean }> {
-  const response = await apiClient.post<{ success: boolean }>(`/ai/jobs/${jobId}/cancel`);
+export async function cancelJob(jobId: string): Promise<AIJobStatusResponse> {
+  const response = await apiClient.post<AIJobStatusResponse>(`/ai/jobs/${jobId}/cancel`);
   return response.data;
 }
 
-// Export all AI API functions
 export const aiApi = {
   generateTour,
   analyzeScenes,
   suggestHotspots,
   generateDescriptions,
-  generateReel,
+  connectSpatial,
   getJobStatus,
   cancelJob,
 };

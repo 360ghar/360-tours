@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, API_TIMEOUT, ERROR_MESSAGES } from '@/constants';
-import type { ApiError } from '@/types';
 import { supabaseAuth } from '@/lib/supabaseAuth';
+import { envelopeMessage, parseApiError } from './errors';
 
 const MAX_RETRY_ATTEMPTS = 3;
 const MAX_TOKEN_RETRY_ATTEMPTS = 1;
@@ -10,9 +10,12 @@ const MAX_TOKEN_RETRY_ATTEMPTS = 1;
  * Only these HTTP methods are safe to replay automatically. A 5xx or network
  * failure is ambiguous — the server may have processed a mutating request
  * (e.g. POST /tours created the row but the response was lost), so replaying
- * it can create duplicates (duplicate tours/scenes/hotspots). 429 and 401 are
- * excluded from this rule: rate-limited and unauthenticated requests are
- * rejected BEFORE processing, so a replay with backoff / a fresh token is safe.
+ * it can create duplicates (duplicate tours/scenes/hotspots). **429 obeys the
+ * same rule**: a rate limit is usually applied before processing, but the
+ * client cannot prove that (a proxy/CDN/WAF may rate-limit a request the
+ * origin already handled), so a rate-limited mutation surfaces the error
+ * instead of being replayed. 401 is exempt: the request was rejected for
+ * missing credentials, so a replay with a fresh token is safe.
  */
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -50,7 +53,10 @@ function notifyAuthExpired() {
 
 type ExtendedRequestConfig = InternalAxiosRequestConfig & {
   _tokenRetryCount?: number;
-  _retryCount?: number;
+  /** 429 retries. Kept separate from `_serverRetryCount` so rate limiting
+   * cannot consume the budget reserved for 5xx/network retries. */
+  _rateLimitRetryCount?: number;
+  _serverRetryCount?: number;
   _skipAuthExpiry?: boolean;
 };
 
@@ -116,6 +122,23 @@ apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     const extendedRequest = config as ExtendedRequestConfig;
 
+    // A FormData body must never go out under the instance's default JSON
+    // content type: axios 1.x `transformRequest` sees the JSON type and
+    // serializes the FormData with `JSON.stringify(formDataToJSON(data))`,
+    // dropping every File. Clearing the header lets axios set
+    // `multipart/form-data` with the correct boundary.
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      const headers = config.headers as unknown as {
+        delete?: (name: string) => void;
+      } & Record<string, unknown>;
+      if (typeof headers?.delete === 'function') {
+        headers.delete('Content-Type');
+      } else if (headers) {
+        delete headers['Content-Type'];
+        delete headers['content-type'];
+      }
+    }
+
     // Public endpoints are anonymous by contract: never attach a Bearer token
     // and never treat a 401/403 there as session expiry. Without this, a stale
     // session would get attached to a public tour request and a 401 would
@@ -143,7 +166,7 @@ apiClient.interceptors.request.use(
 
 apiClient.interceptors.response.use(
   response => response,
-  async (error: AxiosError<ApiError>) => {
+  async (error: AxiosError) => {
     const originalRequest = error.config;
 
     if (originalRequest) {
@@ -194,11 +217,19 @@ apiClient.interceptors.response.use(
         return Promise.reject(new Error(ERROR_MESSAGES.SESSION_EXPIRED));
       }
 
-      if (error.response?.status === 429) {
-        const retryCount = extendedRequest._retryCount || 0;
+      // A 429 is rejected BEFORE processing, so replaying is safe in principle
+      // — but only for methods that are safe to replay at all. A rate-limited
+      // POST may still have been counted/queued upstream (proxy, CDN, WAF), and
+      // the caller cannot tell a pre- from a post-processing 429 apart.
+      const method = (originalRequest.method ?? 'GET').toUpperCase();
+
+      if (error.response?.status === 429 && isIdempotentMethod(method)) {
+        // Separate budget from the 5xx branch: sharing one counter let rate
+        // limiting consume the retries reserved for server errors.
+        const retryCount = extendedRequest._rateLimitRetryCount || 0;
 
         if (retryCount < MAX_RETRY_ATTEMPTS) {
-          extendedRequest._retryCount = retryCount + 1;
+          extendedRequest._rateLimitRetryCount = retryCount + 1;
 
           const retryAfter = error.response.headers?.['retry-after'];
           const parsedRetryAfter = parseInt(retryAfter as string, 10);
@@ -217,15 +248,14 @@ apiClient.interceptors.response.use(
       // Disabled in test environment to prevent interceptor re-entry in unit tests.
       const isNetworkError = !error.response;
       const isServerError = error.response?.status !== undefined && error.response.status >= 500;
-      const method = (originalRequest.method ?? 'GET').toUpperCase();
       if (
         (isNetworkError || isServerError) &&
         !import.meta.env?.TEST &&
         isIdempotentMethod(method)
       ) {
-        const retryCount = extendedRequest._retryCount || 0;
+        const retryCount = extendedRequest._serverRetryCount || 0;
         if (retryCount < MAX_RETRY_ATTEMPTS) {
-          extendedRequest._retryCount = retryCount + 1;
+          extendedRequest._serverRetryCount = retryCount + 1;
           const delayMs = Math.min(1000 * 2 ** retryCount, 10000);
           await new Promise((resolve) => setTimeout(resolve, delayMs));
           return apiClient(originalRequest);
@@ -237,17 +267,12 @@ apiClient.interceptors.response.use(
       // Fall through to error message extraction for all other errors.
     }
 
+    // Every non-2xx body is {"error": {"code", "message", "details"}}; a 422 carries
+    // details.fields. Nothing else is read from the body.
     let errorMessage: string = ERROR_MESSAGES.GENERIC;
-    const responseData = error.response?.data;
-
-    if (responseData?.detail) {
-      if (typeof responseData.detail === 'string') {
-        errorMessage = responseData.detail;
-      } else if (responseData.detail.message) {
-        errorMessage = responseData.detail.message;
-      }
-    } else if (responseData?.error?.message) {
-      errorMessage = responseData.error.message;
+    const envelope = envelopeMessage(parseApiError(error));
+    if (envelope) {
+      errorMessage = envelope;
     } else if (error.message) {
       errorMessage = error.message;
     }

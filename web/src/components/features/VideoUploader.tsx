@@ -279,7 +279,7 @@ export function VideoUploader({
         );
 
         const uploadResult = await uploadApi.uploadFile(video.file, {
-          folder: 'hotspot_media',
+          folderType: 'generic',
           visibility: 'public',
           onProgress: progress => {
             setVideos(prev => prev.map(v => (v.id === video.id ? { ...v, progress } : v)));
@@ -304,7 +304,7 @@ export function VideoUploader({
             const blob = await res.blob();
             const thumbFile = new File([blob], `${video.id}-thumb.jpg`, { type: 'image/jpeg' });
             const thumbResult = await uploadApi.uploadFile(thumbFile, {
-              folder: 'hotspot_media',
+              folderType: 'generic',
               visibility: 'public',
             });
             thumbnailUrl = thumbResult.public_url;

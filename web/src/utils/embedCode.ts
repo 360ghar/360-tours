@@ -4,6 +4,7 @@
  */
 
 import { API_BASE_URL } from '@/constants';
+import { escapeHtml } from './escapeHtml';
 
 // Not exposed here (internal tooling only): `editmode=1` turns the embed into an
 // editor surface — panorama clicks are posted to the parent window as
@@ -116,25 +117,6 @@ function formatDimension(value: number | string): string {
 }
 
 /**
- * Escape HTML-significant characters for safe interpolation into generated
- * markup (attribute values, element ids). Tour ids are server-minted UUIDs
- * today, but defense-in-depth: a non-UUID id must never break out of the
- * attribute or inject markup into a customer's page.
- */
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, char => {
-    const entities: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    };
-    return entities[char]!;
-  });
-}
-
-/**
  * Generate the embed URL for a tour
  */
 export function generateEmbedUrl(tourId: string, options: EmbedOptions = {}): string {
@@ -192,11 +174,17 @@ export function generateJsCode(tourId: string, options: EmbedOptions = {}): stri
     2
   );
 
+  // JSON inside an inline <script> must not be able to close it: an id (or a
+  // start-scene id) containing `</script>` would otherwise end the block and
+  // inject markup into the customer's page. `<` keeps the JSON valid and
+  // parses back to the same string.
+  const inlineConfigJson = configJson.replace(/</g, '\\u003c');
+
   return `<!-- 360 Viewer Embed -->
 <div id="viewer-${escapeHtml(tourId)}"></div>
 <script src="${getBaseUrl()}/embed.js"></script>
 <script>
-  Viewer360.create('#viewer-${escapeHtml(tourId)}', ${configJson});
+  Viewer360.create('#viewer-${escapeHtml(tourId)}', ${inlineConfigJson});
 </script>`;
 }
 
@@ -226,12 +214,14 @@ export function generateResponsiveCode(tourId: string, options: EmbedOptions = {
 export function generateShareUrl(tourId: string, options: EmbedOptions = {}): string {
   const baseUrl = getBaseUrl();
   const queryParams = buildQueryParams(options);
-  const viewerUrl = `${baseUrl}/view/${tourId}${queryParams}`;
+  // Encode the id for the same reason generateEmbedUrl does — a no-op for the
+  // server-minted UUIDs, but it can never inject path or query content.
+  const viewerUrl = `${baseUrl}/view/${encodeURIComponent(tourId)}${queryParams}`;
 
   const backendBaseUrl = getBackendBaseUrl();
   if (!backendBaseUrl) return viewerUrl;
 
-  const shareUrl = new URL(`/share/tours/${tourId}`, backendBaseUrl);
+  const shareUrl = new URL(`/share/tours/${encodeURIComponent(tourId)}`, backendBaseUrl);
   shareUrl.searchParams.set('redirect', viewerUrl);
   return shareUrl.toString();
 }

@@ -7,6 +7,7 @@ export type { AIJobUpdate } from './useAIJobWebSocket';
 export { useWebSocket } from './useWebSocket';
 export type { WebSocketState } from './useWebSocket';
 export { usePublicTourTracking } from './usePublicTourTracking';
+export { usePublicViewer } from './usePublicViewer';
 export { useWebOtp } from './useWebOtp';
 export { useResendTimer, RESEND_OTP_SECONDS } from './useResendTimer';
 export type { ResendTimer } from './useResendTimer';

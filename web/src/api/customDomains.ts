@@ -1,26 +1,12 @@
 import { apiClient, extractData } from './client';
+import type { components } from '@/lib/api/schema.gen';
 
-export type CustomDomainVerificationStatus = 'pending' | 'verifying' | 'verified' | 'failed';
-export type CustomDomainSslStatus = 'pending' | 'provisioning' | 'active' | 'failed';
+type Schemas = components['schemas'];
 
-export interface CustomDomainResponse {
-  id: string;
-  user_id: number;
-  domain: string;
-  verification_status: CustomDomainVerificationStatus;
-  ssl_status: CustomDomainSslStatus;
-  verification_token: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CustomDomainVerificationResponse {
-  domain: string;
-  is_verified: boolean;
-  verification_instructions?: string | null;
-  txt_record_name: string;
-  txt_record_value: string;
-}
+export type CustomDomainVerificationStatus = Schemas['CustomDomainVerificationStatus'];
+export type CustomDomainSslStatus = Schemas['CustomDomainSSLStatus'];
+export type CustomDomainResponse = Schemas['CustomDomainResponse'];
+export type CustomDomainVerificationResponse = Schemas['CustomDomainVerification'];
 
 export const customDomainsApi = {
   async createDomain(domain: string): Promise<CustomDomainResponse> {
@@ -28,6 +14,7 @@ export const customDomainsApi = {
     return extractData(response);
   },
 
+  /** Sets `ssl_status` to `pending` and returns the DNS record to publish. */
   async verifyDomain(domainId: string): Promise<CustomDomainVerificationResponse> {
     const response = await apiClient.post<CustomDomainVerificationResponse>(
       `/custom-domains/${domainId}/verify`

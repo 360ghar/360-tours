@@ -31,6 +31,9 @@ interface UIActions {
 
 type UIStore = UIState & UIActions;
 
+/** Schema version of the persisted slice (`theme`, `sidebarCollapsed`). */
+const UI_STORE_VERSION = 1;
+
 let toastId = 0;
 const toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const generateToastId = () => `toast-${++toastId}`;
@@ -108,6 +111,10 @@ export const useUIStore = create<UIStore>()(
     }),
     {
       name: STORAGE_KEYS.THEME,
+      // Raise the version when the persisted shape changes. A stored payload of another
+      // version goes through `migrate`; the shape of version 0 and 1 is the same.
+      version: UI_STORE_VERSION,
+      migrate: persisted => persisted as Pick<UIState, 'theme' | 'sidebarCollapsed'>,
       partialize: state => ({
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,

@@ -68,7 +68,7 @@ export function AuthCallbackPage() {
 
         // Staff-gate: only provisioned staff may use this internal tool.
         const user = await authApi.getCurrentUser();
-        if (!STAFF_ROLES.has(user.role)) {
+        if (!STAFF_ROLES.has(user.role ?? 'user')) {
           await supabaseAuth.signOut().catch(() => {});
           clearAuth();
           navigate(`${ROUTES.LOGIN}?error=not_staff`, { replace: true });

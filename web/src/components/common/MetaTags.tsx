@@ -17,7 +17,8 @@ interface MetaTagsProps {
 }
 
 interface StructuredDataProps {
-  type: 'WebApplication' | 'Organization' | 'Product' | 'VirtualTour' | 'ImageGallery';
+  /** Must be a real schema.org type — consumers silently drop an unknown one. */
+  type: 'WebApplication' | 'Organization' | 'Product' | 'ImageGallery';
   data: Record<string, unknown>;
 }
 
@@ -232,7 +233,12 @@ export function VirtualTourStructuredData({
     [name, description, image, url, creator, datePublished, dateModified]
   );
 
-  return <StructuredData type="VirtualTour" data={data} />;
+  // `VirtualTour` is NOT a schema.org term — consumers (Google's Rich Results
+  // test included) drop an unknown @type, so the block was inert. ImageGallery
+  // is a real CreativeWork subtype and the only one here that actually carries
+  // the properties emitted above (creator, datePublished, accessMode,
+  // accessibilityFeature, isAccessibleForFree).
+  return <StructuredData type="ImageGallery" data={data} />;
 }
 
 export function WebApplicationStructuredData({
@@ -266,7 +272,6 @@ export function WebApplicationStructuredData({
           'VR support',
           'Interactive hotspots',
           'Analytics dashboard',
-          'Team collaboration',
           'White-label branding',
         ],
       }}

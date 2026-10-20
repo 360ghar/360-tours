@@ -6,7 +6,7 @@ import { MetaTags, VirtualTourStructuredData } from '@/components/common/MetaTag
 import { Share2, Heart, Expand, Minimize, Volume2, VolumeX, Info, Keyboard, X } from 'lucide-react';
 import { Button, PageLoader, Badge } from '@/components/ui';
 import { toursApi } from '@/api';
-import { DEFAULT_TOUR_SETTINGS, ROUTES } from '@/constants';
+import { ROUTES } from '@/constants';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { ShareModal } from '@/components/features/ShareModal';
 import { FloorPlanOverlay } from '@/components/features/FloorPlanOverlay';
@@ -15,40 +15,11 @@ import { getViewerSceneScope, useViewerStore } from '@/stores';
 import { usePublicTourTracking } from '@/hooks/usePublicTourTracking';
 import { useTwoFingerSwipe } from '@/hooks';
 import { cn, parseBooleanParam } from '@/utils';
+import { openHotspotLink, sceneViewDirection, watermarkPositionClass } from '@/utils/publicViewer';
+import { resolveTourSettings } from '@/utils/tourSettings';
+import { isPlayablePublicTour } from '@/utils/publicTour';
 import { parseLinkHotspotContent } from '@/types/hotspotContent';
-import type { Hotspot, Tour } from '@/types';
-
-function getWatermarkPositionClass(position?: string): string {
-  switch (position) {
-    case 'bottom-left':
-      return 'bottom-4 left-4';
-    case 'top-left':
-      return 'top-20 left-4';
-    case 'top-right':
-      return 'top-20 right-4';
-    case 'bottom-right':
-    default:
-      return 'bottom-4 right-4';
-  }
-}
-
-function openHotspotLink(url: string, target: '_blank' | '_self'): boolean {
-  try {
-    const parsed = new URL(url, window.location.href);
-    if (!['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol)) {
-      return false;
-    }
-
-    const features = target === '_blank' ? 'noopener,noreferrer' : undefined;
-    const openedWindow = window.open(parsed.href, target, features);
-    if (target === '_blank' && openedWindow) {
-      openedWindow.opener = null;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
+import type { Hotspot } from '@/types';
 
 export function PublicTourPage() {
   const { id } = useParams<{ id: string }>();
@@ -100,34 +71,25 @@ export function PublicTourPage() {
     refetch: refetchTour,
   } = useQuery({
     queryKey: ['public-tour', id],
-    queryFn: () => toursApi.getPublicTour(id!, { track: false }),
+    // The server counts the view when the tour is fetched (once per viewer per 30 minutes).
+    queryFn: () => toursApi.getPublicTour(id!),
     enabled: !!id,
   });
 
-  // Hydrate like state from the fetched tour. The public endpoint returns
-  // `is_liked` (visitor session) and `like_count` when available — without
-  // this, a previously liked tour always renders unliked.
+  // Hydrate the like count from the fetched tour. The public tour carries no
+  // per-viewer liked flag: the server counts each viewer (client IP) once.
   useEffect(() => {
     if (!tour) return;
-    const publicTour = tour as Tour & { is_liked?: boolean };
-    setIsLiked(publicTour.is_liked ?? false);
-    setLikeCount(publicTour.like_count ?? 0);
+    setLikeCount(tour.like_count);
   }, [tour]);
 
-  // Scenes are included in tour response from public API
-  const scenes = tour?.scenes;
+  // Only published, non-private tours feed the public player.
+  const playableTour = tour && isPlayablePublicTour(tour) ? tour : undefined;
+  const scenes = playableTour?.scenes;
   const isLoadingScenes = isLoadingTour;
 
-  // Floor plans: prefer those embedded in tour settings; otherwise fetch
-  // from the dedicated public endpoint as a graceful fallback.
-  const embeddedFloorPlans = tour?.settings?.floor_plans;
-  const { data: fetchedFloorPlans } = useQuery({
-    queryKey: ['public-tour-floor-plans', id],
-    queryFn: () => toursApi.getPublicFloorPlans(id!),
-    enabled: !!id && (!embeddedFloorPlans || embeddedFloorPlans.length === 0),
-    retry: false,
-  });
-  const floorPlans = embeddedFloorPlans?.length ? embeddedFloorPlans : (fetchedFloorPlans ?? []);
+  // Floor plans come from the top-level tour.floor_plans (floor_plans table).
+  const floorPlans = tour?.floor_plans ?? [];
 
   const sortedScenes = useMemo(() => {
     if (!scenes) return [];
@@ -137,7 +99,7 @@ export function PublicTourPage() {
   const viewerSettings = useMemo(() => {
     if (!tour) return undefined;
 
-    const base = tour.settings ?? DEFAULT_TOUR_SETTINGS;
+    const base = resolveTourSettings(tour.settings);
     const autoplay = autoplayParam ?? true;
     const showNavbar = navbarParam ?? true;
     const enableFullscreen = fullscreenParam ?? true;
@@ -154,9 +116,9 @@ export function PublicTourPage() {
     return {
       ...base,
       auto_rotate: autoRotate,
-      show_navbar: (base.show_navbar ?? true) && showNavbar,
-      enable_fullscreen: (base.enable_fullscreen ?? true) && enableFullscreen,
-      enable_vr: (base.enable_vr ?? true) && enableVR,
+      show_navbar: base.show_navbar && showNavbar,
+      enable_fullscreen: base.enable_fullscreen && enableFullscreen,
+      enable_vr: base.enable_vr && enableVR,
     };
   }, [autoplayParam, fullscreenParam, navbarParam, rotateParam, tour, vrParam]);
 
@@ -180,11 +142,12 @@ export function PublicTourPage() {
 
   const currentSceneIdForAnalytics = currentScene?.id;
 
-  // Analytics tracking (tour_view, session_start/duration, scene_view)
-  const { trackEvent, sessionId } = usePublicTourTracking({
+  // Analytics tracking (session_start/duration, scene_view with yaw and pitch)
+  const { trackEvent } = usePublicTourTracking({
     tourId: id,
-    tourLoaded: !!tour,
+    tourLoaded: isPlayablePublicTour(tour),
     currentSceneId: currentSceneIdForAnalytics,
+    currentSceneView: sceneViewDirection(currentScene, tour?.settings),
   });
 
   // Set initial scene based on URL param or tour settings
@@ -197,8 +160,8 @@ export function PublicTourPage() {
     const sceneExists = (sceneId: string | null | undefined) =>
       !!sceneId && sortedScenes.some(scene => scene.id === sceneId);
     const requestedScene = sceneExists(startSceneId) ? startSceneId : undefined;
-    const configuredInitialScene = sceneExists(tour?.settings?.initial_scene_id)
-      ? tour?.settings?.initial_scene_id
+    const configuredInitialScene = sceneExists(playableTour?.settings?.initial_scene_id)
+      ? playableTour?.settings?.initial_scene_id
       : undefined;
     const initialScene = requestedScene || configuredInitialScene || sortedScenes[0].id;
     const shouldUseInitialScene =
@@ -212,7 +175,7 @@ export function PublicTourPage() {
     setCurrentScene,
     sortedScenes,
     startSceneId,
-    tour?.settings?.initial_scene_id,
+    playableTour?.settings?.initial_scene_id,
   ]);
 
   // Keyboard shortcuts
@@ -347,8 +310,8 @@ export function PublicTourPage() {
       // For link hotspots, open directly without modal if URL exists
       if (hotspot.type === 'link') {
         const content = parseLinkHotspotContent(hotspot.content);
-        const url = content?.url || content?.link_url;
-        const target = content?.target || (content?.link_new_tab === false ? '_self' : '_blank');
+        const url = content?.url;
+        const target = content?.target ?? '_blank';
         if (url && openHotspotLink(url, target)) {
           return;
         }
@@ -374,8 +337,8 @@ export function PublicTourPage() {
 
     try {
       const result = next
-        ? await toursApi.likePublicTour(id, sessionId)
-        : await toursApi.unlikePublicTour(id, sessionId);
+        ? await toursApi.likePublicTour(id)
+        : await toursApi.unlikePublicTour(id);
       // Prefer the server's authoritative count over the optimistic guess.
       setLikeCount(result.like_count);
     } catch {
@@ -384,7 +347,7 @@ export function PublicTourPage() {
     } finally {
       setIsLiking(false);
     }
-  }, [id, isLiked, isLiking, sessionId]);
+  }, [id, isLiked, isLiking]);
 
   // Handle share
   const handleShare = useCallback(() => {
@@ -413,7 +376,7 @@ export function PublicTourPage() {
     );
   }
 
-  if (!tour) {
+  if (!tour || !isPlayablePublicTour(tour)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black">
         <div className="text-center text-white">
@@ -602,6 +565,8 @@ export function PublicTourPage() {
               {sortedScenes.map((scene, index) => (
                 <button
                   key={scene.id}
+                  type="button"
+                  data-testid="scene-thumb"
                   onClick={() => setCurrentScene(scene.id)}
                   aria-label={`Open ${scene.title || `scene ${index + 1}`}`}
                   aria-current={currentScene?.id === scene.id}
@@ -703,7 +668,7 @@ export function PublicTourPage() {
         <div
           className={cn(
             'absolute z-10 text-xs text-white/50',
-            getWatermarkPositionClass(branding?.watermark_position)
+            watermarkPositionClass(branding?.watermark_position, 'page')
           )}
         >
           Powered by 360 Viewer
@@ -717,7 +682,7 @@ export function PublicTourPage() {
         tourId={id!}
         tourTitle={tour.title}
         tourDescription={tour.description || undefined}
-        onTrackShare={platform => trackEvent('tour_share', undefined, undefined, { platform })}
+        onTrackShare={platform => trackEvent('share', undefined, undefined, { platform })}
       />
 
       {/* Hotspot Content Modal */}

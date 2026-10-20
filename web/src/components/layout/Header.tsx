@@ -26,6 +26,7 @@ import {
 import { useAuthStore, useUIStore } from '@/stores';
 import { ROUTES } from '@/constants';
 import { useUserNotifications } from '@/hooks';
+import type { UserNotificationPayload } from '@/types/realtime';
 import { formatRelativeTime } from '@/utils/format';
 import { cn } from '@/utils';
 
@@ -59,24 +60,18 @@ export function Header() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  const handleNotification = useCallback((data: Record<string, unknown>) => {
+  // The /ws/user frame is typed: {id, type, title, message, created_at} are always present.
+  const handleNotification = useCallback((data: UserNotificationPayload) => {
     setNotifications(prev =>
       [
         {
-          id:
-            typeof data.id === 'string' && data.id
-              ? data.id
-              : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          title:
-            typeof data.title === 'string' && data.title ? data.title : 'New notification',
-          message: typeof data.message === 'string' ? data.message : '',
-          createdAt:
-            typeof data.created_at === 'string' && data.created_at
-              ? data.created_at
-              : new Date().toISOString(),
+          id: data.id,
+          title: data.title,
+          message: data.message,
+          createdAt: data.created_at,
           read: false,
         },
-        ...prev,
+        ...prev.filter(n => n.id !== data.id),
       ].slice(0, MAX_NOTIFICATIONS)
     );
   }, []);
