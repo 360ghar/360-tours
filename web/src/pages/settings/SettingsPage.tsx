@@ -12,7 +12,7 @@ import {
   Input,
 } from '@/components/ui';
 import { CustomDomainSetup } from '@/components/features';
-import { authApi, usersApi, toursApi } from '@/api';
+import { authApi, usersApi, toursApi, customDomainsApi } from '@/api';
 import { useAuthStore, useUIStore } from '@/stores';
 import { useToast } from '@/hooks/useToast';
 import { QUERY_KEYS } from '@/constants';
@@ -28,12 +28,25 @@ export function SettingsPage() {
   const [domainSetupOpen, setDomainSetupOpen] = useState(false);
 
   // Published tours that a custom domain would serve (empty/loading states).
-  const { data: publishedTours, isLoading: isLoadingTours } = useQuery({
+  const {
+    data: publishedTours,
+    isLoading: isLoadingTours,
+    isError: isToursError,
+    refetch: refetchTours,
+  } = useQuery({
     queryKey: [QUERY_KEYS.TOURS, { status: 'published', scope: 'custom-domains' }],
     // `total` is null unless include_total is set.
     queryFn: () => toursApi.getTours({ status: 'published', limit: 1, include_total: true }),
   });
   const publishedTourCount = publishedTours?.total ?? publishedTours?.items.length ?? 0;
+
+  // The account's existing domain, so reopening the dialog manages it instead of
+  // showing a blank Add Domain form.
+  const { data: domains, refetch: refetchDomains } = useQuery({
+    queryKey: [QUERY_KEYS.USER, 'custom-domains'],
+    queryFn: () => customDomainsApi.listDomains(),
+  });
+  const currentDomain = domains?.[0];
 
   // Notification settings state. The backend knows four keys (push_notifications,
   // email_notifications, sms_notifications, promotional_emails); marketing consent
@@ -182,6 +195,13 @@ export function SettingsPage() {
               <p className="text-sm text-[var(--color-text-muted)]" role="status">
                 Loading your published tours...
               </p>
+            ) : isToursError ? (
+              <p className="text-sm text-[var(--color-error-600)]" role="alert">
+                Could not load your published tours.{' '}
+                <button type="button" className="underline" onClick={() => void refetchTours()}>
+                  Try again
+                </button>
+              </p>
             ) : publishedTourCount > 0 ? (
               <p className="text-sm text-[var(--color-text-muted)]">
                 Your custom domain applies to{' '}
@@ -197,7 +217,18 @@ export function SettingsPage() {
               </p>
             )}
             <Button onClick={() => setDomainSetupOpen(true)}>Set up custom domain</Button>
-            <CustomDomainSetup open={domainSetupOpen} onOpenChange={setDomainSetupOpen} />
+            <CustomDomainSetup
+              open={domainSetupOpen}
+              onOpenChange={next => {
+                setDomainSetupOpen(next);
+                if (!next) void refetchDomains();
+              }}
+              currentDomainId={currentDomain?.id}
+              currentDomain={currentDomain?.domain}
+              verificationStatus={currentDomain?.verification_status}
+              sslStatus={currentDomain?.ssl_status}
+              verificationToken={currentDomain?.verification_token}
+            />
           </div>
         </CardContent>
       </Card>

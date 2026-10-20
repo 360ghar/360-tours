@@ -21,6 +21,7 @@ import 'core/upload/upload_queue.dart';
 import 'core/upload/upload_sweep.dart';
 import 'features/assets/data/local_asset_repository.dart';
 import 'features/auth/data/supabase_auth_repository.dart';
+import 'features/capture/presentation/capture_controller.dart' show sweepOrphanedCaptures;
 import 'features/share/data/api_share_repository.dart';
 
 Future<void> main() async {
@@ -78,6 +79,9 @@ Future<void> main() async {
       api: api,
     ));
   }
+
+  // Reclaim capture folders of sessions that were never saved.
+  unawaited(sweepOrphanedCaptures(store: store));
 
   resumeUploads(auth.currentUser);
   var sweptFor = auth.currentUser?.id;

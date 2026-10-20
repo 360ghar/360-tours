@@ -157,6 +157,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="icon"
+              className="relative"
               aria-label={
                 unreadCount > 0
                   ? `Notifications. ${unreadCount} unread.`

@@ -82,7 +82,7 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           : ref.watch(floorPlansProvider(tourId)).when(
                 loading: () =>
                     const Center(child: CircularProgressIndicator()),
-                error: (_, _) => Center(
+                error: (e, _) => Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
                     child: Column(
@@ -97,10 +97,10 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                               fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(height: 6),
-                        const Text(
-                          'Check your connection and try again.',
+                        Text(
+                          _reason(e),
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.inkFaint),
+                          style: const TextStyle(color: AppColors.inkFaint),
                         ),
                         const SizedBox(height: 18),
                         FilledButton.icon(

@@ -220,6 +220,9 @@ export function RegisterPage() {
         return;
       }
       if (status.exists) {
+        // The OTP already sent must not stay usable: verifying it would sign
+        // into the existing account. Leave the OTP step and show the warning.
+        backToIdentifier();
         setExistingAccount(identifier);
         return;
       }

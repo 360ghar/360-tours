@@ -234,7 +234,9 @@ class LocalAssetRepository implements AssetRepository {
     if (asset == null) return;
     final rooms = await getRooms(assetId);
     final room = rooms.where((r) => r.id == roomId).firstOrNull;
-    if (room == null) return;
+    // A room that failed before it had a stitched panorama has nothing to
+    // upload: enqueueing it can only fail again. It needs a re-capture.
+    if (room == null || room.panoramaPath == null) return;
     await enqueueRoom(asset, room);
   }
 

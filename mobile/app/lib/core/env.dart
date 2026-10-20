@@ -18,7 +18,7 @@ class Env {
 
   static const viewerBase = String.fromEnvironment(
     'VIEWER_BASE',
-    defaultValue: 'https://360viewer.360ghar.com',
+    defaultValue: 'https://tours.360ghar.com',
   );
 
   static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');

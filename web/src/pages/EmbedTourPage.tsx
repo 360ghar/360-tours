@@ -301,12 +301,9 @@ export function EmbedTourPage() {
       // third-party sites/iframes from driving scene navigation or fullscreen.
       // event.source is the originating window; for a top-level embed it equals
       // window.parent, and for same-origin it equals window.
-      if (embedOrigin) {
-        // embed.js told us the embedding page's origin: require an exact match.
-        if (event.origin !== embedOrigin) return;
-      } else if (event.source !== window.parent && event.source !== window) {
-        return;
-      }
+      if (event.source !== window.parent && event.source !== window) return;
+      // embed.js told us the embedding page's origin: also require an exact match.
+      if (embedOrigin && event.origin !== embedOrigin) return;
       const command = parseEmbedInboundCommand(event.data);
       if (!command) return;
 

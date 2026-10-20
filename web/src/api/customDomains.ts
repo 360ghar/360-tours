@@ -9,6 +9,14 @@ export type CustomDomainResponse = Schemas['CustomDomainResponse'];
 export type CustomDomainVerificationResponse = Schemas['CustomDomainVerification'];
 
 export const customDomainsApi = {
+  /** The caller's domains, newest first (first page: an account holds few). */
+  async listDomains(): Promise<CustomDomainResponse[]> {
+    const response = await apiClient.get<{ items: CustomDomainResponse[] }>('/custom-domains', {
+      params: { limit: 100 },
+    });
+    return extractData(response).items;
+  },
+
   async createDomain(domain: string): Promise<CustomDomainResponse> {
     const response = await apiClient.post<CustomDomainResponse>('/custom-domains', { domain });
     return extractData(response);

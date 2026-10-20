@@ -115,7 +115,9 @@ class UploadQueue {
         existing['step'] = resumeStep(existing);
         existing['attempts'] = 0;
         existing['lastError'] = null;
-        existing.remove('authHolds');
+        existing
+          ..remove('authHolds')
+          ..remove('nextRetryAt');
         await _store.upsert(_collection, existing);
       }
       pump();
@@ -204,7 +206,9 @@ class UploadQueue {
         existing['step'] = resumeStep(existing);
         existing['attempts'] = 0;
         existing['lastError'] = null;
-        existing.remove('authHolds');
+        existing
+          ..remove('authHolds')
+          ..remove('nextRetryAt');
         await _store.upsert(_collection, existing);
       }
       pump();
@@ -358,6 +362,7 @@ class UploadQueue {
     if (attempts >= _maxAttempts) {
       job['lastStep'] = job['step'];
       job['step'] = 'failed';
+      job.remove('nextRetryAt'); // terminal: no countdown, the Retry action shows
       await _store.upsert(_collection, job);
       await onGiveUp?.call();
       return true; // move on to other jobs
@@ -385,7 +390,9 @@ class UploadQueue {
       fresh['step'] = resumeStep(fresh);
       fresh['attempts'] = 0;
       fresh['lastError'] = null;
-      fresh.remove('authHolds');
+      fresh
+        ..remove('authHolds')
+        ..remove('nextRetryAt');
       await _store.upsert(_collection, fresh);
     }
     pump();

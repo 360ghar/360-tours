@@ -476,6 +476,7 @@ function HotspotEditorModalForm({
                 <VideoUploader
                   open={videoUploaderOpen}
                   onOpenChange={setVideoUploaderOpen}
+                  multiple={false}
                   onUploadComplete={({ url }) => setVideoUrl(url)}
                 />
               </div>

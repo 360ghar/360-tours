@@ -7,7 +7,9 @@ part of 'upload_queue.dart';
 /// - the id of what it created is persisted before anything else can throw;
 /// - the step is entered only when that id is not already recorded;
 /// - the create carries an `Idempotency-Key` derived from the asset or room id,
-///   the same on every retry.
+///   the same on every retry. The 2026-10 backend ignores it on tours and
+///   scenes, so it protects nothing today: the persisted ids above (and the
+///   scene lookup in [_sceneFor]) are the real guard.
 extension _Pipelines on UploadQueue {
   // ---- Asset (main panorama) -------------------------------------------------
 
@@ -19,6 +21,12 @@ extension _Pipelines on UploadQueue {
       // backoff retry used to re-enter createTour and duplicate the tour.
       if (job['step'] == 'createTour' && job['tourId'] != null) {
         job['step'] = 'presign';
+      }
+      // A crash after the job stored the tour id but before the asset did must
+      // not leave the asset without it (a later delete would orphan the tour).
+      final jobTourId = job['tourId'] as String?;
+      if (jobTourId != null && asset.remoteTourId == null) {
+        await _saveIfAlive(asset.id, (c) => c.copyWith(remoteTourId: jobTourId));
       }
       // The main scene already exists — never upload the panorama or create a
       // scene again. A scene id on the job only (a build before the asset
@@ -125,7 +133,7 @@ extension _Pipelines on UploadQueue {
         case 'requestStitch':
           final urls = List<String>.from(job['frameUrls'] as List? ?? []);
           final missing = job['missingFrames'] as int? ?? 0;
-          if (urls.length >= 2) {
+          if (urls.length >= 2 && missing == 0) {
             final started = await _api.requestCloudStitch(
               sceneId: job['sceneId'] as String,
               frameUrls: urls,
@@ -236,6 +244,13 @@ extension _Pipelines on UploadQueue {
       await _store.upsert(UploadQueue._collection, job);
       return _Step.progressed;
     }
+    // The room may be deleted while a step awaits the network; saving the
+    // earlier snapshot afterwards would bring it back.
+    Future<void> saveRoomIfAlive(Room updated) async {
+      final alive = (await getRooms(asset.id)).any((r) => r.id == room.id);
+      if (alive) await saveRoom(updated);
+    }
+
     try {
       _resetIfPresignStale(job);
       final ranUploadStep = await _advanceUpload(
@@ -258,7 +273,7 @@ extension _Pipelines on UploadQueue {
           );
           job['sceneId'] = sceneId;
           await _store.upsert(UploadQueue._collection, job);
-          await saveRoom(room.copyWith(
+          await saveRoomIfAlive(room.copyWith(
             remoteSceneId: sceneId,
             panoramaUrl: job['panoramaUrl'] as String?,
             status: 'ready',
@@ -277,7 +292,7 @@ extension _Pipelines on UploadQueue {
         // Terminal failure must surface on the room, not leave it stuck at
         // "Uploading…" forever (focus g).
         onGiveUp: () async {
-          await saveRoom(room.copyWith(
+          await saveRoomIfAlive(room.copyWith(
             status: 'failed',
             lastError: describeError(e),
           ));
@@ -397,6 +412,11 @@ extension _Pipelines on UploadQueue {
         final confirmed = await _api.confirmUpload(presigned.uploadId);
         if (confirmed.uploadStatus == UploadStatus.failed) {
           throw StateError('The server rejected the uploaded file.');
+        }
+        // Fail closed: only a complete upload may become a scene image. Any
+        // other status (pending, or one this build does not know) is retried.
+        if (confirmed.uploadStatus != UploadStatus.complete) {
+          throw StateError('The server has not finished processing the upload.');
         }
         job['panoramaUrl'] = presigned.publicUrl;
         job['step'] = nextStep;

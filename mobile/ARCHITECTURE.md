@@ -93,7 +93,7 @@ Documented in depth in `docs/RELIABILITY.md` and `docs/product-specs/capture-and
 | Supabase Auth | Identity; JWT |
 | `api.360ghar.com/api/v1` | Tours, scenes, hotspots, presigned uploads, AI jobs |
 | Cloudinary | Direct presigned image PUT (no app Authorization header) |
-| `360viewer.360ghar.com` | Embed / view / view3d web app — source now lives at `../web` in this monorepo; coordinate route/embed-contract changes across both |
+| `tours.360ghar.com` | Embed / view / view3d web app — source now lives at `../web` in this monorepo; coordinate route/embed-contract changes across both |
 | Apple RoomPlan / RealityKit | LiDAR plugin |
 | Insta360 camera WiFi | Optional capture path (SDK NDA-gated) |
 

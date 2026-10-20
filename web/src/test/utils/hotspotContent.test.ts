@@ -5,6 +5,7 @@ import {
   parseInfoHotspotContent,
   parseLinkHotspotContent,
   parseVideoHotspotContent,
+  parseVideoHotspotFields,
 } from '@/types/hotspotContent';
 
 describe('hotspot content parsers', () => {
@@ -39,7 +40,7 @@ describe('hotspot content parsers', () => {
 
   it('parses video content: provider ids, raw url, poster_url, and drops the poster alias', () => {
     expect(
-      parseVideoHotspotContent({
+      parseVideoHotspotFields({
         video_url: 'https://example.com/video.mp4',
         youtube_id: 'abc123',
         vimeo_id: '987',
@@ -57,6 +58,12 @@ describe('hotspot content parsers', () => {
       muted: true,
       poster_url: '/poster-2.jpg',
     });
+  });
+
+  it('rejects video content without exactly one source', () => {
+    expect(parseVideoHotspotContent({ poster_url: '/p.jpg' })).toBeNull();
+    expect(parseVideoHotspotContent({ video_url: 'https://e.com/v.mp4', youtube_id: 'abc' })).toBeNull();
+    expect(parseVideoHotspotContent({ youtube_id: 'abc' })).toEqual({ youtube_id: 'abc' });
   });
 
   it('parses link content with the url and target keys only', () => {

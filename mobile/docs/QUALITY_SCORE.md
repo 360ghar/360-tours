@@ -44,7 +44,7 @@ Last reviewed: 2026-07-25 (full codebase audit + fix pass). Updated 2026-08 (W3e
 6. `sweepOrphanedCaptures` implemented but not yet called from main.dart (W3e fix pass — one-line startup call pending with W3f). `sweepStuckUploads` (stuck assets and rooms) is called at start and after sign-in.
 7. ~~No hotspot list/delete/edit UI (TD-012).~~ Done 2026-10. A measured floor plan still cannot be created from the app: the screen generates an AI-estimated schematic plan (TD-020, partly done).
 8. `/view3d/{id}` deep link lands on detail, not the 3D viewer (TD-014).
-9. ~~Retry on a published failed asset can duplicate a scene (TD-019).~~ Done 2026-10. The backend ignores `Idempotency-Key` on tour and scene create (TD-021).
+9. ~~Retry on a published failed asset can duplicate a scene (TD-019).~~ Done 2026-10: a retry reuses the stored scene id, and a lost create response is reconciled by finding the scene by its image URL (`_sceneFor`). The backend still ignores `Idempotency-Key` on tour and scene create (TD-021, open), so a lost `POST /tours` response can still leave a duplicate tour.
 10. ~~`AssetStatus.processing3d` read by UIs but still not written by generate_3d_screen (TD-018).~~ Removed with splat removal.
 
 Many prior gaps (auth session race, upload backoff bypass, local-store durability, capture orientation timing, missing loading/error/empty states, failed-stitch dead end, room failure invisibility) were resolved in the 2026-07-25 audit pass and the 2026-08 W3e core-reliability pass.

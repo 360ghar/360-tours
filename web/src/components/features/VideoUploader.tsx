@@ -54,6 +54,8 @@ interface VideoUploaderProps {
   }) => void;
   maxFileSize?: number; // in MB
   acceptedFormats?: string[];
+  /** Allow several files at once. A single-value caller (one hotspot video) passes false. */
+  multiple?: boolean;
 }
 
 const DEFAULT_MAX_SIZE = 500; // 500MB
@@ -67,6 +69,7 @@ export function VideoUploader({
   onUploadComplete,
   maxFileSize = DEFAULT_MAX_SIZE,
   acceptedFormats = DEFAULT_FORMATS,
+  multiple = true,
 }: VideoUploaderProps) {
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -255,7 +258,7 @@ export function VideoUploader({
     onDrop,
     onDropRejected,
     accept: acceptedFormats.reduce((acc, format) => ({ ...acc, [format]: [] }), {}),
-    multiple: true,
+    multiple,
     maxSize: maxFileSize * 1024 * 1024,
     disabled: isUploading,
   });

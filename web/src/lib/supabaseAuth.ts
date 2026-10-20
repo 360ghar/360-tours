@@ -4,8 +4,24 @@ import { mapSupabaseAuthError, type AuthErrorContext } from '@/lib/authErrors';
 import { isSameOriginPath } from '@/utils/url';
 import type { AuthTokens } from '@/types';
 
+/**
+ * The user-facing message, with the original Supabase `status`, `code` and
+ * `__isAuthError` marker kept on the Error so callers can still tell a
+ * credential rejection (4xx) from a transient failure.
+ */
 function mappedError(error: unknown, context: AuthErrorContext = 'login'): Error {
-  return new Error(mapSupabaseAuthError(error, context));
+  const mapped = new Error(mapSupabaseAuthError(error, context)) as Error & {
+    status?: number;
+    code?: string;
+    __isAuthError?: boolean;
+  };
+  if (error && typeof error === 'object') {
+    const source = error as { status?: unknown; code?: unknown; __isAuthError?: unknown };
+    if (typeof source.status === 'number') mapped.status = source.status;
+    if (typeof source.code === 'string') mapped.code = source.code;
+    if (source.__isAuthError === true) mapped.__isAuthError = true;
+  }
+  return mapped;
 }
 
 export type SupabaseAuthEvent = 'INITIAL_SESSION' | 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED';

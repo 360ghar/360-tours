@@ -500,7 +500,8 @@ class CaptureController extends Notifier<CaptureState> {
       );
       final stitched = room.copyWith(
         panoramaPath: result.panoramaPath,
-        status: 'ready',
+        // Not ready until the queue has uploaded it and created the scene.
+        status: 'uploading',
       );
       await assets.saveRoom(stitched);
       final asset = await assets.getAsset(assetId);

@@ -35,8 +35,8 @@ flutter run \
 
 Optional overrides: `API_BASE` (default `https://api.360ghar.com/api/v1`),
 `API_ROOT` (default: `API_BASE` without `/api/v1`; share links are built from it,
-so a release build must name the host the backend uses as `PUBLIC_BASE_URL`),
-`VIEWER_BASE` (default `https://360viewer.360ghar.com`).
+so a release build must pass `--dart-define=API_ROOT=<the host the backend uses as its `PUBLIC_BASE_URL`>`),
+`VIEWER_BASE` (default `https://tours.360ghar.com`; the old 360viewer.360ghar.com host does not serve TLS).
 
 Camera, motion sensors, LiDAR and photogrammetry need a physical iPhone;
 everything else (auth, list, viewer, share, upload queue) works on the

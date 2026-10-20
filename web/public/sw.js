@@ -53,7 +53,11 @@ self.addEventListener('fetch', event => {
         caches.match(request).then(cached => {
           if (cached) return cached;
           if (isNavigation) {
-            return caches.match('/index.html').then(fallback => fallback || Response.error());
+            // The shell may be cached as /index.html or, for a normal visit, as /.
+            return caches
+              .match('/index.html')
+              .then(fallback => fallback || caches.match('/'))
+              .then(fallback => fallback || Response.error());
           }
           return Response.error();
         })

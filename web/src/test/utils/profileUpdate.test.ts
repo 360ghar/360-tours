@@ -38,3 +38,10 @@ describe('buildProfileUpdate', () => {
     expect(isBlankPhone('+919876543210')).toBe(false);
   });
 });
+
+describe('partial phone numbers', () => {
+  it('does not treat a dial code plus a few digits as cleared', () => {
+    expect(isBlankPhone('+911')).toBe(false);
+    expect(buildProfileUpdate(current, { full_name: 'Jane Doe', phone: '+911' })).toEqual({});
+  });
+});

@@ -204,19 +204,41 @@ export function TourCreatePage() {
   // written back into the row's status so the UI can offer a retry.
   const uploadOne = useCallback(
     async (item: UploadingFile, tourId: string) => {
+      // A retry that already holds the uploaded URL skips the upload, and the
+      // scene POST is not idempotent: if the first try may have committed the
+      // scene (response lost), look for it before creating another.
+      let publicUrl = item.url;
       try {
-        const uploadResult = await uploadApi.uploadFile(item.file, {
-          folderType: SCENE_UPLOAD_FOLDER_TYPE,
-          tourId,
-          visibility: 'public',
-          onProgress: progress => {
-            setUploadingFiles(prev => prev.map(f => (f.id === item.id ? { ...f, progress } : f)));
-          },
-        });
+        if (!publicUrl) {
+          const uploadResult = await uploadApi.uploadFile(item.file, {
+            folderType: SCENE_UPLOAD_FOLDER_TYPE,
+            tourId,
+            visibility: 'public',
+            onProgress: progress => {
+              setUploadingFiles(prev => prev.map(f => (f.id === item.id ? { ...f, progress } : f)));
+            },
+          });
+          publicUrl = uploadResult.public_url;
+          const uploadedUrl = publicUrl;
+          setUploadingFiles(prev => prev.map(f => (f.id === item.id ? { ...f, url: uploadedUrl } : f)));
+        } else {
+          const existing = await toursApi.getScenes(tourId);
+          if (existing.some(scene => scene.image_url === publicUrl)) {
+            const doneUrl = publicUrl;
+            setUploadingFiles(prev =>
+              prev.map(f =>
+                f.id === item.id
+                  ? { ...f, status: 'completed' as const, progress: 100, url: doneUrl }
+                  : f
+              )
+            );
+            return;
+          }
+        }
 
         await addSceneMutation.mutateAsync({
           tourId,
-          imageUrl: uploadResult.public_url,
+          imageUrl: publicUrl,
           title: getSceneTitleFromFile(item.file),
         });
 
@@ -227,7 +249,7 @@ export function TourCreatePage() {
                   ...f,
                   status: 'completed' as const,
                   progress: 100,
-                  url: uploadResult.public_url,
+                  url: publicUrl,
                 }
               : f
           )

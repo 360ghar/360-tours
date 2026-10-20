@@ -96,6 +96,11 @@ Future<void> sweepStuckUploads({
 
     final running = asset.status == AssetStatus.stitching ||
         asset.status == AssetStatus.pendingCloudStitch;
+    if (running && job != null && job['step'] == 'failed') {
+      // The queue wrote `failed` but the app died before the asset followed.
+      await store.upsert(
+          'assets', asset.copyWith(status: AssetStatus.failed).toJson());
+    }
     if (running && job == null) {
       final pano = asset.panoramaPath;
       if (pano != null && File(pano).existsSync()) {
@@ -118,6 +123,19 @@ Future<void> sweepStuckUploads({
     }
     if (room.remoteSceneId != null || room.status == 'failed') continue;
     final job = jobs.where((j) => j['id'] == 'room-${room.id}').firstOrNull;
+    if (job != null && job['step'] == 'failed') {
+      // Same crash window for a room: surface the failure the queue recorded.
+      await store.upsert(
+        'rooms',
+        room
+            .copyWith(
+              status: 'failed',
+              lastError: job['lastError'] as String? ?? 'The upload failed.',
+            )
+            .toJson(),
+      );
+      continue;
+    }
     if (job != null && job['step'] != 'done') continue; // queued or parked
     final pano = room.panoramaPath;
     if (pano != null && File(pano).existsSync()) {

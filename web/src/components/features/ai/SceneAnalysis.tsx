@@ -158,9 +158,12 @@ export function SceneAnalysis({
       .filter(a => selectedScenes.has(a.scene_id))
       .map(a => ({
         scene_id: a.scene_id,
-        title: applyTitles ? a.suggested_title : undefined,
-        description: applyDescriptions ? a.suggested_description : undefined,
-      }));
+        // A blank suggestion (a malformed result row) must never erase metadata.
+        title: applyTitles && a.suggested_title ? a.suggested_title : undefined,
+        description:
+          applyDescriptions && a.suggested_description ? a.suggested_description : undefined,
+      }))
+      .filter(u => u.title !== undefined || u.description !== undefined);
 
     onApply(updates);
     onOpenChange(false);

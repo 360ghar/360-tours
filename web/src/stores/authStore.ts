@@ -136,6 +136,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         'Transient error completing login (session preserved):',
         error instanceof Error ? error.message : error
       );
+      // The Supabase session may already belong to the NEW account while the
+      // store still holds the previous user: drop that identity (the session
+      // itself is kept and restored on the next checkAuth).
+      if (get().user) get().clearAuth();
       return;
     }
     try {

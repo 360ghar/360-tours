@@ -43,7 +43,7 @@ Inventory of `app/lib` for agent navigation. Update when features are added, ren
 | File | Role |
 |------|------|
 | `api_fixtures.py` | Writes `test/fixtures/api/*.json` from the backend's Pydantic models |
-| `gen_enums.py` | Writes `lib/core/models/wire_enums.dart` from `contract-audit/enums.json` |
+| `gen_enums.py` | Writes `lib/core/models/wire_enums.dart` from `web/openapi/openapi.json` |
 
 ## packages
 

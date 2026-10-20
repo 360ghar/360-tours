@@ -12,9 +12,9 @@ import 'package:tours360/features/share/domain/embed_code.dart';
 void main() {
   test('embed url carries the viewer host and params', () {
     expect(generateEmbedUrl('t1'),
-        'https://360viewer.360ghar.com/embed/t1');
+        'https://tours.360ghar.com/embed/t1');
     expect(generateEmbedUrl('t1', minimal: true, branding: false),
-        'https://360viewer.360ghar.com/embed/t1?minimal=true&branding=false');
+        'https://tours.360ghar.com/embed/t1?minimal=true&branding=false');
   });
 
   test('default iframe is byte-identical to the cross-app golden fixture',
@@ -39,7 +39,7 @@ void main() {
           vr: false,
           rotate: true,
           branding: false),
-      'https://360viewer.360ghar.com/embed/t1'
+      'https://tours.360ghar.com/embed/t1'
       '?scene=s-1&autoplay=false&navbar=false&minimal=true&autohide=true'
       '&fullscreen=false&vr=false&rotate=true&branding=false',
     );

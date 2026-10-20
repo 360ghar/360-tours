@@ -52,7 +52,7 @@ function getBaseUrl(): string {
     return window.location.origin;
   }
   // Fallback for SSR or tests
-  return import.meta.env.VITE_APP_URL || 'https://360viewer.360ghar.com';
+  return import.meta.env.VITE_APP_URL || 'https://tours.360ghar.com';
 }
 
 function getBackendBaseUrl(): string | null {

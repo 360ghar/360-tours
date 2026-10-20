@@ -93,6 +93,9 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   const [isSketchingPlan, setIsSketchingPlan] = useState(false);
   const [hasSketch, setHasSketch] = useState(false);
   const imagesRef = useRef<UploadedImage[]>([]);
+  // Set when the user starts a new generation: a saved-job status check that is
+  // still pending must then be ignored, or it would overwrite the new run.
+  const newGenerationRef = useRef(false);
 
   useEffect(() => {
     imagesRef.current = images;
@@ -204,6 +207,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   };
 
   const handleStartGeneration = async () => {
+    newGenerationRef.current = true;
     setStep('processing');
     setError(null);
 
@@ -304,7 +308,10 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
     setUploadProgress(0);
     // Persist (or clear) the in-flight job id — done last so an async close
     // never races the resume effect on the next open.
-    persistPendingJob(userId, jobId);
+    // Only ever write a live id here. With no jobId, a saved id may still be
+    // waiting on its status check and must survive the close; finished jobs
+    // clear their own id.
+    if (jobId) persistPendingJob(userId, jobId);
     onOpenChange(false);
   };
 
@@ -343,13 +350,14 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    newGenerationRef.current = false;
     const saved = readAccountItem('aiPendingJob', userId);
     if (!saved) return;
 
     (async () => {
       try {
         const response = await aiApi.getJobStatus(saved);
-        if (cancelled) return;
+        if (cancelled || newGenerationRef.current) return;
         const status = response.job.status;
         if (status === 'completed') {
           const generated = readTourGenerationResult(response.result);
@@ -377,7 +385,7 @@ export function AITourWizard({ open, onOpenChange, onComplete }: AITourWizardPro
       } catch {
         // Status check failed (network/backend down). Keep the persisted id so
         // the user can reopen and try again.
-        if (!cancelled) {
+        if (!cancelled && !newGenerationRef.current) {
           setError(
             'Could not check the status of your previous AI job. Reopen the wizard to try again.'
           );

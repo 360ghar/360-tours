@@ -92,10 +92,18 @@ class CursorPage<T> {
     T Function(Map<String, dynamic>) parse,
   ) {
     final m = asJsonMap(json, 'page');
+    // A page without `items` is a broken response, not an empty page.
+    _required(m, 'items', 'page');
+    final nextCursor = _optStr(m, 'next_cursor');
+    final hasMore = _bool(m, 'has_more', 'page');
+    // `has_more` with no usable cursor would silently drop the later pages.
+    if (hasMore && (nextCursor == null || nextCursor.isEmpty)) {
+      throw const FormatException('page.next_cursor is missing');
+    }
     return CursorPage(
       items: [for (final e in _objects(m['items'], 'page.items')) parse(e)],
-      nextCursor: _optStr(m, 'next_cursor'),
-      hasMore: _bool(m, 'has_more', 'page'),
+      nextCursor: nextCursor,
+      hasMore: hasMore,
       limit: _int(m, 'limit', 'page'),
       total: (m['total'] as num?)?.toInt(),
     );

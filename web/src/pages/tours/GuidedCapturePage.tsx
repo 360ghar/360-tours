@@ -375,6 +375,9 @@ export function GuidedCapturePage() {
       const next = local.map(lf => {
         const server = serverByYaw.get(lf.yawDeg);
         if (!server || !server.frame.image_url) return lf;
+        // A frame retaken locally and not uploaded yet must keep its own pixels:
+        // the server frame at this yaw is the OLD capture.
+        if (lf.blob && lf.uploadStatus !== 'done') return lf;
         // Already registered server-side — skip re-upload on the next run.
         return {
           ...lf,
@@ -439,6 +442,11 @@ export function GuidedCapturePage() {
           } else {
             setError(`This capture session is ${s.status}. Start a new capture.`);
           }
+        } else if (s.status === 'processing') {
+          // The server is building the tour: the session takes no more frames, and
+          // `processing -> uploading` is not a valid transition. Do not open the
+          // camera; the status page reports when it is ready.
+          setError('This capture session is processing. Check back when it is ready.');
         } else if (s.status === 'review' || s.status === 'uploading') {
           setPhase('review');
           if (s.status === 'uploading') await moveSession(s.id, 'review');

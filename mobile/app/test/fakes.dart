@@ -410,6 +410,8 @@ class FakeBackendApi extends BackendApi {
                 sceneId: 'scene-main', x: 30, y: 40, label: 'Living room'),
           ],
         );
+    // The API replaces the previous AI-estimated plan instead of adding one.
+    floorPlanList.removeWhere((p) => p.name == plan.name);
     floorPlanList.add(plan);
     return plan;
   }

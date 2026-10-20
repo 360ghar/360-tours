@@ -78,7 +78,8 @@ export function ConnectRoomsDialog({
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
-      setJobId(null);
+      // Keep jobId: the job keeps running on the server, and reopening the
+      // dialog must monitor the same job (and refresh the editor when it ends).
       setSummary(null);
       setRanWithoutReport(false);
       setError(null);
@@ -146,7 +147,11 @@ export function ConnectRoomsDialog({
                 onComplete={handleComplete}
                 onError={handleError}
                 showCancelButton={true}
-                onCancel={() => setJobId(null)}
+                onCancel={() => {
+                  setJobId(null);
+                  // The server already removed the old AI links: refresh the editor.
+                  onApplied();
+                }}
               />
               <p className="text-xs text-[var(--color-text-muted)]">
                 Closing this dialog keeps the job running. Cancelling stops it: the old AI links are

@@ -108,18 +108,25 @@ class LocalStore {
   /// can be recovered instead of being silently dropped, then resets the
   /// in-memory state to an empty list and keeps serving reads/writes.
   Future<List<Map<String, dynamic>>> _quarantineAndReset(
-      String collection, File file, Object error) async {
+    String collection,
+    File file,
+    Object error,
+  ) async {
     final after = _cache[collection];
     if (after != null) return after;
     try {
       final ts = DateTime.now().millisecondsSinceEpoch;
       await file.rename('${file.path}.corrupt-$ts');
-      debugPrint('LocalStore: quarantined corrupt $collection.json '
-          '($error) -> ${file.path}.corrupt-$ts');
+      debugPrint(
+        'LocalStore: quarantined corrupt $collection.json '
+        '($error) -> ${file.path}.corrupt-$ts',
+      );
       await _pruneQuarantineFiles(collection);
     } catch (e) {
-      debugPrint('LocalStore: failed to quarantine corrupt '
-          '$collection.json: $e');
+      debugPrint(
+        'LocalStore: failed to quarantine corrupt '
+        '$collection.json: $e',
+      );
     }
     return _cache[collection] = [];
   }
@@ -144,8 +151,8 @@ class LocalStore {
   /// Moves one unreadable record out of [collection] into the
   /// `<collection>_quarantine` collection, with the reason. The record stays
   /// recoverable there. Only the newest [maxQuarantinedRecords] are kept.
-  /// ponytail: read, then write, not under one lock — a write that lands in
-  /// between is lost. The window is one await; make it one lock if it bites.
+  /// Each collection is read and rewritten under its own lock, so a concurrent
+  /// save never loses to a stale snapshot.
   Future<void> quarantineRecord(
     String collection,
     Map<String, dynamic> record,
@@ -153,22 +160,32 @@ class LocalStore {
   ) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     final quarantine = '${collection}_quarantine';
-    final held = List<Map<String, dynamic>>.from(await readAll(quarantine))
-      ..add({
-        'id': '$now-${record.hashCode}',
-        'reason': '$reason',
-        'quarantinedAt': now,
-        'record': record,
-      });
-    await writeAll(quarantine,
-        held.skip(held.length > maxQuarantinedRecords
-            ? held.length - maxQuarantinedRecords
-            : 0).toList());
+    await _runLocked(quarantine, () async {
+      final held = List<Map<String, dynamic>>.from(await readAll(quarantine))
+        ..add({
+          'id': '$now-${record.hashCode}',
+          'reason': '$reason',
+          'quarantinedAt': now,
+          'record': record,
+        });
+      await _writeAllUnlocked(
+        quarantine,
+        held
+            .skip(
+              held.length > maxQuarantinedRecords
+                  ? held.length - maxQuarantinedRecords
+                  : 0,
+            )
+            .toList(),
+      );
+    });
     final encoded = jsonEncode(record);
-    final live = (await readAll(collection))
-        .where((e) => !identical(e, record) && jsonEncode(e) != encoded)
-        .toList();
-    await writeAll(collection, live);
+    await _runLocked(collection, () async {
+      final live = (await readAll(collection))
+          .where((e) => !identical(e, record) && jsonEncode(e) != encoded)
+          .toList();
+      await _writeAllUnlocked(collection, live);
+    });
     debugPrint('LocalStore: quarantined a $collection record ($reason)');
   }
 
@@ -177,34 +194,44 @@ class LocalStore {
   /// that is still unreadable stays in quarantine. A record whose id is already
   /// live is never overwritten: the live copy wins and the quarantined copy is
   /// dropped only when both are identical. Returns how many were restored.
-  /// ponytail: read, then write, not under one lock, like [quarantineRecord].
+  /// Lock order: the collection, then its quarantine ([quarantineRecord] takes
+  /// them one after the other, never nested, so the two cannot deadlock).
   Future<int> restoreQuarantinedRecords(
     String collection,
     bool Function(Map<String, dynamic> record) canRead,
   ) async {
     final quarantine = '${collection}_quarantine';
-    final held = await readAll(quarantine);
-    if (held.isEmpty) return 0;
-    final live = List<Map<String, dynamic>>.from(await readAll(collection));
-    final keep = <Map<String, dynamic>>[];
     var restored = 0;
-    for (final entry in held) {
-      final stored = entry['record'];
-      final record = stored is Map ? Map<String, dynamic>.from(stored) : null;
-      if (record == null || !canRead(record)) {
-        keep.add(entry);
-        continue;
-      }
-      final twin = live.where((e) => e['id'] == record['id']).firstOrNull;
-      if (twin == null) {
-        live.add(record);
-        restored++;
-      } else if (jsonEncode(twin) != jsonEncode(record)) {
-        keep.add(entry); // a different record owns this id: keep both
-      }
-    }
-    if (restored > 0) await writeAll(collection, live);
-    if (keep.length != held.length) await writeAll(quarantine, keep);
+    await _runLocked(
+      collection,
+      () => _runLocked(quarantine, () async {
+        final held = await readAll(quarantine);
+        if (held.isEmpty) return;
+        final live = List<Map<String, dynamic>>.from(await readAll(collection));
+        final keep = <Map<String, dynamic>>[];
+        for (final entry in held) {
+          final stored = entry['record'];
+          final record = stored is Map
+              ? Map<String, dynamic>.from(stored)
+              : null;
+          if (record == null || !canRead(record)) {
+            keep.add(entry);
+            continue;
+          }
+          final twin = live.where((e) => e['id'] == record['id']).firstOrNull;
+          if (twin == null) {
+            live.add(record);
+            restored++;
+          } else if (jsonEncode(twin) != jsonEncode(record)) {
+            keep.add(entry); // a different record owns this id: keep both
+          }
+        }
+        if (restored > 0) await _writeAllUnlocked(collection, live);
+        if (keep.length != held.length) {
+          await _writeAllUnlocked(quarantine, keep);
+        }
+      }),
+    );
     if (restored > 0) {
       debugPrint('LocalStore: restored $restored $collection record(s)');
     }
@@ -222,7 +249,7 @@ class LocalStore {
     final files = <File>[
       await for (final e in _dir.list())
         if (e is File && e.uri.pathSegments.last.startsWith(prefix)) e,
-    ]..sort((a, b) => a.path.compareTo(b.path)); // oldest first: newest wins
+    ]..sort((a, b) => b.path.compareTo(a.path)); // newest first: it wins an id
     var restored = 0;
     for (final file in files) {
       final List<Map<String, dynamic>> items;
@@ -233,27 +260,36 @@ class LocalStore {
       } on TypeError {
         continue;
       }
-      final live = List<Map<String, dynamic>>.from(await readAll(collection));
-      final known = {for (final e in live) e['id']};
-      final fresh = items.where((e) => known.add(e['id'])).toList();
-      if (fresh.isNotEmpty) await writeAll(collection, [...live, ...fresh]);
+      var added = 0;
+      await _runLocked(collection, () async {
+        final live = List<Map<String, dynamic>>.from(await readAll(collection));
+        final known = {for (final e in live) e['id']};
+        final fresh = items.where((e) => known.add(e['id'])).toList();
+        if (fresh.isNotEmpty) {
+          await _writeAllUnlocked(collection, [...live, ...fresh]);
+        }
+        added = fresh.length;
+      });
       await file.delete();
-      restored += fresh.length;
+      restored += added;
     }
     if (restored > 0) {
-      debugPrint('LocalStore: restored $restored $collection record(s) '
-          'from quarantined files');
+      debugPrint(
+        'LocalStore: restored $restored $collection record(s) '
+        'from quarantined files',
+      );
     }
     return restored;
   }
 
-  Future<void> writeAll(
-      String collection, List<Map<String, dynamic>> items) {
+  Future<void> writeAll(String collection, List<Map<String, dynamic>> items) {
     return _runLocked(collection, () => _writeAllUnlocked(collection, items));
   }
 
   Future<void> _writeAllUnlocked(
-      String collection, List<Map<String, dynamic>> items) async {
+    String collection,
+    List<Map<String, dynamic>> items,
+  ) async {
     await _dir.create(recursive: true);
     final file = _file(collection);
     final tmp = File('${file.path}.tmp');

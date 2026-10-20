@@ -16,7 +16,7 @@ import {
   parseCustomHotspotContent,
   parseInfoHotspotContent,
   parseLinkHotspotContent,
-  parseVideoHotspotContent,
+  parseVideoHotspotFields,
 } from '@/types/hotspotContent';
 import type {
   HotspotContent,
@@ -85,7 +85,7 @@ export function buildHotspotContent(
     case 'video': {
       const raw = values.videoUrl.trim();
       if (!raw) return null;
-      const kept = without(parseVideoHotspotContent(stored), [
+      const kept = without(parseVideoHotspotFields(stored), [
         'youtube_id',
         'vimeo_id',
         'video_url',

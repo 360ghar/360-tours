@@ -5,13 +5,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../env.dart';
 
-/// Broadcast signal fired when the single 401 refresh fails — the session
-/// can no longer be refreshed and the user must sign in again. UI listens
-/// to surface a "Session expired" state; the upload queue holds jobs in
-/// `waiting-auth` instead of burning retry attempts.
-final StreamController<void> _authExpired = StreamController<void>.broadcast();
+/// Session-expired state: `true` once the single 401 refresh has failed (the
+/// session can no longer be refreshed and the user must sign in again), `false`
+/// again after the next successful authenticated response. UI listens to show a
+/// "Session expired" banner; the upload queue holds jobs in `waiting-auth`
+/// instead of burning retry attempts.
+final StreamController<bool> _authExpired = StreamController<bool>.broadcast();
 
-Stream<void> get authExpiredStream => _authExpired.stream;
+/// The current state first, then every change. A listener that arrives after
+/// the expiry (a screen opened later) still sees it.
+Stream<bool> get authExpiredStream async* {
+  yield _authExpiredSignaled;
+  yield* _authExpired.stream;
+}
 
 bool _authExpiredSignaled = false;
 
@@ -20,7 +26,7 @@ bool _authExpiredSignaled = false;
 void _signalAuthExpired() {
   if (_authExpiredSignaled) return;
   _authExpiredSignaled = true;
-  _authExpired.add(null);
+  _authExpired.add(true);
 }
 
 /// Dio client for api.360ghar.com with the Supabase JWT attached.
@@ -58,8 +64,10 @@ Dio createApiClient({SupabaseClient? supabase}) {
     onResponse: (response, handler) {
       // A successful authed request means the session is healthy again;
       // allow the next expiry episode to signal once more.
-      if (response.requestOptions.headers.containsKey('Authorization')) {
+      if (response.requestOptions.headers.containsKey('Authorization') &&
+          _authExpiredSignaled) {
         _authExpiredSignaled = false;
+        _authExpired.add(false);
       }
       handler.next(response);
     },
@@ -69,6 +77,7 @@ Dio createApiClient({SupabaseClient? supabase}) {
       if (error.response?.statusCode == 401 &&
           auth != null &&
           !alreadyRetried) {
+        String? token;
         try {
           final refresh = inflightRefresh ??= () async {
             try {
@@ -78,25 +87,29 @@ Dio createApiClient({SupabaseClient? supabase}) {
               inflightRefresh = null;
             }
           }();
-          final token = await refresh;
-          if (token != null) {
-            final opts = error.requestOptions
-              ..headers['Authorization'] = 'Bearer $token'
-              ..extra['retried'] = true;
-            final response = await dio.fetch<dynamic>(opts);
-            return handler.resolve(response);
-          }
-          // refreshSession() resolved without a session/token: the refresh
-          // token is gone. That is an expiry exactly like a thrown refresh —
-          // signal it, or the UI banner and the queue's auth-hold never fire
-          // and the 401 surfaces as a generic failure.
-          _signalAuthExpired();
+          token = await refresh;
         } catch (_) {
           // Refresh failed (network or expired refresh token): the session
           // is dead. Signal once per expiry episode so the UI can prompt
           // re-auth and the queue can pause retrying.
           _signalAuthExpired();
-          // fall through to the original 401
+          return handler.next(error);
+        }
+        if (token == null) {
+          // refreshSession() resolved without a session/token: the refresh
+          // token is gone. That is an expiry exactly like a thrown refresh.
+          _signalAuthExpired();
+          return handler.next(error);
+        }
+        // Only the refresh decides expiry. A failure of the replayed request
+        // is its own error and goes to the caller unchanged.
+        final opts = error.requestOptions
+          ..headers['Authorization'] = 'Bearer $token'
+          ..extra['retried'] = true;
+        try {
+          return handler.resolve(await dio.fetch<dynamic>(opts));
+        } on DioException catch (replayError) {
+          return handler.next(replayError);
         }
       }
       handler.next(error);

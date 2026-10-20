@@ -161,7 +161,7 @@ class _Body extends ConsumerWidget {
     // "panorama file missing" and burn all backoff attempts.
     if (asset.status == AssetStatus.failed &&
         asset.framePaths.isNotEmpty &&
-        asset.panoramaPath == null) {
+        !_hasPanoramaFile(asset)) {
       final preferDevice = ref.read(processingPreferenceProvider).value !=
           ProcessingPreference.cloudFirst;
       final error = await retryStitch(
@@ -233,10 +233,10 @@ class _AuthExpiredBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<void>(
+    return StreamBuilder<bool>(
       stream: authExpiredStream,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox.shrink();
+        if (snapshot.data != true) return const SizedBox.shrink();
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -332,7 +332,7 @@ class _QueueStatusState extends State<_QueueStatus> {
     }
     if (widget.asset.status == AssetStatus.failed) {
       final canRestitch = widget.asset.framePaths.isNotEmpty &&
-          widget.asset.panoramaPath == null;
+          !_hasPanoramaFile(widget.asset);
       return _Notice(
         icon: Icons.error_outline,
         message: 'Something went wrong.',
@@ -465,4 +465,10 @@ class _Action extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A stored path whose file is gone (storage sweep) counts as no panorama.
+bool _hasPanoramaFile(ScanAsset asset) {
+  final path = asset.panoramaPath;
+  return path != null && File(path).existsSync();
 }

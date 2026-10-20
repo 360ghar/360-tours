@@ -78,10 +78,20 @@ export function ForgotPasswordPage() {
     setIsLoading(true);
     setError(null);
     try {
-      if (channel === 'email') {
-        await authApi.requestPasswordResetEmailOTP(identifier);
-      } else {
-        await authApi.requestPasswordResetOTP(identifier);
+      // Same neutral rule as the first request: an unknown identifier gets no
+      // dispatch, but the same cooldown and no error, so Resend cannot be used
+      // to tell an unknown identifier from a known one.
+      const status = await checkIdentifierStatusSafe(identifier);
+      if ('unavailable' in status) {
+        setError(IDENTIFIER_STATUS_UNAVAILABLE_MESSAGE);
+        return;
+      }
+      if (status.exists) {
+        if (channel === 'email') {
+          await authApi.requestPasswordResetEmailOTP(identifier);
+        } else {
+          await authApi.requestPasswordResetOTP(identifier);
+        }
       }
       // Only start the cooldown after a confirmed success — never on error.
       resendTimer.start();

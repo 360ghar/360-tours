@@ -1,11 +1,15 @@
 import type { UserUpdate } from '@/types';
+import { COUNTRY_CODES } from '@/constants/countryCodes';
 
 /** International format, as the server checks it (`PHONE_INVALID` otherwise). */
 export const E164_PHONE = /^\+[1-9]\d{6,14}$/;
 
-/** The phone input holds just the dial code (for example +91) when the number is cleared. */
+const DIAL_CODES = new Set(COUNTRY_CODES.map(c => c.dialCode));
+
+/** The phone input holds just a dial code (for example +91) when the number is cleared. */
 export function isBlankPhone(value: string): boolean {
-  return value.replace(/\D/g, '').length <= 4;
+  const v = value.trim();
+  return v === '' || DIAL_CODES.has(v);
 }
 
 /**

@@ -321,8 +321,17 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
               controller: _name,
               autofocus: true,
               textCapitalization: TextCapitalization.words,
-              // The backend rejects a name over 255 characters.
-              maxLength: kMaxNameLength,
+              // The backend rejects a name over 255 code points, and `clampName`
+              // counts the same way. `maxLength` counts grapheme clusters, so an
+              // emoji-heavy name would pass it and be cut silently on save.
+              inputFormatters: [
+                TextInputFormatter.withFunction(
+                  (oldValue, newValue) =>
+                      newValue.text.runes.length <= kMaxNameLength
+                          ? newValue
+                          : oldValue,
+                ),
+              ],
               decoration: const InputDecoration(
                 hintText: 'Living room',
                 counterText: '',

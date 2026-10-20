@@ -21,7 +21,7 @@
 
 ## Local data and caches
 
-- The local store is scoped by `ownerId`; reads filter by owner before they parse, and the upload queue runs only the signed-in account's jobs.
+- The local store is scoped by `ownerId`: list and sweep reads filter by owner before they parse, and the upload queue runs only the signed-in account's jobs. A direct lookup by id (`getAsset`) parses first; `assetProvider` then hides an asset that belongs to another account.
 - Sign-out empties the image caches (`purgeAccountCaches`). The local store is kept: it holds the user's unsent captures (TD-023).
 - The API client keeps no response cache, so `Cache-Control: no-store` bodies are never written to disk.
 

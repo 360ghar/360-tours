@@ -296,7 +296,9 @@ export function FloorPlanEditor({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 flex gap-4 overflow-hidden">
+        {/* While a plan is generated the refresh replaces the local edits, so the
+            editor takes no input (and Save is off) until the request ends. */}
+        <div className="flex-1 flex gap-4 overflow-hidden" inert={isGenerating} aria-busy={isGenerating}>
           {/* Left sidebar - Floor list */}
           <div className="w-56 shrink-0 border-r border-[var(--color-border)] pr-4">
             <div className="flex items-center justify-between mb-3">
@@ -653,7 +655,7 @@ export function FloorPlanEditor({
           <Button
             onClick={handleSave}
             isLoading={isLoading || isSaving}
-            disabled={isUploading || !!validationError}
+            disabled={isUploading || isGenerating || !!validationError}
             aria-describedby={validationError ? 'floor-plan-validation-error' : undefined}
           >
             <Save className="h-4 w-4" />

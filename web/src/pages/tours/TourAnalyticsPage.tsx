@@ -676,7 +676,7 @@ export function TourAnalyticsPage() {
           {heatmapExpanded ? (
             <CardContent>
               <div className="h-[350px]">
-                {heatmapData && heatmapData.heatmap.length > 0 ? (
+                {heatmapData?.heatmap && heatmapData.heatmap.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />

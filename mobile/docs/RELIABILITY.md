@@ -11,7 +11,7 @@ createTour → presign → putCloudinary → confirm → createScene → publish
   → [uploadFrames → requestStitch → awaitStitch]
 ```
 
-The bracketed steps run only when the on-device stitch was the naive fallback: the raw frames go up and the backend re-stitches them. `awaitStitch` polls `GET /ai/jobs/{id}` every 5 seconds and sets the asset `ready` (job `completed`), or `failed` (job `failed` or `cancelled`, with the server's `error_message`, or no finish in 20 minutes). The asset is not `ready` before that.
+The bracketed steps run only when the on-device stitch was the naive fallback: the raw frames go up and the backend re-stitches them. `awaitStitch` polls `GET /ai/jobs/{id}` every 5 seconds and sets the asset `ready` (job `completed`), or `failed` (job `failed` or `cancelled`, with the server's `error_message`, or no finish in 20 minutes). When a cloud stitch was requested, the asset is not `ready` before that. With fewer than two frames no stitch job is created: the naive panorama stays and the asset is `ready` after `publish`.
 
 - Job step is persisted after each success (`LocalStore` collection `upload_queue`).
 - Crash or offline mid-pipeline resumes without creating duplicate tours (one active job per asset id).
@@ -55,8 +55,7 @@ signed-in account's jobs.
 **Auth expiry.** A 401 that survives the client's single refresh parks the job on
 `waiting-auth` instead of burning attempts; `_drain` releases held jobs on the
 next pump (app start, connectivity, re-auth). Holds are bounded by
-`_maxAuthHolds` (8) so a session that never comes back still reaches `failed` —
-otherwise the row shows "Uploading…" forever with no retry or delete. Any
+`_maxAuthHolds` (8): each hold needs one more `pump()` (app start, connectivity, re-auth), so a session that never comes back reaches `failed` only after eight such pumps. With none, the job stays on `waiting-auth` and the row shows the sign-in prompt. Any
 successful call clears the hold budget. The room list surfaces the parked state
 as "Paused — sign in to resume", and delete is always available.
 

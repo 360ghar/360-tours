@@ -537,7 +537,7 @@ All AI job routes require authentication. A job is `AIJobBase`: `id`, `job_type`
 
 Request: `multipart/form-data` with `images` (files) and the optional fields `title`, `description`, `generate_titles`, `suggest_hotspots`, `generate_descriptions`, `spatial`, `apply_to_scenes`, `language`. Unknown fields are not read. The client always sends `spatial`: its server default decides how hotspots are placed.
 
-Response (201): `{ "job": AIJobBase, "tour_id": "string", "scene_ids": ["string"] }`
+Response (200): `{ "job": AIJobBase, "tour_id": "string", "scene_ids": ["string"] }`
 
 ### Analyze scenes
 

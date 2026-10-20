@@ -214,9 +214,14 @@ class ScanAsset {
       createdAt: createdAt,
       panoramaPath: json['panoramaPath'] as String?,
       panoramaUrl: json['panoramaUrl'] as String?,
+      // A bad element rejects the record (the repository quarantines it): a
+      // silently shortened list would re-stitch with frames missing or with
+      // orientations out of step.
       framePaths: [
         for (final f in (json['framePaths'] as List? ?? const []))
-          if (f is String) f,
+          f is String
+              ? f
+              : throw const FormatException('asset: framePaths holds a non-string'),
       ],
       thumbnailPath: json['thumbnailPath'] as String?,
       shareCode: json['shareCode'] as String?,
@@ -224,8 +229,10 @@ class ScanAsset {
       remoteSceneId: json['remoteSceneId'] as String?,
       frameOrientations: [
         for (final o in (json['frameOrientations'] as List? ?? const []))
-          if (o is Map)
-            FrameOrientation.fromJson(Map<String, dynamic>.from(o)),
+          o is Map
+              ? FrameOrientation.fromJson(Map<String, dynamic>.from(o))
+              : throw const FormatException(
+                  'asset: frameOrientations holds a non-object'),
       ],
     );
   }

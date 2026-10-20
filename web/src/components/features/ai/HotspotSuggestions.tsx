@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Sparkles,
   Check,
@@ -73,14 +73,24 @@ export function HotspotSuggestions({
     setIsAnalyzing(false);
   }
 
+  // The scene the user is on now. A request started for another scene must not
+  // start a job (and show its result) under the current one.
+  const currentSceneRef = useRef(sceneId);
+  useEffect(() => {
+    currentSceneRef.current = sceneId;
+  }, [sceneId]);
+
   const handleStartSuggestion = async () => {
+    const startedFor = sceneId;
     setIsAnalyzing(true);
     setError(null);
     setHasAnalyzed(false);
     try {
-      const response = await aiApi.suggestHotspots(sceneId);
+      const response = await aiApi.suggestHotspots(startedFor);
+      if (currentSceneRef.current !== startedFor) return;
       setJobId(response.job.id);
     } catch (e) {
+      if (currentSceneRef.current !== startedFor) return;
       const message = e instanceof Error ? e.message : 'Failed to start analysis';
       setError(message);
       console.error('Hotspot suggestion failed:', e);

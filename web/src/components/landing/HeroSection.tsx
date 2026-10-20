@@ -78,7 +78,10 @@ export function HeroSection() {
                 Start Free
                 <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
               </Link>
-              <a href="#pricing" className="landing-btn-secondary">
+              <a
+                href="#pricing"
+                className="self-center text-base font-medium text-[var(--landing-text-hero)]/70 transition-colors hover:text-[var(--landing-text-hero)]"
+              >
                 View Pricing
               </a>
             </div>

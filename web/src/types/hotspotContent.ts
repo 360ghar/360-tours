@@ -77,7 +77,12 @@ export function parseAudioHotspotContent(content: unknown): AudioHotspotContent 
   return parsed;
 }
 
-export function parseVideoHotspotContent(content: unknown): VideoHotspotContent | null {
+/**
+ * Every readable video field, with no rule on the source count. For carrying
+ * stored settings (poster, autoplay) into a new payload; display uses
+ * {@link parseVideoHotspotContent}.
+ */
+export function parseVideoHotspotFields(content: unknown): VideoHotspotContent | null {
   if (!isObject(content)) return null;
 
   const parsed: VideoHotspotContent = {};
@@ -98,6 +103,16 @@ export function parseVideoHotspotContent(content: unknown): VideoHotspotContent 
   if (loop !== undefined) parsed.loop = loop;
 
   return hasParsedFields(parsed) ? parsed : null;
+}
+
+/** Video content as the viewer shows it: the contract needs exactly one source. */
+export function parseVideoHotspotContent(content: unknown): VideoHotspotContent | null {
+  const parsed = parseVideoHotspotFields(content);
+  if (!parsed) return null;
+  const sourceCount = [parsed.video_url, parsed.youtube_id, parsed.vimeo_id].filter(
+    v => v !== undefined
+  ).length;
+  return sourceCount === 1 ? parsed : null;
 }
 
 export function parseLinkHotspotContent(content: unknown): LinkHotspotContent | null {
