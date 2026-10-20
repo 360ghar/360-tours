@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../core/models/api_dtos.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import 'capture_controller.dart';
@@ -320,7 +321,12 @@ class _ReviewSheetState extends ConsumerState<_ReviewSheet> {
               controller: _name,
               autofocus: true,
               textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(hintText: 'Living room'),
+              // The backend rejects a name over 255 characters.
+              maxLength: kMaxNameLength,
+              decoration: const InputDecoration(
+                hintText: 'Living room',
+                counterText: '',
+              ),
               onSubmitted: (_) => _save(),
             ),
             const Spacer(),

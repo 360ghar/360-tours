@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/models/models.dart';
 import '../../../core/repositories/repositories.dart';
 import '../../../core/storage/local_store.dart';
@@ -29,6 +30,11 @@ class RoomUploadJob {
   bool get failed => step == 'failed';
   bool get done => step == 'done';
 
+  /// The queue parked this job because the session expired. Not a failure —
+  /// it resumes after sign-in — but it must be visible, or the row reads
+  /// "Uploading…" indefinitely with no way out.
+  bool get waitingForAuth => step == 'waiting-auth';
+
   factory RoomUploadJob.fromJson(Map<String, dynamic> json) => RoomUploadJob(
         roomId: json['roomId'] as String? ?? '',
         step: json['step'] as String? ?? '',
@@ -36,40 +42,9 @@ class RoomUploadJob {
       );
 }
 
-/// Persisted 3D-generation job state for an asset (job id + status), so a
-/// killed app resumes polling instead of starting a duplicate backend job.
-class PersistedAiJob {
-  const PersistedAiJob({
-    required this.jobId,
-    required this.status,
-    this.progress = 0,
-    this.error,
-  });
-
-  final String jobId;
-
-  /// 'running' | 'completed' | 'failed'
-  final String status;
-  final int progress;
-  final String? error;
-
-  Map<String, dynamic> toJson() => {
-        'jobId': jobId,
-        'status': status,
-        'progress': progress,
-        'error': error,
-      };
-
-  factory PersistedAiJob.fromJson(Map<String, dynamic> json) => PersistedAiJob(
-        jobId: json['jobId'] as String? ?? '',
-        status: json['status'] as String? ?? 'running',
-        progress: (json['progress'] as num?)?.toInt() ?? 0,
-        error: json['error'] as String?,
-      );
-}
-
 /// Local-first asset repository over [LocalStore]. Uploads are delegated to
-/// the upload queue; remote deletion is best-effort.
+/// the upload queue; remote deletion of a tour is best-effort, remote deletion
+/// of a scene is not (see [deleteRoom]).
 class LocalAssetRepository implements AssetRepository {
   LocalAssetRepository(
     this._store, {
@@ -84,8 +59,6 @@ class LocalAssetRepository implements AssetRepository {
   // Collection owned by UploadQueue; cleaned here so a deleted asset's
   // in-flight job does not linger and read now-deleted files.
   static const _uploadQueue = 'upload_queue';
-  // 3D-generation job state keyed by asset id (see PersistedAiJob).
-  static const _aiJobs = 'ai_jobs';
 
   final LocalStore _store;
   final EnqueueUpload? _enqueue;
@@ -93,19 +66,49 @@ class LocalAssetRepository implements AssetRepository {
   final RemoteDelete? _remoteDelete;
   final RemoteDeleteScene? _remoteDeleteScene;
 
+  /// Assets of [ownerId] only. The owner is checked on the raw record before
+  /// anything is parsed, so another account's data is never read. A record that
+  /// cannot be parsed is quarantined and the rest of the list still loads.
   @override
-  Stream<List<ScanAsset>> watchAssets(String ownerId) =>
-      _store.watch(_assets).map((items) => items
-          .map(ScanAsset.fromJson)
-          .where((a) => a.ownerId == ownerId)
-          .toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
+  Stream<List<ScanAsset>> watchAssets(String ownerId) => _store
+      .watch(_assets)
+      .asyncMap((items) => _ownedAssets(items, ownerId));
+
+  Future<List<ScanAsset>> _ownedAssets(
+      List<Map<String, dynamic>> items, String ownerId) async {
+    final out = <ScanAsset>[];
+    for (final raw in List.of(items)) {
+      final owner = raw['ownerId'];
+      if (owner is String && owner.isNotEmpty && owner != ownerId) continue;
+      final asset = await _parseAsset(raw);
+      if (asset != null && asset.ownerId == ownerId) out.add(asset);
+    }
+    return out..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  Future<ScanAsset?> _parseAsset(Map<String, dynamic> raw) async {
+    try {
+      return ScanAsset.fromJson(raw);
+    } on Object catch (e) {
+      await _store.quarantineRecord(_assets, raw, e);
+      return null;
+    }
+  }
+
+  Future<Room?> _parseRoom(Map<String, dynamic> raw) async {
+    try {
+      return Room.fromJson(raw);
+    } on Object catch (e) {
+      await _store.quarantineRecord(_rooms, raw, e);
+      return null;
+    }
+  }
 
   @override
   Future<ScanAsset?> getAsset(String id) async {
     final items = await _store.readAll(_assets);
     final json = items.where((e) => e['id'] == id).firstOrNull;
-    return json == null ? null : ScanAsset.fromJson(json);
+    return json == null ? null : _parseAsset(json);
   }
 
   @override
@@ -129,7 +132,6 @@ class LocalAssetRepository implements AssetRepository {
     for (final r in rooms.where((e) => e['assetId'] == id).toList()) {
       await _store.delete(_rooms, r['id'] as String);
     }
-    await _store.delete(_aiJobs, id);
     if (asset == null) return;
     // Best-effort local file + remote cleanup; never block the UI on it.
     for (final path in [
@@ -155,42 +157,51 @@ class LocalAssetRepository implements AssetRepository {
   }
 
   @override
-  Future<List<Room>> getRooms(String assetId) async {
-    final items = await _store.readAll(_rooms);
-    return items
-        .where((e) => e['assetId'] == assetId)
-        .map(Room.fromJson)
-        .toList();
-  }
+  Future<List<Room>> getRooms(String assetId) async =>
+      _roomsOf(await _store.readAll(_rooms), assetId);
 
   @override
-  Stream<List<Room>> watchRooms(String assetId) =>
-      _store.watch(_rooms).map((items) => items
-          .where((e) => e['assetId'] == assetId)
-          .map(Room.fromJson)
-          .toList());
+  Stream<List<Room>> watchRooms(String assetId) => _store
+      .watch(_rooms)
+      .asyncMap((items) => _roomsOf(items, assetId));
+
+  Future<List<Room>> _roomsOf(
+      List<Map<String, dynamic>> items, String assetId) async {
+    final out = <Room>[];
+    for (final raw in items.where((e) => e['assetId'] == assetId).toList()) {
+      final room = await _parseRoom(raw);
+      if (room != null) out.add(room);
+    }
+    return out;
+  }
 
   @override
   Future<void> saveRoom(Room room) => _store.upsert(_rooms, room.toJson());
 
+  /// Deletes the scene on the server first, then the local room. A failed
+  /// remote delete throws (the room stays, so the user is not told it is gone
+  /// while the tour still shows it). A 404 means the scene is already gone.
+  /// The server removes the hotspots that pointed at the scene; the hotspot
+  /// editor reads the list fresh each time it opens.
   @override
   Future<void> deleteRoom(String assetId, String roomId) async {
     final rooms = await getRooms(assetId);
     final room = rooms.where((r) => r.id == roomId).firstOrNull;
+    final sceneId = room?.remoteSceneId;
+    final deleteScene = _remoteDeleteScene;
+    if (sceneId != null && deleteScene != null) {
+      try {
+        await deleteScene(sceneId);
+      } on ApiException catch (e) {
+        if (e.statusCode != 404) rethrow;
+      }
+    }
     await _store.delete(_rooms, roomId);
     if (room?.panoramaPath != null) {
       try {
         await File(room!.panoramaPath!).delete();
       } catch (_) {
         // best-effort local cleanup
-      }
-    }
-    final sceneId = room?.remoteSceneId;
-    if (sceneId != null && _remoteDeleteScene != null) {
-      try {
-        await _remoteDeleteScene(sceneId);
-      } catch (_) {
-        // ponytail: best-effort — orphaned remote scenes can be cleaned later.
       }
     }
   }
@@ -227,19 +238,4 @@ class LocalAssetRepository implements AssetRepository {
     await enqueueRoom(asset, room);
   }
 
-  // ---- 3D-generation job persistence ---------------------------------------
-
-  Future<void> save3dJob({
-    required String assetId,
-    required PersistedAiJob job,
-  }) =>
-      _store.upsert(_aiJobs, {'id': assetId, ...job.toJson()});
-
-  Future<PersistedAiJob?> get3dJob(String assetId) async {
-    final items = await _store.readAll(_aiJobs);
-    final json = items.where((e) => e['id'] == assetId).firstOrNull;
-    return json == null ? null : PersistedAiJob.fromJson(json);
-  }
-
-  Future<void> clear3dJob(String assetId) => _store.delete(_aiJobs, assetId);
 }

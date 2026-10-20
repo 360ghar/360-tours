@@ -4,7 +4,7 @@
 // Recognized shapes (path segments):
 //   v/{shareCode}   → open the matching asset (share link)
 //   view/{tourId}   → open the pano viewer
-//   view3d/{tourId} → open the 3D viewer
+//   view3d/{tourId} → legacy 3D link, falls back to the pano viewer
 //
 // Links the device does not own fall back to the system browser via
 // [deepLinkBrowserUrl].
@@ -16,7 +16,6 @@ class OpenAssetIntent {
   const OpenAssetIntent({
     required this.ref,
     required this.toViewer,
-    required this.mode,
   });
 
   /// Share code (for `v`) or remote tour id (for `view`/`view3d`).
@@ -26,13 +25,8 @@ class OpenAssetIntent {
   /// which land on the asset detail screen.
   final bool toViewer;
 
-  /// Requested viewer mode: `pano` or `3d` (ignored when [toViewer] is
-  /// false).
-  final String mode;
-
   @override
-  String toString() =>
-      'OpenAssetIntent(ref: $ref, toViewer: $toViewer, mode: $mode)';
+  String toString() => 'OpenAssetIntent(ref: $ref, toViewer: $toViewer)';
 }
 
 const _routeKeywords = {'v', 'view', 'view3d'};
@@ -54,11 +48,11 @@ OpenAssetIntent? parseDeepLink(Uri uri) {
   if (segments.length < 2) return null;
   switch (segments[0]) {
     case 'v':
-      return OpenAssetIntent(ref: segments[1], toViewer: false, mode: 'pano');
+      return OpenAssetIntent(ref: segments[1], toViewer: false);
     case 'view':
-      return OpenAssetIntent(ref: segments[1], toViewer: true, mode: 'pano');
     case 'view3d':
-      return OpenAssetIntent(ref: segments[1], toViewer: true, mode: '3d');
+      // Legacy 3D links open the same panorama viewer.
+      return OpenAssetIntent(ref: segments[1], toViewer: true);
   }
   return null;
 }
@@ -74,14 +68,9 @@ Uri deepLinkBrowserUrl(Uri uri) {
     case 'v':
       return Uri.parse('${Env.apiRoot}/v/${segments[1]}');
     case 'view':
-      return Uri.parse('${Env.viewerBase}/view/${segments[1]}');
     case 'view3d':
-      return Uri.parse('${Env.viewerBase}/view3d/${segments[1]}');
+      // Legacy 3D links fall back to the panorama viewer URL.
+      return Uri.parse('${Env.viewerBase}/view/${segments[1]}');
   }
   return uri;
 }
-
-/// Resolves the actual viewer mode for an owned asset: a `3d` request falls
-/// back to the pano viewer when the asset has no [hasModel3d] URL yet.
-String resolveViewerMode(String requested, {required bool hasModel3d}) =>
-    requested == '3d' && hasModel3d ? '3d' : 'pano';

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/models/api_dtos.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/repositories/repositories.dart';
@@ -178,6 +179,13 @@ class CaptureController extends Notifier<CaptureState> {
   bool _cameraPaused = false;
   bool _initializing = false;
 
+  /// Consecutive `captureFrame` failures. Auto-capture re-fires every ~400ms
+  /// while the device holds alignment, so a persistent failure (disk full,
+  /// session directory swept, camera invalidated by another app) used to loop
+  /// forever with the error swallowed and nothing shown to the user.
+  int _captureFailures = 0;
+  static const _maxCaptureFailures = 3;
+
   bool get isCameraPaused => _cameraPaused;
 
   @override
@@ -249,6 +257,8 @@ class CaptureController extends Notifier<CaptureState> {
       _cameraPaused = false;
       if (state.phase == CapturePhase.initializing ||
           state.phase == CapturePhase.error) {
+        // A fresh camera session gets a fresh failure budget.
+        _captureFailures = 0;
         state = state.copyWith(phase: CapturePhase.aiming);
       }
     } on CameraException catch (e) {
@@ -325,6 +335,7 @@ class CaptureController extends Notifier<CaptureState> {
       await File(shot.path).copy(path);
       if (!ref.mounted) return;
 
+      _captureFailures = 0;
       final frames = [...state.framePaths, path];
       final orientations = [...state.frameOrientations, orientation];
       final nextIndex = state.targetIndex + 1;
@@ -353,8 +364,21 @@ class CaptureController extends Notifier<CaptureState> {
         );
       }
     } catch (e) {
+      debugPrint('captureFrame failed: $e');
       if (!ref.mounted) return;
-      state = state.copyWith(phase: CapturePhase.aiming);
+      _captureFailures++;
+      // One bad shot is retried by the next dwell; a persistent failure must
+      // stop and say why instead of spinning the reticle forever.
+      if (_captureFailures >= _maxCaptureFailures) {
+        state = state.copyWith(
+          phase: CapturePhase.error,
+          errorMessage: e is CameraException
+              ? (e.description ?? 'Camera capture failed')
+              : 'Could not save the photo: $e',
+        );
+      } else {
+        state = state.copyWith(phase: CapturePhase.aiming);
+      }
     } finally {
       _capturing = false;
     }
@@ -391,7 +415,10 @@ class CaptureController extends Notifier<CaptureState> {
     final queue = ref.read(uploadQueueProvider);
     final preferDevice = ref.read(processingPreferenceProvider).value !=
         ProcessingPreference.cloudFirst;
-    final cleanName = name.trim().isEmpty ? 'Untitled room' : name.trim();
+    // Cut to the backend's 255-character limit here, so a pasted long name
+    // never reaches a create call that answers 422.
+    final cleanName =
+        name.trim().isEmpty ? 'Untitled room' : clampName(name.trim());
 
     if (intoAssetId != null) {
       final framePaths = state.framePaths;

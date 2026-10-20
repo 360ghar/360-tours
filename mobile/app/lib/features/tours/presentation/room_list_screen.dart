@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
@@ -106,16 +107,22 @@ class RoomListScreen extends ConsumerWidget {
     );
   }
 
-  /// The original capture is scene 0 — surfaced as "Main room".
+  /// The original capture is the tour's main scene — surfaced as "Main room".
+  /// Its scene id is the one stored on the asset. The entry is shown as
+  /// uploaded only once that id exists. The id below is only a list key.
   List<Room> _mainRoomEntry(ScanAsset? asset) {
     if (asset == null) return const [];
     return [
       Room(
-        id: '__main__',
+        id: 'main-${asset.id}',
         assetId: asset.id,
         name: '${asset.name} (main)',
         panoramaPath: asset.panoramaPath,
         panoramaUrl: asset.panoramaUrl,
+        remoteSceneId: asset.remoteSceneId,
+        status: asset.status == AssetStatus.failed ? 'failed' : null,
+        lastError: 'The main panorama did not upload. Open the scan and '
+            'retry the upload.',
       ),
     ];
   }
@@ -136,9 +143,16 @@ class _RoomTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final uploaded = isMain || room.remoteSceneId != null;
-    // A room without a scene is uploading unless its queue job gave up.
-    final failed = !uploaded && (job?.failed ?? false);
+    final uploaded = room.remoteSceneId != null;
+    // A room without a scene is uploading unless it terminally failed. Two
+    // independent sources: the queue job gave up, OR the stitch failed before
+    // the room was ever enqueued (no job exists at all, so `room.status` is the
+    // only record — that case used to read "Uploading…" forever).
+    final failed =
+        !uploaded && ((job?.failed ?? false) || room.status == 'failed');
+    // Session expired: the job is parked, not progressing. Surfacing this is
+    // what keeps the row from reading "Uploading…" forever with no controls.
+    final waitingForAuth = !uploaded && !failed && (job?.waitingForAuth ?? false);
     return ListTile(
       tileColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -159,41 +173,48 @@ class _RoomTile extends ConsumerWidget {
       ),
       title: Text(room.name,
           style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: _statusLine(uploaded, failed),
+      subtitle: _statusLine(uploaded, failed, waitingForAuth),
       trailing: !isMain
           ? Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (failed)
+                if (failed || waitingForAuth)
                   IconButton(
-                    tooltip: 'Retry upload',
-                    icon: const Icon(Icons.refresh,
+                    tooltip: waitingForAuth ? 'Sign in to resume' : 'Retry upload',
+                    icon: Icon(waitingForAuth ? Icons.lock_clock : Icons.refresh,
                         size: 20, color: AppColors.accent),
-                    onPressed: () => _retryUpload(context, ref),
+                    onPressed: () => waitingForAuth
+                        ? context.go('/signin')
+                        : _retryUpload(context, ref),
                   ),
-                if (uploaded || failed)
-                  IconButton(
-                    tooltip: 'Delete room',
-                    icon: const Icon(Icons.delete_outline,
-                        color: AppColors.inkDim, size: 20),
-                    onPressed: () => _confirmDelete(context, ref),
-                  ),
+                // Delete is always available: a room the user cannot clear is
+                // worse than one they delete by mistake.
+                IconButton(
+                  tooltip: 'Delete room',
+                  icon: const Icon(Icons.delete_outline,
+                      color: AppColors.inkDim, size: 20),
+                  onPressed: () => _confirmDelete(context, ref),
+                ),
               ],
             )
           : null,
       onTap: uploaded
-          ? () => context
-              .push('/asset/$assetId/rooms/${room.id}/hotspots')
+          ? () => context.push(
+              '/asset/$assetId/scenes/${room.remoteSceneId}/hotspots')
           : failed
               ? () => _showUploadFailure(context, ref)
               : null,
     );
   }
 
-  Widget _statusLine(bool uploaded, bool failed) {
+  Widget _statusLine(bool uploaded, bool failed, bool waitingForAuth) {
     if (uploaded) {
       return const Text('Uploaded',
           style: TextStyle(color: AppColors.inkFaint, fontSize: 13));
+    }
+    if (waitingForAuth) {
+      return const Text('Paused — sign in to resume',
+          style: TextStyle(color: AppColors.danger, fontSize: 13));
     }
     if (failed) {
       return Row(
@@ -220,16 +241,20 @@ class _RoomTile extends ConsumerWidget {
   }
 
   Future<void> _showUploadFailure(BuildContext context, WidgetRef ref) async {
-    final error = job?.lastError;
+    // A pre-enqueue stitch failure has no queue job; the reason lives on the room.
+    final error = job?.lastError ?? room.lastError;
     final retried = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceRaised,
         title: const Text('Upload failed'),
         content: Text(
-          'This room could not be uploaded after several attempts.\n\n'
-          '${error ?? 'The upload service did not respond.'}\n\n'
-          'Retry the upload, or delete the room and capture it again.',
+          isMain
+              ? error ?? 'The upload service did not respond.'
+              : 'This room could not be uploaded.\n\n'
+                  '${error ?? 'The upload service did not respond.'}\n\n'
+                  'Retry the upload, or delete the room and capture it '
+                  'again.',
           style: const TextStyle(color: AppColors.inkDim, height: 1.45),
         ),
         actions: [
@@ -237,10 +262,11 @@ class _RoomTile extends ConsumerWidget {
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Close'),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Retry'),
-          ),
+          if (!isMain)
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Retry'),
+            ),
         ],
       ),
     );
@@ -290,8 +316,19 @@ class _RoomTile extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed == true) {
+    if (confirmed != true) return;
+    try {
       await ref.read(assetRepositoryProvider).deleteRoom(assetId, room.id);
+    } catch (e) {
+      // The room is still there: say why, so nobody thinks it is gone while
+      // the tour still shows it.
+      if (!context.mounted) return;
+      final reason = e is ApiException && !e.isNetwork
+          ? e.userMessage
+          : 'Check your connection and try again.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete the room. $reason')),
+      );
     }
   }
 }

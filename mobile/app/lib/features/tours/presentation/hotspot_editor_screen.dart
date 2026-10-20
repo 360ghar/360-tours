@@ -5,92 +5,51 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/env.dart';
+import '../../../core/models/api_dtos.dart';
 import '../../../core/models/models.dart';
+import '../../../core/models/wire_enums.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../assets/presentation/asset_providers.dart';
 
-/// A backend hotspot parsed for display (parse at the API boundary).
-class HotspotEntry {
-  const HotspotEntry({
-    required this.id,
-    required this.title,
-    required this.type,
-    required this.yawDeg,
-    required this.pitchDeg,
-    required this.targetSceneId,
-  });
-
-  final String id;
-  final String title;
-  final String type;
-  final double yawDeg;
-  final double pitchDeg;
-
-  /// Destination scene, or null when unknown ('__main__' unresolved).
-  final String? targetSceneId;
-
-  factory HotspotEntry.fromJson(Map<String, dynamic> json) {
-    final position =
-        Map<String, dynamic>.from(json['position'] as Map? ?? {});
-    return HotspotEntry(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? 'Untitled hotspot',
-      type: json['type'] as String? ?? 'navigation',
-      yawDeg: (position['yaw'] as num?)?.toDouble() ?? 0,
-      pitchDeg: (position['pitch'] as num?)?.toDouble() ?? 0,
-      targetSceneId: json['target_scene_id'] as String?,
-    );
-  }
-}
-
-/// Candidate destinations for a hotspot: every uploaded room scene plus the
-/// main scene, minus the current one.
+/// Candidate destinations for a hotspot: the main scene and every uploaded
+/// room scene, minus [currentSceneId] (the scene the hotspot sits in: a
+/// hotspot must not lead back into its own scene). Every id is a backend scene
+/// id; a scene that is not uploaded yet is not offered.
 List<({String sceneId, String label})> hotspotDestinations({
   required String currentSceneId,
   required ScanAsset? asset,
   required List<Room> rooms,
 }) {
+  final mainSceneId = asset?.remoteSceneId;
   final out = <({String sceneId, String label})>[
-    if (asset?.remoteTourId != null)
-      (sceneId: '__main__', label: '${asset!.name} (main)'),
+    if (mainSceneId != null) (sceneId: mainSceneId, label: '${asset!.name} (main)'),
     for (final r in rooms)
-      if (r.remoteSceneId != null)
-        (sceneId: r.remoteSceneId!, label: r.name),
+      if (r.remoteSceneId != null) (sceneId: r.remoteSceneId!, label: r.name),
   ];
   return out.where((d) => d.sceneId != currentSceneId).toList();
 }
 
-/// Resolves the tour's first scene ('__main__' destination) — the scene with
-/// the lowest order_index. Returns null for a tour with no scenes.
-String? resolveMainSceneId(List<Map<String, dynamic>> scenes) {
-  if (scenes.isEmpty) return null;
-  Map<String, dynamic>? first;
-  for (final scene in scenes) {
-    if (first == null ||
-        ((scene['order_index'] ?? 0) as num) <
-            ((first['order_index'] ?? 0) as num)) {
-      first = scene;
-    }
-  }
-  return first?['id'] as String?;
-}
-
 /// Hotspot placement and management: the web viewer's embed page in edit
-/// mode. A tap on the panorama posts `panoramaClick {yaw, pitch, sceneId}`;
-/// we relay it through a JavaScriptChannel, ask which room it should lead
-/// to, and create the navigation hotspot via the backend. Existing hotspots
-/// are listed below the panorama with delete + re-place-destination actions.
+/// mode, opened on [sceneId]. A tap on the panorama posts
+/// `panoramaClick {yaw, pitch, sceneId}`; we relay it through a
+/// JavaScriptChannel, ask which scene it should lead to, and create the
+/// navigation hotspot via the backend. Existing hotspots of the scene are
+/// listed below the panorama with delete and re-point actions.
+///
+/// [sceneId] is a backend scene id, the main scene's included: the route
+/// carries the real id, so there is nothing to resolve.
 class HotspotEditorScreen extends ConsumerStatefulWidget {
   const HotspotEditorScreen({
     super.key,
     required this.assetId,
-    required this.roomId,
+    required this.sceneId,
   });
 
   final String assetId;
-  final String roomId;
+  final String sceneId;
 
   @override
   ConsumerState<HotspotEditorScreen> createState() =>
@@ -102,10 +61,9 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
   bool _placing = false;
   bool _busy = false;
   String? _webError;
-  List<HotspotEntry> _hotspots = const [];
+  List<HotspotDto> _hotspots = const [];
   bool _loadingHotspots = false;
   bool _initStarted = false;
-  String? _sceneId;
 
   // The embed page posts to window.parent, which inside a WebView is the
   // page's own window — so a message listener sees every outbound event.
@@ -136,48 +94,50 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
         },
       ))
       ..loadRequest(
-        Uri.parse('${Env.viewerBase}/embed/$tourId?editmode=1&minimal=1'),
+        Uri.parse('${Env.viewerBase}/embed/$tourId'
+            '?editmode=1&minimal=1&scene=${widget.sceneId}'),
       );
   }
 
-  /// Starts the WebView and the hotspot list once both the asset (tour id)
-  /// and the room are known. Guarded so it runs at most once; called from
+  /// Starts the WebView and the hotspot list once the asset (tour id) is
+  /// known. Guarded so it runs at most once; called from
   /// [didChangeDependencies] and a provider listener — never from [build].
   void _maybeInit(String? tourId) {
     if (_initStarted || tourId == null) return;
     _initStarted = true;
     _controller = _buildController(tourId);
-    _loadSceneAndHotspots();
+    _loadHotspots();
   }
 
-  Future<void> _loadSceneAndHotspots() async {
-    final rooms =
-        await ref.read(assetRepositoryProvider).getRooms(widget.assetId);
+  /// Says what failed, with the server's reason when it sent one.
+  void _fail(String what, Object e) {
     if (!mounted) return;
-    final room = rooms.where((r) => r.id == widget.roomId).firstOrNull;
-    final sceneId = room?.remoteSceneId;
-    if (sceneId == null) return;
-    setState(() => _sceneId = sceneId);
-    await _loadHotspots(sceneId);
+    final reason = e is ApiException && !e.isNetwork
+        ? e.userMessage
+        : 'Check your connection and try again.';
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('$what $reason')));
   }
 
-  Future<void> _loadHotspots(String sceneId) async {
+  void _say(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _loadHotspots() async {
     setState(() => _loadingHotspots = true);
     try {
-      final raw =
-          await ref.read(backendApiProvider).getHotspots(sceneId);
+      final all = await ref.read(backendApiProvider).getHotspots(widget.sceneId);
       if (!mounted) return;
       setState(() {
-        _hotspots = raw.map(HotspotEntry.fromJson).toList();
+        _hotspots = all;
         _loadingHotspots = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() => _loadingHotspots = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not load hotspots. Check your connection and '
-            'try again.'),
-      ));
+      _fail('Could not load hotspots.', e);
     }
   }
 
@@ -224,16 +184,20 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
     );
     if (target == null || !mounted) return;
 
-    final targetSceneId = await _resolveTargetSceneId(target.sceneId, asset);
-    if (targetSceneId == null || !mounted) return;
-
-    await _createHotspot(
-      sceneId: sceneId,
-      yaw: yaw,
-      pitch: pitch,
-      targetSceneId: targetSceneId,
-      title: target.label,
-    );
+    try {
+      await ref.read(backendApiProvider).createHotspot(
+            sceneId: sceneId,
+            yaw: yaw,
+            pitch: pitch,
+            targetSceneId: target.sceneId,
+            title: target.label,
+          );
+    } catch (e) {
+      _fail('Could not place the hotspot.', e);
+      return;
+    }
+    _say('Hotspot to “${target.label}” placed');
+    await _reloadAndRefresh();
   }
 
   /// Shared destination picker for placement and edit. Shows an explanatory
@@ -250,10 +214,7 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
     );
     if (!mounted) return null;
     if (destinations.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'Add another room first: a hotspot needs somewhere to go.'),
-      ));
+      _say('Add another room first: a hotspot needs somewhere to go.');
       return null;
     }
 
@@ -286,65 +247,13 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
     return picked;
   }
 
-  /// Resolves '__main__' to the tour's first scene id; null when there is
-  /// no published scene (the caller shows nothing more — the embed itself
-  /// has no scenes either).
-  Future<String?> _resolveTargetSceneId(
-    String raw,
-    ScanAsset? asset,
-  ) async {
-    if (raw != '__main__') return raw;
-    final tourId = asset?.remoteTourId;
-    if (tourId == null) return null;
-    final tour = await ref.read(backendApiProvider).getTour(tourId);
-    final scenes = ((tour['scenes'] as List?) ?? const [])
-        .map((s) => Map<String, dynamic>.from(s as Map))
-        .toList();
-    final first = resolveMainSceneId(scenes);
-    if (first == null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('This tour has no published scenes yet.'),
-      ));
-    }
-    return first;
-  }
-
-  Future<void> _createHotspot({
-    required String sceneId,
-    required double yaw,
-    required double pitch,
-    required String targetSceneId,
-    required String title,
-  }) async {
-    try {
-      await ref.read(backendApiProvider).createHotspot(
-            sceneId: sceneId,
-            yaw: yaw,
-            pitch: pitch,
-            targetSceneId: targetSceneId,
-            title: title,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hotspot to “$title” placed')),
-      );
-      await _reloadAndRefresh();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'Could not place the hotspot. Check your connection and '
-            'try again.'),
-      ));
-    }
-  }
-
-  Future<void> _deleteHotspot(HotspotEntry entry) async {
+  Future<void> _deleteHotspot(HotspotDto entry) async {
+    final label = entry.title ?? 'Untitled hotspot';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surfaceRaised,
-        title: Text('Delete “${entry.title}”?'),
+        title: Text('Delete “$label”?'),
         content: const Text(
           'This removes the hotspot from the tour. This can\'t be undone.',
           style: TextStyle(color: AppColors.inkDim),
@@ -369,55 +278,54 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
       if (!mounted) return;
       // Only remove locally after the backend confirmed the delete.
       setState(() {
-        _hotspots =
-            _hotspots.where((h) => h.id != entry.id).toList();
+        _hotspots = _hotspots.where((h) => h.id != entry.id).toList();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Hotspot deleted')),
-      );
+      _say('Hotspot deleted');
       await _controller?.reload();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not delete the hotspot. Try again.'),
-      ));
+    } catch (e) {
+      _fail('Could not delete the hotspot.', e);
+      // The list may be stale (deleted on another device): show the truth.
+      await _loadHotspots();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  /// Re-place an existing hotspot's destination. The backend has no update
-  /// endpoint, so this is delete + create with the same angles and a newly
-  /// picked destination.
-  Future<void> _editHotspot(HotspotEntry entry) async {
+  /// Points an existing hotspot at another scene with one PATCH. The hotspot
+  /// is never deleted: if the PATCH fails, it is exactly as it was.
+  Future<void> _editHotspot(HotspotDto entry) async {
     final repo = ref.read(assetRepositoryProvider);
     final asset = await repo.getAsset(widget.assetId);
     final rooms = await repo.getRooms(widget.assetId);
+    // The hotspot sits in this scene, so this scene is not a destination.
     final target = await _pickDestination(
-      currentSceneId: entry.targetSceneId ?? entry.id,
+      currentSceneId: widget.sceneId,
       asset: asset,
       rooms: rooms,
     );
     if (target == null || !mounted) return;
-    final targetSceneId = await _resolveTargetSceneId(target.sceneId, asset);
-    final sceneId = _sceneId;
-    if (targetSceneId == null || sceneId == null || !mounted) return;
 
     setState(() => _busy = true);
     try {
-      await ref.read(backendApiProvider).deleteHotspot(entry.id);
-      await _createHotspot(
-        sceneId: sceneId,
-        yaw: entry.yawDeg,
-        pitch: entry.pitchDeg,
-        targetSceneId: targetSceneId,
-        title: target.label,
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not update the hotspot. Try again.'),
-      ));
+      final updated = await ref.read(backendApiProvider).updateHotspot(
+            entry.id,
+            targetSceneId: target.sceneId,
+            title: target.label,
+          );
+      // The server drops target_scene_id on a hotspot that is not a
+      // navigation hotspot. Never report success it did not give.
+      if (updated.targetSceneId != target.sceneId) {
+        _say('Could not update the hotspot. The server did not point it at '
+            '“${target.label}”.');
+        await _loadHotspots();
+        return;
+      }
+      _say('Hotspot now leads to “${target.label}”');
+      await _reloadAndRefresh();
+    } catch (e) {
+      _fail('Could not update the hotspot.', e);
+      // The list may be stale (another device edited it): show the truth.
+      await _loadHotspots();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -427,8 +335,7 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
   /// re-fetches the hotspot list.
   Future<void> _reloadAndRefresh() async {
     await _controller?.reload();
-    final sceneId = _sceneId;
-    if (sceneId != null) await _loadHotspots(sceneId);
+    await _loadHotspots();
   }
 
   @override
@@ -520,11 +427,11 @@ class _HotspotListPanel extends StatelessWidget {
     required this.onEdit,
   });
 
-  final List<HotspotEntry> hotspots;
+  final List<HotspotDto> hotspots;
   final bool loading;
   final bool busy;
-  final void Function(HotspotEntry) onDelete;
-  final void Function(HotspotEntry) onEdit;
+  final void Function(HotspotDto) onDelete;
+  final void Function(HotspotDto) onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -561,25 +468,26 @@ class _HotspotListPanel extends StatelessWidget {
                 for (final h in hotspots)
                   ListTile(
                     dense: true,
-                    title: Text(h.title,
+                    title: Text(h.title ?? 'Untitled hotspot',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text(
-                      '${h.type} · yaw ${h.yawDeg.toStringAsFixed(0)}° · '
-                      'pitch ${h.pitchDeg.toStringAsFixed(0)}°',
+                      _detail(h),
                       style: const TextStyle(
                           color: AppColors.inkFaint, fontSize: 12),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          tooltip: 'Edit destination',
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          onPressed:
-                              busy ? null : () => onEdit(h),
-                        ),
+                        // Only a navigation hotspot has a destination; the
+                        // server ignores a target on every other type.
+                        if (h.type == HotspotType.navigation)
+                          IconButton(
+                            tooltip: 'Edit destination',
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            onPressed: busy ? null : () => onEdit(h),
+                          ),
                         IconButton(
                           tooltip: 'Delete hotspot',
                           icon: const Icon(Icons.delete_outline,
@@ -593,5 +501,15 @@ class _HotspotListPanel extends StatelessWidget {
               ],
             ),
     );
+  }
+
+  /// Type and angles. A hotspot whose stored position is invalid has none.
+  static String _detail(HotspotDto h) {
+    final type = h.type?.wire ?? 'unknown type';
+    final yaw = h.yawDeg;
+    final pitch = h.pitchDeg;
+    if (yaw == null || pitch == null) return type;
+    return '$type · yaw ${yaw.toStringAsFixed(0)}° · '
+        'pitch ${pitch.toStringAsFixed(0)}°';
   }
 }

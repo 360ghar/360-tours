@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_client.dart';
+import '../../../core/api/api_exception.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
@@ -25,7 +26,7 @@ class AssetDetailScreen extends ConsumerWidget {
       appBar: AppBar(),
       body: assetAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => Center(child: Text(describeError(e))),
         data: (asset) {
           if (asset == null) {
             return const Center(
@@ -117,13 +118,6 @@ class _Body extends ConsumerWidget {
           onTap: () => context.push('/asset/${asset.id}/rooms'),
         ),
         _Action(
-          icon: Icons.view_in_ar_outlined,
-          label: asset.model3dUrl != null ? 'View 3D world' : 'Generate 3D world',
-          enabled: ready && hasRemote,
-          disabledHint: 'Available after upload completes',
-          onTap: () => context.push('/asset/${asset.id}/generate3d'),
-        ),
-        _Action(
           icon: Icons.grid_on_outlined,
           label: 'Floor plan',
           enabled: hasRemote,
@@ -152,8 +146,9 @@ class _Body extends ConsumerWidget {
         AssetStatus.capturing => 'Capture incomplete',
         AssetStatus.stitching =>
           'Stitching and uploading. The share link is minutes away.',
-        AssetStatus.pendingCloudStitch => 'Uploading frames for cloud stitch…',
-        AssetStatus.processing3d => 'Building the 3D world…',
+        AssetStatus.pendingCloudStitch =>
+          'Uploading frames and stitching in the cloud. This can take a few '
+              'minutes.',
         AssetStatus.ready => 'Ready to share',
         AssetStatus.failed => 'Something went wrong.',
       };

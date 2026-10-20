@@ -12,12 +12,9 @@ import '../../assets/presentation/asset_providers.dart';
 /// In-app 360 viewer: the web viewer's chromeless /embed/{tourId} page in a
 /// WebView — same renderer the public share link uses.
 class ViewerScreen extends ConsumerStatefulWidget {
-  const ViewerScreen({super.key, required this.assetId, this.mode = 'pano'});
+  const ViewerScreen({super.key, required this.assetId});
 
   final String assetId;
-
-  /// 'pano' → /embed/{id}; '3d' → /view3d/{id}
-  final String mode;
 
   @override
   ConsumerState<ViewerScreen> createState() => _ViewerScreenState();
@@ -38,9 +35,7 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
 
   void _load(String tourId) {
     _tourId = tourId;
-    final url = widget.mode == '3d'
-        ? '${Env.viewerBase}/view3d/$tourId'
-        : '${Env.viewerBase}/embed/$tourId?minimal=1&branding=0';
+    final url = '${Env.viewerBase}/embed/$tourId?minimal=1&branding=0';
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(AppColors.background)
@@ -221,8 +216,5 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
         AssetStatus.pendingCloudStitch => true,
         AssetStatus.ready => false,
         AssetStatus.failed => false,
-        // A running 3D job does not block the panorama: the tour is already
-        // published by the time generation starts.
-        AssetStatus.processing3d => false,
       };
 }

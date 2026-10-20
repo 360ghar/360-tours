@@ -86,9 +86,9 @@ class AnalyticsScreen extends ConsumerWidget {
                             detail: 'Total across all viewers.',
                           ),
                           _Stat(
-                            label: 'Showing requests',
-                            value: '${a.showingRequests}',
-                            detail: 'Viewers who tapped “Request showing”.',
+                            label: 'Hotspot clicks',
+                            value: '${a.hotspotClicks}',
+                            detail: 'Taps on hotspots inside the tour.',
                           ),
                         ],
                       ),

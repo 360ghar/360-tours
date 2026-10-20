@@ -14,9 +14,11 @@ import 'core/env.dart';
 import 'core/models/models.dart';
 import 'core/providers.dart';
 import 'core/router.dart';
+import 'core/storage/account_caches.dart';
 import 'core/storage/local_store.dart';
 import 'core/theme/app_theme.dart';
 import 'core/upload/upload_queue.dart';
+import 'core/upload/upload_sweep.dart';
 import 'features/assets/data/local_asset_repository.dart';
 import 'features/auth/data/supabase_auth_repository.dart';
 import 'features/share/data/api_share_repository.dart';
@@ -43,6 +45,7 @@ Future<void> main() async {
 
   // Wire the object graph once, here — everything else uses providers.
   late final LocalAssetRepository assets;
+  late final SupabaseAuthRepository auth;
   final queue = UploadQueue(
     store,
     api,
@@ -50,25 +53,48 @@ Future<void> main() async {
     saveAsset: (a) => assets.saveAsset(a),
     getRooms: (assetId) => assets.getRooms(assetId),
     saveRoom: (r) => assets.saveRoom(r),
+    // The queue runs only the signed-in account's jobs.
+    currentOwnerId: () => auth.currentUser?.id,
   );
   assets = LocalAssetRepository(
     store,
     enqueue: queue.enqueue,
     enqueueRoom: queue.enqueueRoom,
     remoteDelete: (a) => api.deleteTour(a.remoteTourId!),
-    remoteDeleteScene: (sceneId) async {
-      try {
-        await api.deleteScene(sceneId);
-      } catch (_) {
-        // best-effort
-      }
-    },
+    remoteDeleteScene: api.deleteScene,
   );
-  final auth = SupabaseAuthRepository(Supabase.instance.client, api);
+  auth = SupabaseAuthRepository(Supabase.instance.client, api);
   final share = ApiShareRepository(api, saveAsset: assets.saveAsset);
 
-  // Resume any interrupted uploads from the last session.
-  queue.pump();
+  // Resume interrupted uploads and reconcile what a kill left half-done: now,
+  // and again each time a different account signs in. A queue with nobody
+  // signed in runs nothing, so the sweep waits for a user.
+  void resumeUploads(AppUser? user) {
+    if (user == null) return;
+    unawaited(sweepStuckUploads(
+      store: store,
+      ownerId: user.id,
+      queue: queue,
+      api: api,
+    ));
+  }
+
+  resumeUploads(auth.currentUser);
+  var sweptFor = auth.currentUser?.id;
+  auth.authStateChanges().listen((user) {
+    if (user == null) {
+      // Signed out (or the session could not be refreshed): drop the cached
+      // server data of the account that was here.
+      unawaited(purgeAccountCaches());
+      return;
+    }
+    if (user.id != sweptFor) {
+      sweptFor = user.id;
+      resumeUploads(user);
+    } else {
+      unawaited(queue.pump()); // the same account signed in again
+    }
+  });
 
   runApp(ProviderScope(
     overrides: [
@@ -99,8 +125,9 @@ class _ToursAppState extends ConsumerState<ToursApp> {
   @override
   void initState() {
     super.initState();
-    // Deep links: share links (/v/{code}) and viewer links (/view/{id},
-    // /view3d/{id}) open the matching local asset when this device owns it.
+    // Deep links: share links (/v/{code}) and viewer links (/view/{id})
+    // open the matching local asset when this device owns it. Legacy
+    // /view3d/{id} links fall back to the same panorama viewer.
     final appLinks = AppLinks();
     _links = appLinks.uriLinkStream.listen(_onLink);
     // Cold start: the URI that launched the app only arrives via
@@ -158,9 +185,7 @@ class _ToursAppState extends ConsumerState<ToursApp> {
     }
     final router = ref.read(routerProvider);
     if (intent.toViewer) {
-      final mode =
-          resolveViewerMode(intent.mode, hasModel3d: match.model3dUrl != null);
-      router.go('/asset/${match.id}/view?mode=$mode');
+      router.go('/asset/${match.id}/view');
     } else {
       router.go('/asset/${match.id}');
     }

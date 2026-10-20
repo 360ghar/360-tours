@@ -15,6 +15,14 @@ Stream<void> get authExpiredStream => _authExpired.stream;
 
 bool _authExpiredSignaled = false;
 
+/// Emit the session-expired signal at most once per expiry episode (reset by
+/// the next successful authenticated response).
+void _signalAuthExpired() {
+  if (_authExpiredSignaled) return;
+  _authExpiredSignaled = true;
+  _authExpired.add(null);
+}
+
 /// Dio client for api.360ghar.com with the Supabase JWT attached.
 /// The Supabase SDK refreshes sessions itself; on a 401 we force one refresh
 /// and replay the request once.
@@ -78,14 +86,16 @@ Dio createApiClient({SupabaseClient? supabase}) {
             final response = await dio.fetch<dynamic>(opts);
             return handler.resolve(response);
           }
+          // refreshSession() resolved without a session/token: the refresh
+          // token is gone. That is an expiry exactly like a thrown refresh —
+          // signal it, or the UI banner and the queue's auth-hold never fire
+          // and the 401 surfaces as a generic failure.
+          _signalAuthExpired();
         } catch (_) {
           // Refresh failed (network or expired refresh token): the session
           // is dead. Signal once per expiry episode so the UI can prompt
           // re-auth and the queue can pause retrying.
-          if (!_authExpiredSignaled) {
-            _authExpiredSignaled = true;
-            _authExpired.add(null);
-          }
+          _signalAuthExpired();
           // fall through to the original 401
         }
       }

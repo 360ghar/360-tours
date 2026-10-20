@@ -13,7 +13,11 @@ final assetProvider =
   if (user != null) {
     await ref.watch(assetTickProvider(user.id).future);
   }
-  return ref.watch(assetRepositoryProvider).getAsset(id);
+  final asset = await ref.watch(assetRepositoryProvider).getAsset(id);
+  // A scan belongs to the account that captured it. Another signed-in account
+  // that reaches this id (a stale link or route) sees nothing.
+  if (asset != null && user != null && asset.ownerId != user.id) return null;
+  return asset;
 });
 
 final assetTickProvider = StreamProvider.autoDispose
