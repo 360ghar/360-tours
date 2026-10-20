@@ -8,7 +8,7 @@ This app lives at `web/` inside the `360-tours` monorepo. The Flutter mobile cli
 
 ## Project Overview
 
-**360 Viewer** is a React 19 + TypeScript SPA for creating, editing, publishing, and viewing 360° virtual property tours. Primary focus (per `PRODUCT.md`): AI-assisted tour generation (scene analysis, auto hotspots, descriptions, reels), reliable tour editing, fast public viewing, and share/embed/QR simplicity. Secondary (present but de-prioritized): advanced analytics, floor plans, branding/white-label, video.
+**360 Viewer** is a React 19 + TypeScript SPA for creating, editing, publishing, and viewing 360° virtual property tours. Primary focus (per `PRODUCT.md`): AI-assisted tour generation (scene analysis, auto hotspots, descriptions), reliable tour editing, fast public viewing, and share/embed/QR simplicity. Secondary (present but de-prioritized): advanced analytics, floor plans, branding/white-label, video.
 
 Backend is the shared 360Ghar FastAPI monolith (`../../360ghar-backend`, i.e. a sibling of the `360-tours` monorepo) at `/api/v1`. Auth is Supabase. Primary users: real-estate photographers, agencies, PMs, architects; public viewers are buyers/tenants.
 
@@ -66,7 +66,8 @@ src/
 ├── main.tsx              # createRoot + <StrictMode>; imports index.css then App
 ├── App.tsx               # provider stack (see below) + <RouterProvider>
 ├── index.css             # Tailwind v4 + design tokens (:root / .dark CSS custom props)
-├── api/                  # Axios clients (client, auth, tours, ai, upload, users, collaboration, customDomains)
+├── api/                  # Axios clients (client, auth, tours, ai, upload, users, capture, customDomains) + errors, pagination, aiResults
+├── lib/api/              # schema.gen.ts + limits.gen.ts (generated from openapi/openapi.json, do not edit)
 ├── components/
 │   ├── ui/               # shadcn/Radix primitives (Button, Dialog, Select, Sheet, …)
 │   ├── features/         # tour editor + feature components (PanoramaViewer, Hotspot*, FloorPlan*, …)
@@ -75,9 +76,9 @@ src/
 │   ├── common/           # GlobalErrorHandler, MetaTags, OfflineIndicator, Skeletons
 │   └── animations/       # useInView, useStaggerAnimation
 ├── pages/                # route-level screens (lazy-loaded except entry pages)
-├── stores/               # zustand stores (auth, tourEditor, viewer, ui, collaboration, confirm)
+├── stores/               # zustand stores (auth, tourEditor, viewer, ui, confirm)
 ├── hooks/                # utility/IO hooks (NO tanstack-query wrappers)
-├── lib/                  # queryClient, QueryProvider, router, supabaseAuth, lastAuthMethod, sceneUpload
+├── lib/                  # queryClient, QueryProvider, router, supabaseAuth, lastAuthMethod, sceneUpload, floorPlanSync, accountStorage, accountCache
 ├── constants/            # config.ts, routes.ts, storage keys
 ├── types/                # Tour/Scene/Hotspot/TourSettings domain types (+ hotspotContent.ts)
 ├── utils/                # cn(), coordinates (yaw/pitch ↔ degrees), helpers
@@ -89,9 +90,11 @@ public/  DESIGN.md  PRODUCT.md  AGENTS.md
 
 ## App Bootstrap & Provider Stack (`src/App.tsx`)
 
-Outer → inner: `<ErrorBoundary>` → `<QueryProvider>` (TanStack + Devtools in DEV) → `<ThemeInitializer>` (applies `useUIStore().theme`) → `<GlobalErrorHandler>` → `<AuthInitializer>` (runs `checkAuth()`, subscribes to `onAuthExpired` → redirect to `/login?next=…`, shows spinner while loading) → `<RouterProvider>` → `<Toaster>` / `<ConfirmDialog>` / `<OfflineIndicator>`.
+Outer → inner: `<ErrorBoundary>` → `<QueryProvider>` (TanStack + Devtools in DEV) → `<ThemeInitializer>` (applies `useUIStore().theme`) → `<GlobalErrorHandler>` → `<AuthInitializer>` (runs `checkAuth()`, subscribes to `onAuthExpired` → redirect to `/login?next=…`) → `<RouterProvider>` → `<Toaster>` / `<ConfirmDialog>` / `<OfflineIndicator>`.
 
-Router is `createBrowserRouter` (`src/lib/router.tsx`). Entry pages (`HomePage`, auth pages, layouts, `ProtectedRoute`, `NotFoundPage`) are eagerly imported; all dashboard/tour pages are `lazy()` + `<LazyPage>` (Suspense + `ChunkErrorBoundary`). Vite `manualChunks` groups: react-vendor, router, tanstack, charts, forms, three-vendor, viewer, ui-vendor, network.
+**The router is never gated on `authStore.isLoading`.** Public routes (`/view/:id`, `/embed/:id`, the landing page) are anonymous by contract and must render while `checkAuth()` is still in flight — gating the whole router blanked the embedded viewer for the entire `/users/me` retry window. Routes that *do* depend on the session gate themselves: `ProtectedRoute` and `RootRedirect` render a `<PageLoader>` while `isLoading`.
+
+Router is `createBrowserRouter` (`src/lib/router.tsx`). Entry pages (`HomePage`, auth pages, layouts, `ProtectedRoute`, `NotFoundPage`) are eagerly imported; all dashboard/tour pages are `lazy()` + `<LazyPage>` (Suspense + `ChunkErrorBoundary`). Vite `manualChunks` groups: react-vendor, router, tanstack, charts, forms, viewer, ui-vendor, network.
 
 ## Routing (`src/constants/routes.ts` + `src/lib/router.tsx`)
 
@@ -111,11 +114,10 @@ Router is `createBrowserRouter` (`src/lib/router.tsx`). Entry pages (`HomePage`,
 
 ## State Management — Zustand (`src/stores/`)
 
-- **`authStore`** — `user`, `tokens`, `isAuthenticated`, `isLoading`; actions `login`, `loginWithPassword`, `verifyLoginOtp`, `setPasswordAndComplete`, `logout`, `fetchCurrentUser`, `checkAuth` (subscribes to Supabase `onAuthStateChange` once). `isAuthError` signs out only on 401/403/SESSION_EXPIRED — **5xx/network errors do NOT sign out** (survives transient backend outages).
-- **`tourEditorStore`** — `currentTour`, `currentSceneId`, `selectedHotspotId`, panel flags, `hasUnsavedChanges`, undo/redo stacks (capped 50). Scene/hotspot draft mutators are `@deprecated` — persistence now flows through `toursApi` endpoints inside feature components, **not** TourEditPage Save.
+- **`authStore`** — `user` (the generated `SelfUser`; `id` is an integer), `tokens`, `isAuthenticated`, `isLoading`; actions `login`, `loginWithPassword`, `verifyLoginOtp`, `setPasswordAndComplete`, `logout`, `fetchCurrentUser`, `checkAuth` (subscribes to Supabase `onAuthStateChange` once). `isAuthError` signs out only on 401/403/SESSION_EXPIRED — **5xx/network errors do NOT sign out** (survives transient backend outages).
+- **`tourEditorStore`** — `currentTour`, `currentSceneId`, `selectedHotspotId`, panel flags, `hasUnsavedChanges`, and `pendingChanges` (tour fields only). There is **no** undo/redo stack. Scene/hotspot create/update/delete persist through `toursApi` endpoints inside the feature components and are deliberately not modelled as drafts; `mergeScenes` only mirrors fresh `[SCENES, tourId]` query data into the store.
 - **`viewerStore`** — per-scope `currentSceneId` keyed `"${route}:${tourId}"` so public/embed viewers stay isolated.
 - **`uiStore`** — `theme: 'light'|'dark'|'system'`, `sidebarCollapsed`, `toasts[]`; `persist` middleware (only `theme` + `sidebarCollapsed`); exports `applyTheme`.
-- **`collaborationStore`** — tour activities + collaborators (backed by `collaborationApi`).
 - **`confirmStore`** — imperative `confirm()` replacing `window.confirm`, rendered by `<ConfirmDialog>`.
 
 ## Data Fetching — TanStack Query
@@ -124,9 +126,22 @@ Router is `createBrowserRouter` (`src/lib/router.tsx`). Entry pages (`HomePage`,
 
 ## API Layer (`src/api/`)
 
-`client.ts` — Axios instance (`baseURL: API_BASE_URL`, `timeout: API_TIMEOUT`). Request interceptor attaches `Authorization: Bearer <token>` from `supabaseAuth.getAccessToken()`. Response interceptor: **401** → one refresh retry then sign-out + `notifyAuthExpired()`; **429** → honor `Retry-After` / backoff (max 3); **5xx/network** → retry up to 3 with exponential backoff (disabled under `import.meta.env.TEST`). `onAuthExpired(listener)` pub/sub.
+`client.ts` — Axios instance (`baseURL: API_BASE_URL`, `timeout: API_TIMEOUT`). Request interceptor attaches `Authorization: Bearer <token>` from `supabaseAuth.getAccessToken()`, and **clears the default JSON `Content-Type` for `FormData` bodies** so uploads go out as real multipart (axios serializes FormData to JSON when a JSON content type is set — never set `multipart/form-data` by hand either, that omits the boundary). Response interceptor: **401** → one refresh retry then sign-out + `notifyAuthExpired()`; **429** → honor `Retry-After` / backoff (max 3); **5xx/network** → retry up to 3 with exponential backoff (disabled under `import.meta.env.TEST`). Both retry branches replay **idempotent methods only** and keep **separate counters**. `onAuthExpired(listener)` pub/sub.
 
-Clients: `authApi` (`/auth/identifier-status`, `/auth/last-method`, `/users/me`), `toursApi` (tours, scenes, hotspots, floor-plans, publish/duplicate/analytics, `/public/tours/:id/*`, dashboard stats/realtime), `aiApi` (`/ai/tours/generate`, analyze, hotspots, descriptions, reel, jobs), `uploadApi`, `usersApi`, `collaborationApi`, `customDomainsApi`.
+Clients: `authApi` (`/auth/identifier-status`, `/auth/last-method`, `/users/me`), `toursApi` (tours, scenes, hotspots, floor-plans, publish/unpublish/duplicate/analytics/heatmap, `/public/tours/:id/*`, dashboard stats/realtime), `aiApi` (`/ai/tours/generate`, analyze, scene hotspots, descriptions, job get and cancel), `captureApi` (capture sessions), `uploadApi` (`/upload`, `/upload/media`, batch delete), `usersApi`, `customDomainsApi`. There is no collaboration, reel or public floor-plan client: the backend has no such routes.
+
+### Contract rules (backend OpenAPI)
+
+- **Generated types.** `openapi/openapi.json` is copied from the backend by `npm run api:sync` (override the path with `BACKEND_DIR`). `npm run api:types` writes `src/lib/api/schema.gen.ts` (`openapi-typescript`, `--default-non-nullable false`) and `src/lib/api/limits.gen.ts` (request length limits, read by `scripts/api-limits.mjs`). `src/types/*.ts` are aliases of `components["schemas"][...]`; only UI-only types are hand-written. Run both scripts after a backend contract change.
+- **Errors.** Every non-2xx body is `{"error": {"code", "message", "details"}}`; a 422 carries `details.fields[{field, msg, type}]`. `src/api/errors.ts` is the only reader (`readErrorEnvelope`, `parseApiError`); the Axios interceptor puts the readable text in `error.message`. A toast after a failed write uses `errorText(error, fallback)` so the user sees the server's field errors, not a generic line. Branch on `code`, not on `message`.
+- **Lists.** Every list is a `CursorPage` `{items, next_cursor, has_more, limit, total}`. `limit` is at most 100 and `total` is null unless `include_total=true`. Reads that need every row (`getScenes`, `getFloorPlans`, `getAllTours`) follow `next_cursor` through `fetchAllPages`; page-by-page screens (media library) pass the cursor back unchanged.
+- **Strict keys.** Send only declared query and body keys (an unknown key is a 422). PATCH bodies carry only the changed keys; an explicit `null` clears a nullable field (`title`, `description`, `target_scene_id`, `content` of a hotspot). Deletes answer 204 with no body. There is no `success` flag.
+- **Tours.** A new tour is a draft; publish and unpublish change `status` (no `status` in POST or PATCH). Scenes have no `order_index` on create (the server appends; order with `POST /tours/{id}/scenes/reorder`) and use `scene_metadata`. Floor plans live in the `floor_plans` table only: write through the floor-plan routes (`lib/floorPlanSync.ts`), read `tour.floor_plans`. Hotspot `content` holds exactly the keys of its type (no `kind`); link URLs may use http, https, mailto or tel.
+- **Uploads.** Send `folder_type` (`StorageFolderType`) and `tour_id`. A scene panorama is `tour_original` + `tour_id`; other web uploads are `generic`. `property_*` and `scene` folders are rejected by `/upload`.
+- **Capture.** `draft -> capturing -> review -> uploading -> processing -> ready`; `ready`, `failed` and `cancelled` are final. `GuidedCapturePage` sends `device_info.platform` `web`, follows the order above, and calls `captureApi.failSession` on an error.
+- **Viewer events.** `POST /public/tours/:id/events` takes a JSON body with one of ten `ViewerEventType` values. A page view is counted by the GET; a `scene_view` needs numeric `event_data.yaw` and `pitch`.
+- **Dates and ids.** Datetimes are UTC ISO strings ending in `Z`; convert to local time only to display them. Date-only fields (`daily_views[].date`, `start_date`, `end_date`) are `YYYY-MM-DD`: show them with `formatDateOnly` (never `new Date(value)`, which is UTC midnight and shows the previous day west of UTC) and send them with `format(date, 'yyyy-MM-dd')`. `User.id` and `Tour.user_id` are numbers.
+- **Caches.** TanStack Query holds data in memory only. Browser storage for account data goes through `lib/accountStorage` (key = store name + schema version + account id). Sign-out and an account switch call `purgeAccountCaches()`. Persisted zustand stores carry a `version`. The service worker (`public/sw.js`, cache `360-tours-v2`) never caches `/api/` or `/ws/` paths, a request with an `Authorization` header, or a response marked `no-store` or `private` (the backend marks every account response `private, no-store`); `src/test/lib/serviceWorker.test.ts` pins this.
 
 ## 360° Viewer — Photo-Sphere-Viewer (`src/components/features/PanoramaViewer.tsx`)
 
@@ -136,14 +151,14 @@ Renders one panorama per `Scene`. Plugins: `MarkersPlugin` (always loaded, marke
 
 ## Auth
 
-- Supabase client (`src/lib/supabaseAuth.ts`): `persistSession`, `autoRefreshToken`, `detectSessionInUrl`, storageKey `STORAGE_KEYS.AUTH_TOKENS`. **Throws at import** if URL/key missing (non-test). Methods: password (phone + email), OTP (phone + email), Google (`signInWithGoogle` → `/auth/callback` → `exchangeCodeForSession`), `updatePassword`.
+- Supabase client (`src/lib/supabaseAuth.ts`): `flowType: 'pkce'`, `persistSession`, `autoRefreshToken`, `detectSessionInUrl: false` (the app exchanges the OAuth code itself on `/auth/callback`), storageKey `STORAGE_KEYS.AUTH_TOKENS`. **Throws at import** if URL/key missing (non-test). Methods: password (phone + email), OTP (phone + email), Google (`signInWithGoogle` → `/auth/callback` → `exchangeCodeForSession`), `updatePassword`.
 - Bearer token attached in the Axios request interceptor; 401 → one refresh retry → sign-out + auth-expired redirect.
 - Route protection (`components/features/ProtectedRoute.tsx`): gates on `isAuthenticated`; optional `requiredRole?: 'user'|'agent'|'admin'` (admin always allowed; mismatch → dashboard). `App.tsx` redirects expired sessions to `/login?next=<path>`, skipping the blocklist `[LOGIN, REGISTER, AUTH_CALLBACK]`.
 - `src/lib/lastAuthMethod.ts` remembers the last successful method + masked identifier (localStorage `360ghar:lastAuthMethod`).
 
 ## Realtime (WebSockets)
 
-`useWebSocket` (generic, auth-gated, 25s ping) and `useAIJobWebSocket` / `useUserNotifications` connect to `${buildWebSocketBaseUrl()}/ws/jobs/:jobId?token=…` (ws(s) derived from `API_BASE_URL`), parse `job_update`/`notification` frames, auto-reconnect.
+`useWebSocket` (generic, auth-gated, 25s ping) and `useAIJobWebSocket` / `useUserNotifications` connect to `${buildWebSocketBaseUrl()}/ws/jobs/:jobId` and `/ws/user` (ws(s) derived from `API_BASE_URL`). **The token is never in the URL**: the first frame after the socket opens is `{"type":"auth","token"}`. Frames are typed in `types/realtime.ts` and parsed by `utils/realtimeFrames.ts` (`job_update` `{job_id, data:{status, progress, error_message, result}}`, `notification` `{id, type, title, message, created_at}`, `connected`, `heartbeat`). The hooks auto-reconnect, except after close code 4001 (bad token) or 4004 (unknown job). There is no `/ws/tours` socket.
 
 ## Design System
 
@@ -169,6 +184,7 @@ Renders one panorama per `Scene`. Plugins: `MarkersPlugin` (always loaded, marke
 - Don't enable React Query `retry` — the Axios interceptor already retries; both on = 9× attempts.
 - Don't sign users out on 5xx/network — only on 401/403/SESSION_EXPIRED (see `authStore.isAuthError`).
 - Tour editor scene/hotspot edits persist via `toursApi`, not the deprecated `tourEditorStore` mutators or a single Save.
+- Test fixtures (`src/test/fixtures.ts`) and the msw handlers (`src/test/mocks/handlers.ts`) build wire-shaped payloads; do not hand-write a `Tour` or `Scene` literal in a test.
 - Add markers to the viewer only after `isViewerReady` (PSV drops markers added before ready).
 - Always sanitize hotspot `color`/`size`/title HTML before interpolating into PSV config (`safeColor`/`safeSize`/`escapeHtml`).
 

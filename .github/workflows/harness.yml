@@ -28,6 +28,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (SHA-pinned like web CI)
+        with:
+          # Match web CI: don't leave the job's GITHUB_TOKEN in .git/config.
+          persist-credentials: false
 
       - name: Setup Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2 (SHA-pinned)
@@ -58,6 +61,10 @@ jobs:
       - name: Embed parity golden fixture present
         working-directory: mobile
         run: test -f ../docs/embed-parity-golden.html
+
+      - name: Contract tests
+        working-directory: mobile/app
+        run: flutter test test/contract
 
       - name: Test
         working-directory: mobile/app

@@ -1,5 +1,7 @@
 # 360-tours — Verification Log
 
+> Note: this log is a dated snapshot. The splat lab, 3D viewer, reel and collaboration stories it mentions were removed in the 2026-10 release.
+
 Phase-2 verification results for every user story in `docs/FEATURES_AND_USER_FLOWS.md` (the canonical story doc). Each story's acceptance criteria were verified against the code by tracing implementation paths and running targeted existing tests; criteria requiring a live backend/device are marked `NOT-RUN(b)` (static trace only). Every error found is logged with file:line evidence and feeds the fix pass. Status key: **PASS** / **PARTIAL** / **FAIL** / **NOT-RUN(b)** = needs backend or device, static trace only.
 
 Baselines: web `npm run test:run` — 382 tests pass (a first run showed 3 flaky failures in `src/test/user-behaviors/editor/upload-confirmations.test.tsx`; an immediate rerun passed all 382 — flaky timing, tracked in web fixes). Mobile `flutter test` — 32/32 pass.
@@ -1010,3 +1012,242 @@ Fixes:
 - Tests: `authStore.test.ts` initial-state assertion updated (`isLoading: true`, asserted against `getInitialState()` since the shared beforeEach resets to an idle state); e2e `tour-edit.spec.ts` scene-selection expectation updated (first scene is auto-selected on load — the W3a select-after-save behavior); e2e `ai-features.spec.ts` locators switched to exact/substring-safe matching (`'Tour Generation'` collided with the `'AI Tour Generation'` dialog heading; `/Processing/` collided with the `Cancel Processing` button).
 
 Validation: full chromium e2e suite **61/61 pass** (was 52 pass / 9 fail at the previous cutoff — all 9 hermetic mocked-auth specs now green); vitest **396/396**; `tsc --noEmit` clean; `eslint` clean. The debug-spec scaffolding used to isolate the race was removed.
+
+## Code-review fix pass (42 verified findings, web + mobile)
+
+Source: a high-effort review of the whole monorepo (4 finder angles, one independent
+verifier per candidate location): 48 candidates, 42 verified, 6 refuted. All 42 are
+fixed. Highlights and the checks that now protect them:
+
+**Production breakage.**
+- *Uploads sent JSON, not multipart.* The axios instance default
+  `Content-Type: application/json` made axios 1.18 `transformRequest` serialize any
+  `FormData` with `JSON.stringify(formDataToJSON(data))`, so every file was dropped
+  (`{"file":{},…}`). Bulk scene upload, floor plans, profile image and AI tour
+  generation were all affected. The request interceptor now clears the content type
+  for `FormData` bodies so the platform emits the boundary; the two hand-set
+  `multipart/form-data` headers were removed (they omitted the boundary).
+  Guard: `src/test/api/upload.test.ts` asserts the adapter receives a `FormData`
+  instance, never a string, and that ordinary object bodies keep the JSON type.
+- *The auth bootstrap gated every public route.* The Phase-4 fix above put the whole
+  router behind `authStore.isLoading`; that also blocked `/view/:id`, `/embed/:id`,
+  `/view3d/:id` and the landing page, which are anonymous by contract — a slow or
+  failing `GET /users/me` blanked an embedded viewer for the entire retry window.
+  The gate moved to the routes that actually depend on the session (`ProtectedRoute`,
+  `RootRedirect`); `isLoading: true` at boot is unchanged, so the cold-load race the
+  Phase-4 entry describes stays fixed.
+  Guard: two e2e specs load `/view/:id` and `/embed/:id` with `/users/me` stalled.
+- *Mobile upload jobs parked forever.* A 401 held the job on `waiting-auth` and
+  `_drain` released it every pass, so the terminal branch was unreachable: the room
+  row read "Uploading…" indefinitely with no retry, no delete and no error. Holds are
+  now bounded (`_maxAuthHolds`), any successful call clears the budget, and the room
+  tile renders the parked state ("Paused — sign in to resume") as well as a
+  pre-enqueue stitch failure (`room.status == 'failed'`, the open **W3f** item above).
+  Delete is now available in every state.
+- *Duplicate remote resources on retry.* `_advance` re-entered `case 'createTour'`
+  after a throw that followed a successful POST (the backoff path never runs
+  `resumeStep`), the room pipeline could re-POST `createScene`, and `enqueueRoom`
+  rewound a completed job to `presign`. All three are guarded and covered by
+  `upload_queue_test.dart`.
+- *Silent infinite auto-capture loop.* `captureFrame` swallowed every exception and
+  returned to `aiming`, so a persistent `takePicture()` failure re-fired every 400 ms
+  forever with nothing shown. It now logs, counts consecutive failures and stops on
+  `CapturePhase.error` with a user-facing reason.
+- *WebSocket zombie reconnects.* The connect effect's cleanup closed the socket
+  without invalidating the connection id, so `onclose` passed the stale-connection
+  guard and opened a fresh socket after unmount. Guard:
+  `src/test/hooks/useWebSocket.test.ts`.
+- *Login destroyed a valid session on a transient error.* `login`/`loginWithPassword`
+  ran `authApi.logout()` for any thrown error, including a 5xx from
+  `completeSession`'s `/users/me` — the opposite of the store's own `isAuthError`
+  rule. Guard: two cases in `authStore.test.ts`.
+
+**Hardening.** Return-path allowlists resolve against the origin (`/\evil.com`
+normalizes to a cross-origin URL and previously passed; `utils/url.ts` +
+`url.test.ts`); the embed's `postMessage` guard checks sender **and** origin again;
+`embed.js` compares a real origin and owns a per-instance allowlist; the JS embed
+snippet cannot be closed by a `</script>` in an id; AI hotspot suggestions reset on
+scene change and apply to the analyzed scene; 429 retries are idempotent-only with
+their own budget; the public analytics beacon no longer attaches a Bearer token;
+`initial_view: null` no longer throws inside the viewer init; the password-reset flow
+is enumeration-uniform (same notice, same step, no dispatch for unknown identifiers);
+the JSON-LD `@type` is a real schema.org term again.
+
+**Dedup / docs.** One `escapeHtml`; `usePublicViewer` + `utils/publicViewer` replace
+the duplicated scaffolding in `PublicTourPage`/`EmbedTourPage` (guarded by new e2e
+assertions on the embed's `ready`/`sceneChange` contract); five marker templates
+collapsed to one spec table (icon geometry and colours byte-compared against the
+previous implementation); `upload_step_rules.dart` extracts the queue's pure resume /
+staleness / auth-expiry rules with `upload_step_rules_test.dart`; `web/CLAUDE.md`,
+`web/DESIGN.md`, `docs/technical/seo.md`, `mobile/docs/RELIABILITY.md`,
+`docs/FEATURES_AND_USER_FLOWS.md` and the mobile feature map corrected.
+
+**Landing de-slop** (design-law findings): eyebrow kickers, icon tiles, hover-lift,
+gradient orbs, floating particles, the hero pill badge, pill+glow CTA buttons and the
+float/pulse-glow animations removed; mono is system-only; the Clash Display decision
+is recorded in `DESIGN.md` as an open item rather than swapped. Two contrast bugs were
+found while checking the result: `.landing-headline` is unlayered CSS so it beat
+Tailwind's `text-white`, painting the dark sections' headings near-black on near-black
+(fixed), and the CTA trust line sat below AA (raised to `white/60`).
+
+**Pre-existing issues found and not changed.** `lg:grid-cols-[1.1fr,1fr]`
+(`HeroSection`) compiles to invalid CSS — Tailwind v4 needs `_`, not `,` — so the hero
+has silently been single-column; restoring the two-column split is a design decision,
+not a mechanical fix. The numbered-steps-on-a-rail composition in `HowItWorks` and its
+giant ghost numerals are still named design-law tells. `npm run build` was already red
+at HEAD (`RegisterPage.tsx:246` literal-type error that `npm run type-check` does not
+catch); fixed in passing.
+
+**Validation.** web: `npm run test:run` 418/418, `npm run build` clean,
+`tsc --noEmit` clean, `eslint` clean, chromium e2e 52/52 (run with `E2E_PORT` — the
+config is now port-overridable because Playwright's `reuseExistingServer` will happily
+point the suite at a foreign dev server on :3000; local runs also need
+`VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY`, which are empty in `.env.example`
+and make every spec render a blank app without them). mobile: `flutter analyze` clean,
+`flutter test` 88/88, `check_docs_harness.sh` and `check_architecture.dart` pass.
+Each new test was confirmed to fail with its fix reverted.
+
+## 2026-10-16: mobile contract pass (tours mobile, pass A)
+
+Adopted the backend contract changes (contract-audit `contract-changelog.md`
+sections 1, 4, 8 and gate 11.2) in `mobile/app`. Behaviour changes:
+
+- Every response is a typed DTO (`lib/core/models/api_dtos.dart`); every failure is an
+  `ApiException` read from `{error:{code,message,details}}`; lists follow `next_cursor`;
+  wire enums are generated (`tool/gen_enums.py`) and an unknown value reads as null.
+- Requests carry declared keys only: no `order_index`, `folder_type` `tour_original`,
+  `file_size` required, hotspot edit is one `PATCH /hotspots/:id`, names cut to 255.
+- Upload queue: the main scene id is stored on the asset (no `__main__` sentinel, a done
+  job never creates a second scene); `Idempotency-Key` on tour and scene creates; a 4xx
+  other than 408 and 429 fails the job at once; the cloud stitch outcome is read from
+  `GET /ai/jobs/:id` (`awaitStitch`); startup and sign-in sweep for stuck uploads.
+- Local store: schema header, bounded quarantine, owner filter before parse, strict models.
+- Known errors left: floor plans cannot be created from the app (TD-020); the backend
+  ignores `Idempotency-Key` on tour and scene create (TD-021); quarantined data has no
+  restore UI (TD-022); the local store is not purged on sign-out (TD-023).
+
+Fixtures come from the backend's Pydantic models (`tool/api_fixtures.py`); regenerating
+them on 2026-10-16 changed nothing. Validation: `flutter analyze` clean, `flutter test`
+(see `contract-audit/handoffs/C-tours-mobile.md` for the count), `check_docs_harness.sh`
+and `check_architecture.dart` pass.
+
+## 2026-10-16: mobile contract pass (tours mobile, pass B)
+
+Second pass over `mobile/app` against the same contract changes. Re-checked every ledger
+id of the slice against the code and the tests, then closed the gaps that pass A left:
+
+- Required response fields are strict: a page without `has_more`, a tour without `status` or
+  `visibility`, a hotspot without `type` or `is_active`, a job without `status` or `progress`
+  is `BAD_RESPONSE`, not a default. `GET /tours/{id}` public shape has a fixture and a test.
+- Quarantined data has a way back: `recoverQuarantined` restores records and files that this
+  build can read, at start and after sign-in (TD-022 closed).
+- Sign-out empties the image caches (`purgeAccountCaches`). The local store is kept (TD-023).
+- `Env.apiRoot` follows `API_BASE` when `API_ROOT` is not set.
+- Known errors left: floor plans cannot be created from the app (TD-020); the backend ignores
+  `Idempotency-Key` on tour and scene create (TD-021); the local store is not purged on sign-out
+  (TD-023).
+
+Validation: `flutter analyze` clean, `flutter test` 250 passed (pass A: 234), `gen_enums.py
+--check` clean, `api_fixtures.py` re-run (one new fixture), `check_docs_harness.sh` and
+`check_architecture.dart` pass.
+
+## 2026-10-18: AI-first tour creation (linking quality + floor plan from tour)
+
+Closed the gap that made the AI-first flow untrustworthy rather than incomplete: the whole-tour
+AI path existed, but a creator could not see whether the rooms were actually linked, and a tour
+with no uploaded plan had no plan at all. Shipped end to end (backend → web → mobile):
+
+- **Linking quality report.** `graph_summary` (`tour_ai/spatial.py`) counts scenes, links,
+  rooms without links, one-way links, unreachable scenes, doorways with no matching room and
+  doorways whose room was left unlinked, and writes a warning line for each. `generate_tour` and
+  `optimize_tour` now return it as `spatial_summary`.
+- **Re-run linking on an existing tour.** `POST /ai/tours/{tour_id}/connect-spatial` deletes the
+  job's own previous auto hotspots (hand-placed ones are kept) and re-links the tour.
+- **Schematic floor plan from the tour.** `POST /tours/{tour_id}/floor-plans/generate` +
+  `tour/floorplan_layout.py` (deterministic grid placement, doorway openings, Pillow PNG with a
+  "schematic, not to scale" footer) + `tour/floor_plans.generate_floor_plan` (Cloudinary upload,
+  creates or replaces the `Estimated layout (AI)` row). No migration: the plan is a normal
+  `floor_plans` row and stays editable.
+- **Web.** Wizard review step shows Room Connections (counts + warnings) and offers "Sketch
+  plan"; the editor gained "Connect Rooms with AI" (`ConnectRoomsDialog`, job-monitored, reports
+  warnings, invalidates scenes/hotspots/tour) and "Generate from tour" inside the floor-plan
+  dialog (confirms before discarding unsaved edits). Contract synced (`npm run api:sync`,
+  `api:types`).
+- **Mobile.** The floor-plan screen generates a plan (app-bar action + empty state), refetches,
+  and snackbars the estimate note; markers now render as numbered pins with a legend that opens
+  the scene's hotspot editor; `FloorPlanDto` carries `markers` (`FloorPlanMarkerDto`). TD-020 is
+  now partly done (measured LiDAR plans remain open).
+
+### Self-review pass on this work (same day, after the numbers below)
+
+A read-every-line audit of the shipped slice found five real defects. Each fix carries a test that
+fails without it (checked by reverting the fix and re-running):
+
+1. **CRITICAL — the linking-quality report never reached the client.** `graph_summary` returned the
+   report and `update_job_status` passed it as `spatial_summary`, but none of the three result
+   models (`TourGenerationResult`, `OptimizeTourResult`, `SpatialConnectResult`) declared the key,
+   and Pydantic's default `extra="ignore"` drops undeclared keys in `validate_ai_result` before the
+   result is stored. So `ai_jobs.result` never carried the summary, the web reader got null, and
+   both the wizard's Room Connections block and the Connect Rooms warnings were dead code in
+   practice. Fixed with a `SpatialGraphSummary` model declaring all eight keys
+   (`app/schemas/tour.py`) plus the field on all three result models.
+   `test_spatial_summary_survives_result_validation_for_every_spatial_job_type` pins the round trip
+   for each job type; `test_graph_summary_reports_only_keys_the_result_model_declares` fails the
+   moment `graph_summary` grows a key the model does not declare.
+2. **Connect Rooms fell back to its pre-run screen after a finished run.** With no readable report
+   the dialog rendered the start state again ("N scenes will be analysed" + Connect Rooms), which
+   reads as "nothing happened". Now a finished run without a report shows an explicit notice and
+   Re-run. `ConnectRoomsDialog` had **no test file**; added `src/test/components/ConnectRoomsDialog.test.tsx`
+   (5 tests: job start, report rendering with warnings, no-report notice, zero-room report, failed
+   job reason).
+3. **Mobile floor-plan pins collapsed into one band.** The `Align` children sat in a loose,
+   unbounded `Stack`, so the overlay shrink-wrapped to the pin height and every pin rendered
+   within ~28 px of the top instead of at its stored x/y. Fixed by putting the pins in
+   `Positioned.fill(child: Stack(...))`; `a pin sits at the marker percentage of the drawing`
+   asserts a pin centre lands at the stored percentage.
+4. **`graph_summary` blamed the wrong thing.** A doorway whose room type has a scene but whose link
+   the matcher refused (stairs with no counterpart, a duplicate target) was reported as "leads to
+   rooms without a scene". Split into `unmatched_openings` (no scene of that room type at all) and
+   new `unlinked_openings` (scene exists, no link placed), each with its own warning line.
+5. **`spatial_summary` was `{}` when a run skipped spatial linking**, so "no linking was attempted"
+   was indistinguishable from "linked nothing". It is now null, and the reader treats a report of
+   zero analysed rooms as no report.
+6. **The OpenAPI path baseline was never updated**, so
+   `tests/unit/app/test_app_composition.py::test_openapi_paths_match_refactor_baseline` failed
+   (it is a whole-app characterization test, not one of the tour suites the first pass ran).
+   `tests/fixtures/openapi_path_baseline.json` now carries
+   `/api/v1/ai/tours/{tour_id}/connect-spatial` and `/api/v1/tours/{tour_id}/floor-plans/generate`
+   and equals the live path list exactly.
+
+Also in this pass: the connect-spatial route gained its missing API coverage
+(`tests/api/test_ai_spatial_connect_api.py`, 3 tests — queues a `spatial_connect` job, scopes it to
+the tour, 404s for a non-owner, requires auth) and the dead no-op `QUERY_KEYS.HOTSPOTS`
+invalidation was removed from `handleRoomsConnected`.
+
+Verification: backend `uv run pytest` on the touched suites — 94 passed (layout engine 9, graph
+summary 7, generate endpoint 4, connect-spatial endpoint 3, tour contract 52, plus the surrounding
+tour/AI suites) and `tests/unit/app/test_app_composition.py` 6 passed after the baseline update;
+`ruff check app/ tests/` clean, `docs/openapi.json` regenerated and `--check` reports in sync,
+`validate_docs_contracts.py` passed (`tour/floorplan_layout.py` registered). Web
+`npm run type-check`, `npm run lint`, `npm run build` clean; `npm run test:run` — 66 files / 625
+tests pass (aiResults summary parsing, wizard review warnings + sketch plan, floor-plan generate
+action incl. the unsaved-edits confirmation, Connect Rooms dialog). Mobile `flutter analyze` clean,
+`flutter test` — 263 passed (new `floor_plan_screen_test.dart`: markers, legend navigation, pin
+geometry, generate from empty state and app bar, server-reason failure), `check_docs_harness.sh` and
+`check_architecture.dart` pass. Criteria that need a live backend or a device (a real Cloudinary
+upload of the generated PNG, a real spatial job on the hosted API) are NOT-RUN(b) — the traced paths
+and the mocked/unit coverage support them.
+
+**Known gap, deliberate:** mobile shows the generated floor plan and edits navigation links in the
+hotspot editor, but not the linking-quality report. The mobile app has no whole-tour AI generation
+flow (`generate_tour` is web-only; mobile's only AI job is cloud stitching), so there is no job
+result carrying `spatial_summary` to render there.
+
+**Pre-existing failures, not from this work (reported, not fixed):** the whole backend suite was run
+and every failure has one root cause — the local test database's `visit_status` enum has not had
+`supabase/migrations/20261014000100_enum_labels_to_values.sql` applied, so it lacks `requested`:
+`tests/unit` 2722 passed / 6 failed / 12 errors, `tests/api` 681 passed / 25 failed / 2 errors, all
+`invalid input value for enum visit_status: "requested"`. That migration and the `VisitStatus`
+member rename in `app/models/enums.py` are uncommitted work in progress on the visits/engagement
+surfaces, untouched by this change; applying the migration to the local test database is left to
+its author.

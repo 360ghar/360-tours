@@ -45,6 +45,11 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      - name: Generated API types match openapi/openapi.json
+        run: |
+          npm run api:types
+          git diff --exit-code -- src/lib/api/schema.gen.ts
+
       - name: Lint
         run: npm run lint
 

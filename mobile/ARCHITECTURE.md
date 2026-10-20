@@ -32,7 +32,6 @@ Top-level map of domains and dependency rules for the 360 Tours Flutter app. Age
 | tours | `app/lib/features/tours/` | Rooms, hotspots, floor plans |
 | viewer | `app/lib/features/viewer/` | WebView host for the web viewer (`../web` in this monorepo; deployed separately, loaded by URL at runtime) |
 | share | `app/lib/features/share/` | Short links, embed code, system share sheet |
-| threed | `app/lib/features/threed/` | Cloud generate-3d job UX |
 | analytics | `app/lib/features/analytics/` | Tour view analytics |
 | settings | `app/lib/features/settings/` | Processing preference (device vs cloud stitch) |
 

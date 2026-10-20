@@ -9,13 +9,13 @@
 
 Canonical, code-derived inventory of every feature and user flow in the monorepo, written as user stories with expected behavior and acceptance criteria. This is the contract for verification and quality work: expected behavior comes from reading the code, and `docs/VERIFICATION_LOG.md` records which stories have been verified and what errors were found.
 
-- **Web App — 360 Viewer** (`web/`): the React SPA — landing/auth, dashboard, tour creation (upload/guided capture/AI), tour editor (scenes, hotspots, settings, branding, floor plans), public viewing, embed/share, analytics, media library, lab.
-- **Mobile App — 360 Tours** (`mobile/`): the Flutter client — guided 16-shot capture, on-device stitching, persistent upload queue, publish/share, in-app viewer, rooms/hotspots, LiDAR, floor plans, 3D generation, analytics.
+- **Web App — 360 Viewer** (`web/`): the React SPA — landing/auth, dashboard, tour creation (upload/guided capture/AI), tour editor (scenes, hotspots, settings, branding, floor plans), public viewing, embed/share, analytics, media library.
+- **Mobile App — 360 Tours** (`mobile/`): the Flutter client — guided 16-shot capture, on-device stitching, persistent upload queue, publish/share, in-app viewer, rooms/hotspots, LiDAR, floor plans (read + AI-generated schematic), analytics.
 
 Each section documents its route/screen inventory, then every feature as a user story with a numbered flow, expected behavior, and acceptance criteria derived from the code. A `**Known gap:**` line flags places where behavior differs from intent (with file:line evidence) — those feed the verification-and-fix pass.
 # Web App — 360 Viewer: Features & User Flows
 
-**360 Viewer** is the web app of the 360Ghar monorepo: a React 19 + TypeScript SPA (Vite 7) for creating, editing, publishing, and viewing 360° virtual property tours, backed by the shared FastAPI backend (`/api/v1`) with Supabase auth. Rendering uses `@photo-sphere-viewer` (markers/gyroscope/stereo plugins); server state is TanStack Query, client state is Zustand. The app is an internal tool gated to staff roles (`agent`/`admin`), while public viewers (buyers/tenants) consume published tours via `/view/:id`, `/embed/:id`, and `/view3d/:id` — the same routes the Flutter mobile app loads in its WebView (byte-parity contract with `mobile/`).
+**360 Viewer** is the web app of the 360Ghar monorepo: a React 19 + TypeScript SPA (Vite 7) for creating, editing, publishing, and viewing 360° virtual property tours, backed by the shared FastAPI backend (`/api/v1`) with Supabase auth. Rendering uses `@photo-sphere-viewer` (markers/gyroscope/stereo plugins); server state is TanStack Query, client state is Zustand. The app is an internal tool gated to staff roles (`agent`/`admin`), while public viewers (buyers/tenants) consume published tours via `/view/:id`, and `/embed/:id` — the same routes the Flutter mobile app loads in its WebView (byte-parity contract with `mobile/`).
 
 **How to read this doc:** the route inventory maps every registered route to its page file; each feature below is written as a user story with a concrete numbered flow, expected behavior, and testable acceptance criteria, all derived from the code. A `**Known gap:**` line at the end of a feature flags places where the code behaves differently from intent (each carries file:line evidence); those are inputs for a later verification-and-fix pass, not fixes made here. API endpoints are named as `<METHOD /path>`; all paths are relative to the API base (`/api/v1`).
 
@@ -33,18 +33,14 @@ Each section documents its route/screen inventory, then every feature as a user 
 | `/tours/create` | `src/pages/tours/TourCreatePage.tsx` | Create tour: choose path (guided capture / upload / AI), info form, upload scenes | protected |
 | `/tours/capture` | `src/pages/tours/GuidedCapturePage.tsx` | Guided in-browser camera capture (session setup) | protected |
 | `/tours/capture/:sessionId` | `src/pages/tours/GuidedCapturePage.tsx` | Resume an existing capture session | protected |
-| `/tours/:id/edit` | `src/pages/tours/TourEditPage.tsx` | Tour editor: scenes, hotspots, settings, branding, floor plans, AI, publish, collaborators | protected |
-| `/tours/:id` | `src/pages/tours/TourViewPage.tsx` | Tour detail: viewer preview, stats, scenes grid, share/reel entry points | protected |
+| `/tours/:id/edit` | `src/pages/tours/TourEditPage.tsx` | Tour editor: scenes, hotspots, settings, branding, floor plans, AI, publish | protected |
+| `/tours/:id` | `src/pages/tours/TourViewPage.tsx` | Tour detail: viewer preview, stats, scenes grid, share entry point | protected |
 | `/tours/:id/analytics` | `src/pages/tours/TourAnalyticsPage.tsx` | Per-tour analytics: date range, charts, heatmap, CSV/JSON export | protected |
 | `/media` | `src/pages/media/MediaLibraryPage.tsx` | Media library: browse/search/filter/delete/preview uploaded files | protected |
 | `/analytics` | `src/pages/analytics/AnalyticsPage.tsx` | Cross-tour analytics: overview stats, tour selector, comparison table | protected |
 | `/profile` | `src/pages/settings/ProfilePage.tsx` | Profile: photo upload, name/phone, account status | protected |
 | `/settings` | `src/pages/settings/SettingsPage.tsx` | Settings: theme, notifications, change password, account deletion note | protected |
-| `/lab` | `src/pages/lab/SplatLabPage.tsx` | Splat Lab: Gaussian-splat pipeline jobs from 360° video | protected |
-| `/lab/editor` | `src/pages/lab/DollhouseEditorPage.tsx` | Dollhouse editor: compose multiple splat models + door connections in 3D | protected |
-| `/lab/kitchen-tour` | `src/pages/lab/KitchenTourPage.tsx` | Constrained kitchen GS tour (standpoint navigation demo) | protected |
 | `/view/:id` | `src/pages/PublicTourPage.tsx` | Public tour viewer (the shareable URL; SEO meta + analytics) | public |
-| `/view3d/:id` | `src/pages/View3DPage.tsx` | Minimal 3D-world viewer (splat mesh / hosted viewer iframe) | public |
 | `/embed/:id` | `src/pages/EmbedTourPage.tsx` | Chromeless embeddable viewer with parent-window `postMessage` protocol | public |
 | `/local/:propertyId` | `src/pages/LocalTourPage.tsx` | Dev-only harness rendering `seed_properties/<id>/tour.json` (`?calibrate=1` for position readout) | dev-only |
 | `*` | `src/pages/NotFoundPage.tsx` | 404 fallback with Go Home / Go Back | public |
@@ -137,7 +133,7 @@ Each section documents its route/screen inventory, then every feature as a user 
 - **Acceptance criteria:**
   - Given a valid existing identifier, when OTP is verified, then the user can set a new password and sees the success screen.
   - Given a wrong OTP, when verified, then an inline error appears and the user stays on the verify step.
-- **Known gap:** The request step reveals whether an identifier has an account ("No account found with this email or phone…", ForgotPasswordPage.tsx:113), enabling account enumeration.
+  - Given an identifier with no account, when OTP is requested, then the flow shows the same neutral notice and the same verify step as an existing identifier, and no OTP is dispatched (enumeration-uniform: the words *and* the screen match).
 
 #### Feature: Google OAuth sign-in & callback
 - **Pages/Components:** `pages/auth/LoginPage.tsx`, `pages/auth/RegisterPage.tsx`, `pages/auth/AuthCallbackPage.tsx`, `components/features/GoogleSignInButton.tsx`, `lib/supabaseAuth.ts`
@@ -160,9 +156,9 @@ Each section documents its route/screen inventory, then every feature as a user 
 #### Feature: Session lifecycle & route protection
 - **Pages/Components:** `components/features/ProtectedRoute.tsx`, `stores/authStore.ts`, `api/client.ts`, `lib/router.tsx`, `App.tsx`
 - **User flow:**
-  1. On boot, `AuthInitializer` runs `checkAuth()` (restores Supabase session, subscribes to `onAuthStateChange`, hydrates `GET /users/me`); a spinner shows until done.
+  1. On boot, `AuthInitializer` runs `checkAuth()` (restores Supabase session, subscribes to `onAuthStateChange`, hydrates `GET /users/me`) but the router mounts immediately — public routes must not wait on the session. Only auth-dependent routes gate: `ProtectedRoute` and `RootRedirect` render a `PageLoader` while `isLoading`.
   2. Every protected route is wrapped in `ProtectedRoute`: loading → profile-hydration wait → redirect to `/login` (with `from` state) when unauthenticated → optional role check (`requiredRole`; non-matching non-admin users go to `/dashboard`).
-  3. Axios attaches `Authorization: Bearer` to every request. On 401 the interceptor refreshes the token once and retries; if that fails (or the token retry budget is exhausted) it signs out and fires `onAuthExpired` (client.ts:89-130). `App.tsx` then hard-redirects to `/login?next=<current path>` (blocklist: login/register/callback). 429s honor `Retry-After` (max 3), 5xx/network retry with exponential backoff (max 3).
+  3. Axios attaches `Authorization: Bearer` to every request. On 401 the interceptor refreshes the token once and retries; if that fails (or the token retry budget is exhausted) it signs out and fires `onAuthExpired` (client.ts:89-130). `App.tsx` then hard-redirects to `/login?next=<current path>` (blocklist: login/register/callback). 429s honor `Retry-After` (max 3) and 5xx/network retry with exponential backoff (max 3); both branches replay **idempotent methods only** and hold **separate** retry budgets.
   4. User clicks Logout in the header menu → `authStore.logout()` → redirect to `/login`.
 - **User story:** "As a user, I want my session to be restored, refreshed, and expired cleanly, so that I never see broken data and am never stuck on a dead page."
 - **Expected behavior:** 5xx/network failures do **not** sign the user out (only 401/403/SESSION_EXPIRED); retries are capped; expired sessions redirect with a `next` return path.
@@ -170,6 +166,8 @@ Each section documents its route/screen inventory, then every feature as a user 
   - Given an unauthenticated visitor on `/tours`, when the page loads, then they are redirected to `/login` and after signing in return to `/tours`.
   - Given an expired access token on a protected API call, when the request is retried, then one refresh attempt happens before sign-out.
   - Given a 500 on a dashboard call, when the request completes, then the user stays signed in and sees an error state.
+  - Given a stored session and an unreachable `GET /users/me`, when `/view/:id` or `/embed/:id` loads, then the tour still renders (the router is not gated on the auth bootstrap).
+  - Given valid credentials and a 5xx from `completeSession`, when login is attempted, then the Supabase session survives and only a transient error is shown.
 - **Known gap:** Public pages share the same authed Axios client, so a 401 from a public endpoint (e.g. `/public/tours/:id`) while a session exists still triggers the refresh→sign-out cascade, logging a signed-in user out of a public tour view (api/client.ts:89-130).
 
 ### 3. Dashboard & Tour Management
@@ -214,18 +212,17 @@ Each section documents its route/screen inventory, then every feature as a user 
   - Given a delete confirmation, when Delete is accepted, then the tour is removed; when cancelled, nothing changes.
 
 #### Feature: Tour detail & preview
-- **Pages/Components:** `pages/tours/TourViewPage.tsx`, `components/features/PanoramaViewer.tsx`, `components/features/ShareModal.tsx`, `components/features/ai/ReelGeneratorModal.tsx`
+- **Pages/Components:** `pages/tours/TourViewPage.tsx`, `components/features/PanoramaViewer.tsx`, `components/features/ShareModal.tsx`
 - **User flow:**
   1. User opens `/tours/:id`; `GET /tours/:id` and `GET /tours/:id/scenes` load in parallel.
-  2. Header shows title/status/description with Analytics, Share (disabled until published, with tooltip), Create Reel (disabled without scenes), and Edit Tour buttons.
+  2. Header shows title/status/description with Analytics, Share (disabled until published, with tooltip), and Edit Tour buttons.
   3. A live `PanoramaViewer` preview renders the first scene (with hotspots); stat cards show views/likes/shares/scenes; a scenes grid and details (created/updated/published, visibility, auto-rotate, VR mode) render below.
-  4. Share opens the ShareModal; Create Reel opens the reel generator; Analytics → `/tours/:id/analytics`; Edit Tour → `/tours/:id/edit`.
+  4. Share opens the ShareModal; Analytics → `/tours/:id/analytics`; Edit Tour → `/tours/:id/edit`.
 - **User story:** "As a creator, I want a full read-only view of a tour with a working preview, so that I can check it before editing or sharing."
 - **Expected behavior:** Missing tour shows "Tour not found" with a back link; the preview uses the first scene; stats fall back to `tour.view_count` etc.
 - **Acceptance criteria:**
   - Given a published tour, when the page loads, then a working 360 preview and four stat cards render.
   - Given a draft tour, when Share is clicked, then the button is disabled with a "Publish the tour to share it" tooltip.
-  - Given a tour with no scenes, when Create Reel is clicked, then it is disabled with a tooltip.
 
 ### 4. Tour Creation (Upload & Guided Capture)
 
@@ -270,13 +267,15 @@ Each section documents its route/screen inventory, then every feature as a user 
   1. User opens the wizard from TourCreatePage ("AI generate" card, or header button on info/upload steps). Step 1: drag-drop images (JPG/PNG/WebP, ≤50MB, ≤50 files; rejections combined into one message).
   2. Step 2 (optional title/description) → Step 3 (toggles: auto-detect rooms, auto-place hotspots, auto-generate descriptions; summary list).
   3. "Generate Tour" → `POST /ai/tours/generate` (multipart; upload progress shown) returns a job id; the processing step renders `AIJobStatus` (WebSocket `ws/jobs/:jobId` + 2s polling fallback) with a Cancel button (`POST /ai/jobs/:id/cancel`).
-  4. On completion, the review step shows the generated tour title + scenes; "Complete" calls `onComplete` (TourCreatePage navigates to `/tours/:id/edit` and invalidates tour queries).
+  4. On completion, the review step shows the generated tour title + scenes; when the job ran spatial linking it also shows a **Room Connections** block (`spatial_summary`: links, rooms, and one warning per room with no doorway, one-way link, unreachable scene, doorway with no matching room, or doorway whose room was left unlinked). A **Floor plan** row offers "Sketch plan" (`POST /tours/:id/floor-plans/generate`), which stays on the review step and flips to "Added". "Complete" calls `onComplete` (TourCreatePage navigates to `/tours/:id/edit` and invalidates tour queries).
 - **User story:** "As a busy creator, I want AI to build a whole tour from raw images, so that I skip manual setup."
-- **Expected behavior:** Wizard state resets on close; failures return to the options step with an error; invalid files are rejected with reasons; count cap enforced.
+- **Expected behavior:** Wizard state resets on close; failures return to the options step with an error; invalid files are rejected with reasons; count cap enforced; the linking summary is advisory (never blocks completing) and a failed sketch shows a toast without losing the review step.
 - **Acceptance criteria:**
   - Given ≥1 valid image, when "Generate Tour" is clicked, then a job starts and progress is shown.
   - Given job completion with a tour+scenes payload, when the review step is reached, then "Complete" navigates to the editor.
   - Given a job failure, when the status flips to failed, then the user returns to options with the error message.
+  - Given a finished spatial run with warnings, when the review step renders, then each warning is listed under Room Connections.
+  - Given the review step, when "Sketch plan" is clicked, then `POST /tours/:id/floor-plans/generate` runs for the new tour and the row reads "Added".
 - **Known gap:** Closing the dialog (X / overlay / Cancel) calls `handleClose`, which clears wizard state but never cancels a running job — the backend job continues orphaned (AITourWizard.tsx:236-249).
 
 #### Feature: AI job status monitoring
@@ -327,25 +326,13 @@ Each section documents its route/screen inventory, then every feature as a user 
   - Given a scene with suggestions, when a navigation suggestion is applied, then a hotspot linking to the suggested target scene is created.
   - Given a deselected suggestion, when Apply is clicked, then that suggestion is skipped.
 
-#### Feature: 360 reel generation
-- **Pages/Components:** `components/features/ai/ReelGeneratorModal.tsx`, `components/features/VideoPlayer.tsx`, `api/ai.ts` (generateReel)
-- **User flow:**
-  1. User opens "Create 360 Reel" (TourViewPage or editor More menu); configure step lists scenes (ordered, checkbox inclusion, up/down reorder) and a seconds-per-scene slider (2–6s, default 3); estimated length shown.
-  2. "Generate Reel" → `POST /ai/tours/:id/reel` with `scene_ids`, `scene_duration` → job status.
-  3. Done step: 9:16 preview (VideoPlayer), scene count/duration/dimensions, "Download" (Cloudinary `fl_attachment` URL), "Copy link", "Create another".
-- **User story:** "As a marketer, I want a vertical video reel from my tour, so that I can post it on social media."
-- **Expected behavior:** State resets when the modal closes; errors show a retry step.
-- **Acceptance criteria:**
-  - Given selected scenes, when Generate is clicked, then a reel job starts.
-  - Given a completed job, when the done step shows, then the video previews and Download/Copy actions work.
-
 ### 6. Tour Editing (Scenes, Hotspots, Settings, Branding, Floor Plans)
 
 #### Feature: Editor shell, save & publish guard
 - **Pages/Components:** `pages/tours/TourEditPage.tsx`, `stores/tourEditorStore.ts`, `lib/router.tsx` (useBlocker)
 - **User flow:**
   1. User opens `/tours/:id/edit`; `GET /tours/:id` + `GET /tours/:id/scenes` load; the store is seeded once (`setCurrentTour`) when it doesn't already hold the tour.
-  2. Toolbar shows title, status badge, "Unsaved changes" badge, scene count, Save (⌘S/Ctrl+S), Publish/Unpublish, Activity, Collaborators, Upload, Preview, Settings, and a More menu (branding, floor plans, AI tools, reel, duplicate, analytics, delete).
+  2. Toolbar shows title, status badge, "Unsaved changes" badge, scene count, Save (⌘S/Ctrl+S), Publish/Unpublish, Upload, Preview, Settings, and a More menu (branding, floor plans, AI tools, duplicate, analytics, delete).
   3. Editing any draftable field (`updateTourDraft`) sets `hasUnsavedChanges`; navigation away triggers a blocker dialog ("Leave without saving?"), and closing/refreshing triggers `beforeunload`.
   4. Save → `PATCH /tours/:id` (title/description/status/visibility/settings) → toast + `markAsSaved`.
   5. Publish → `POST /tours/:id/publish` (disabled with reason when unsaved changes exist or zero scenes); Unpublish → `POST /tours/:id/unpublish`. Duplicate → `POST /tours/:id/duplicate` then navigates to the copy's editor; Delete → confirm dialog → `DELETE /tours/:id` → `/tours`.
@@ -433,19 +420,22 @@ Each section documents its route/screen inventory, then every feature as a user 
   - Given an oversized logo, when uploaded, then an inline error appears and nothing persists.
 
 #### Feature: Floor plans
-- **Pages/Components:** `components/features/FloorPlanEditor.tsx`, `components/features/FloorPlanOverlay.tsx`
+- **Pages/Components:** `components/features/FloorPlanEditor.tsx`, `components/features/FloorPlanOverlay.tsx`, `lib/floorPlanSync.ts`
 - **User flow:**
   1. User opens Floor Plans (More menu): manage multiple floors (add/delete/move with renumbering), upload a floor plan image (`POST /upload`, folder `floor-plans`).
-  2. Marker mode: pick a scene from the list, then click the floor-plan image to place/update its marker (percentage x/y).
-  3. Save → TourEditPage `handleFloorPlansSave` merges `floor_plans` into tour settings → `PATCH /tours/:id`.
-  4. Public viewers see `FloorPlanOverlay` (bottom-left): expand/collapse, floor up/down (multi-floor), clickable markers navigate to scenes (marker for the current scene is highlighted with a ping).
+  2. **Generate from tour** (`POST /tours/:id/floor-plans/generate`): the server draws a schematic PNG from the tour's analyzed rooms and doorway links, uploads it and creates/replaces the `Estimated layout (AI)` row; the editor confirms first when the dialog holds unsaved edits, then refetches the floor-plans query and toasts. The button renders only when the caller passes `onGenerate`.
+  3. Marker mode: pick a scene from the list, then click the floor-plan image to place/update its marker (percentage x/y).
+  4. Save → TourEditPage `handleFloorPlansSave` → `syncFloorPlans` writes rows through the floor-plan routes (`POST`/`PATCH`/`PUT markers`/`DELETE /tours/:id/floor-plans...`) and refetches `GET /tours/:id/floor-plans`.
+  5. Public viewers see `FloorPlanOverlay` (bottom-left): expand/collapse, floor up/down (multi-floor), clickable markers navigate to scenes (marker for the current scene is highlighted with a ping).
 - **User story:** "As a creator, I want visitors to navigate a tour from a floor plan, so that they can jump straight to rooms."
-- **Expected behavior:** Public pages prefer `settings.floor_plans` and fall back to `GET /public/tours/:id/floor-plans`; overlay is hidden when no plans exist.
+- **Expected behavior:** The editor reads and writes the `floor_plans` table only (`tour.settings` carries no floor plans); the overlay is hidden when no plans exist; a generated plan is a schematic estimate, never presented as measured.
 - **Acceptance criteria:**
   - Given a floor plan with markers, when a viewer clicks a marker, then the tour navigates to that scene.
   - Given multiple floors, when the overlay arrows are used, then the displayed floor changes and the counter updates.
-  - Given a marker placement, when saved, then the marker coordinates persist in tour settings.
-- **Known gap:** The dedicated floor-plan CRUD endpoints (`toursApi.getFloorPlans/getFloorPlan/createFloorPlan/updateFloorPlan/updateFloorPlanMarkers/deleteFloorPlan`, tours.ts:295-338) are unused; the editor persists floor plans only inside `settings.floor_plans`, so the standalone floor-plan API surface is dead code.
+  - Given a marker placement, when saved, then the marker coordinates persist on the floor-plan row.
+  - Given a tour with ≥2 analyzed scenes, when "Generate from tour" is clicked, then a plan appears in the editor and can be edited like an uploaded one.
+  - Given unsaved floor-plan edits, when "Generate from tour" is clicked, then a confirmation appears first and Cancel sends no request.
+  - Given fewer than two scenes, when generation is attempted, then the server's reason ("A floor plan needs at least two scenes…") is shown as an error toast and nothing is created.
 
 #### Feature: Publish flow, preview, and live state
 - **Pages/Components:** `pages/tours/TourEditPage.tsx`, `pages/tours/TourViewPage.tsx`
@@ -457,26 +447,16 @@ Each section documents its route/screen inventory, then every feature as a user 
   - Given a published tour, when Unpublish is clicked, then status becomes `draft` and the public page is no longer reachable.
 
 #### Feature: AI apply flows (from editor)
-- **Pages/Components:** `pages/tours/TourEditPage.tsx` (handleApplySceneAnalysis, handleApplyDescriptions, handleApplyHotspotSuggestions)
+- **Pages/Components:** `pages/tours/TourEditPage.tsx` (handleApplySceneAnalysis, handleApplyDescriptions, handleApplyHotspotSuggestions, handleRoomsConnected), `components/features/ai/ConnectRoomsDialog.tsx`
 - **User flow:** 1. User runs an AI tool in the More menu. 2. Apply calls in TourEditPage persist results directly: scene analysis/descriptions via per-scene `PATCH /scenes/:id`; hotspot suggestions via per-suggestion `POST /scenes/:sceneId/hotspots`. 3. Success/failure toasts; scenes query invalidated.
+- **Connect rooms:** "Connect Rooms with AI" (More menu, disabled with fewer than two scenes) opens a dialog that runs `POST /ai/tours/:id/connect-spatial` under `AIJobStatus`. The job re-runs doorway linking on the existing tour — it replaces its own previous links and keeps hand-placed hotspots — and answers with `spatial_summary`, rendered as a link/room count plus one line per warning. A finished run invalidates the scenes, hotspots and tour queries; Re-run is offered in place.
 - **User story:** "As a creator, I want one-click application of AI results, so that accepted suggestions are saved immediately."
-- **Expected behavior:** Apply is client-side fan-out to scene/hotspot endpoints — the `aiApi.applySceneAnalysis` / `applyHotspotSuggestions` endpoints are never called.
+- **Expected behavior:** Apply is client-side fan-out to scene/hotspot endpoints — the `aiApi.applySceneAnalysis` / `applyHotspotSuggestions` endpoints are never called. Connect-rooms writes only server-side (no client fan-out) and reports linking quality instead of silently succeeding.
 - **Acceptance criteria:**
   - Given an accepted analysis update, when Apply is clicked, then `PATCH /scenes/:id` is issued for each selected scene.
   - Given a partial failure, when applying multiple updates, then an error toast appears and successful updates still persist.
-
-#### Feature: Collaboration & activity
-- **Pages/Components:** `pages/tours/TourEditPage.tsx` (Collaborators popover), `components/features/ActivityFeed.tsx`, `stores/collaborationStore.ts`, `api/collaboration.ts`
-- **User flow:**
-  1. "Collaborators" opens a popover listing collaborators (`GET /tours/:id/collaborators`) with avatar, name, role; owners cannot be removed.
-  2. Invite: enter email + role (viewer/editor) → `POST /tours/:id/collaborators` → toast; remove → confirm → `DELETE /tours/:id/collaborators/:userId`.
-  3. "Activity" opens a sheet with the activity feed (`GET /tours/:id/activities`): actions (created/updated/deleted/commented/published/invited/left) grouped by date with an action filter and manual refresh.
-- **User story:** "As a team lead, I want to invite teammates and see what changed, so that we can collaborate on tours."
-- **Expected behavior:** Activity loads on demand when the sheet opens; collaborators fetch on popover open with retry on error.
-- **Acceptance criteria:**
-  - Given a valid email, when Invite is clicked, then the collaborator appears in the list.
-  - Given an owner collaborator, when remove is attempted, then no remove control is rendered.
-  - Given activities exist, when the sheet opens, then items render grouped by date.
+  - Given a tour with ≥2 scenes, when Connect Rooms is run, then a job starts, the finished job's warnings are listed, and the editor refetches scenes and hotspots.
+  - Given a failed connect job, then the error message is shown and no scene/hotspot query is invalidated.
 
 ### 7. Media Library
 
@@ -570,59 +550,7 @@ Each section documents its route/screen inventory, then every feature as a user 
   - Given `?minimal=true&autohide=true`, when loaded, then chrome is limited to arrows/counter and controls fade out after inactivity.
   - Given a tour fetch error, when it occurs, then the parent receives an `error` message and an error screen renders.
 
-### 10. 3D Viewing & Lab
-
-#### Feature: 3D world viewer
-- **Pages/Components:** `pages/View3DPage.tsx`, `hooks/useSkyboxRenderer.ts`
-- **User flow:**
-  1. Visitor opens `/view3d/:id` (or the tour sets a 3D world). `GET /public/tours/:id` returns settings.
-  2. If `settings.world_3d.mesh_url` exists, a custom canvas renderer (skybox/mesh) loads; errors show "Failed to load the 3D world" with a fallback link to `/view/:id`.
-  3. Legacy tours with `world_3d.viewer_url` render a full-screen iframe (`fullscreen; xr-spatial-tracking`).
-  4. Otherwise: "3D world not available" + fallback link.
-- **User story:** "As a buyer, I want to view a 3D reconstruction of a property, so that I get a richer sense of space."
-- **Expected behavior:** No chrome; loading spinner; graceful fallback to the 360 tour on any failure.
-- **Acceptance criteria:**
-  - Given a tour with a mesh URL, when loaded, then the canvas viewer renders and errors show a fallback link.
-  - Given a tour without a world, when loaded, then the "not available" state with a fallback link renders.
-
-#### Feature: Splat Lab (Gaussian-splat pipeline)
-- **Pages/Components:** `pages/lab/SplatLabPage.tsx`, `hooks/useSplatPipeline.ts`, `api/lab.ts`
-- **User flow:**
-  1. User opens `/lab`; past jobs load (`GET /lab/jobs`).
-  2. Create job: title, drop video(s) (MP4/MOV/MKV), toggles 360° video and mask people, quality preset (fast ~10min / balanced ~25min / quality ~60min).
-  3. "Start Pipeline" → `POST /lab/jobs` then `POST /lab/jobs/:id/upload-video?filename=…` (presigned URL) then `POST /lab/jobs/:id/start`.
-  4. The active job view renders an 8-stage pipeline tracker (uploading → extracting → converting → sfm → training → compressing → collision → ready) with progress; failure shows the stage (estimated from progress) and a GPU-required banner when the error mentions `GPU_REQUIRED`.
-  5. Ready: "Download splat", "Open in SuperSplat" (iframe preview tab), Quick Preview iframe vs Self-Hosted (coming soon) tabs.
-  6. Past jobs can be re-selected or deleted (`DELETE /lab/jobs/:id` + reload).
-- **User story:** "As a power user, I want to turn 360° video into a navigable Gaussian splat, so that I can offer 3D tours."
-- **Expected behavior:** Header stats (total/completed/failed); delete is hover-only; GPU banner offers a Luma AI link and a disabled "Request GPU Access" button.
-- **Acceptance criteria:**
-  - Given a video file, when Start Pipeline is clicked, then a job is created and uploaded with progress.
-  - Given a ready job, when the viewer renders, then splat download and SuperSplat links work.
-  - Given a `GPU_REQUIRED` failure, when the job fails, then the GPU warning banner appears.
-
-#### Feature: Dollhouse editor (splat scene composer)
-- **Pages/Components:** `pages/lab/DollhouseEditorPage.tsx`
-- **User flow:**
-  1. User opens `/lab/editor` from the Lab; a Three.js canvas renders three splat models (`/splats/room1.splat`, `hallway`, `room2`) with grid, orbit controls, and transform gizmos.
-  2. Bottom toolbar switches translate/rotate/scale and "connect" mode (click the floor to place a yellow Door/Portal marker between the active model and the next).
-  3. Right panel lists models, shows live transform values, and lists connections with delete.
-  4. Top bar: "Back to Lab", grid toggle, and a disabled "Save Tour" button ("not wired up yet").
-- **User story:** "As a lab user, I want to compose multiple splat models into one connected walkthrough, so that multi-room 3D tours become possible."
-- **Expected behavior:** Layout is in-memory only (no persistence); dragging disables orbit.
-- **Acceptance criteria:**
-  - Given the editor, when a model is transformed, then transform values update in the panel.
-  - Given connect mode, when the floor is clicked, then a Door/Portal marker appears in the connections list.
-  - Given a click on Save Tour, then the button is disabled with an explanatory title.
-
-#### Feature: Kitchen tour (constrained GS standpoint navigation)
-- **Pages/Components:** `pages/lab/KitchenTourPage.tsx`, `components/SplatTourViewer.tsx`, `types/tourSpatial.ts`
-- **User flow:** 1. User opens `/lab/kitchen-tour` (from Splat Lab header). 2. `public/splats/kitchen_manifest.json` is fetched; `SplatTourViewer` renders `public/splats/kitchen.splat` with standpoint/waypoint navigation (no free-flight). 3. "Advanced free-fly (SuperSplat)" opens the PlayCanvas editor with the splat loaded.
-- **User story:** "As a lab user, I want a constrained walkthrough demo, so that I can validate standpoint navigation for gaussian splats."
-- **Expected behavior:** Errors explain missing `kitchen.splat`/`kitchen_manifest.json`; a spinner shows while the manifest loads.
-- **Acceptance criteria:**
-  - Given the manifest exists, when the page loads, then the constrained tour viewer renders.
-  - Given a missing manifest, when the fetch fails, then an error alert names the missing files.
+### 10. Local Tour Harness
 
 #### Feature: Local tour harness (dev-only)
 - **Pages/Components:** `pages/LocalTourPage.tsx`
@@ -697,7 +625,7 @@ Each section documents its route/screen inventory, then every feature as a user 
 #### Feature: App shell (header, sidebar, navigation)
 - **Pages/Components:** `components/layout/DashboardLayout.tsx`, `components/layout/Header.tsx`, `components/layout/Sidebar.tsx`
 - **User flow:**
-  1. Every protected page renders inside DashboardLayout: skip-to-content link, Sidebar (Dashboard/Tours/Media/Analytics/Splat Lab/Settings, active highlight, collapse rail, mobile drawer with Escape/overlay close), Header (mobile menu, sidebar toggle, search box, New Tour button, theme toggle, notifications, user menu with Profile/Settings/Logout).
+  1. Every protected page renders inside DashboardLayout: skip-to-content link, Sidebar (Dashboard/Tours/Media/Analytics/Settings, active highlight, collapse rail, mobile drawer with Escape/overlay close), Header (mobile menu, sidebar toggle, search box, New Tour button, theme toggle, notifications, user menu with Profile/Settings/Logout).
   2. Logout clears auth and navigates to `/login`.
 - **User story:** "As a user, I want consistent chrome and quick navigation, so that I can move between areas efficiently."
 - **Expected behavior:** Sidebar nav highlights the active route; mobile drawer locks body scroll.
@@ -711,7 +639,7 @@ Each section documents its route/screen inventory, then every feature as a user 
 
 # Mobile App — 360 Tours: Features & User Flows
 
-The mobile app is a Flutter client for **360 Tours**: a real-estate photographer captures a room as a guided 16-shot 360° panorama on their phone, the app stitches the frames on-device (with a cloud re-stitch fallback), uploads the result to the 360ghar backend (`api.360ghar.com`), and publishes a shareable public link with QR code and embed snippet. A capture can grow into a multi-room walkable tour (rooms + navigation hotspots), a 3D world (cloud job), and carries view analytics. Auth is Supabase; tours/scenes/uploads go through a typed `BackendApi`; all asset/room data is stored locally in JSON collections (`LocalStore`) with an upload queue that persists each pipeline step so uploads survive crashes and offline periods.
+The mobile app is a Flutter client for **360 Tours**: a real-estate photographer captures a room as a guided 16-shot 360° panorama on their phone, the app stitches the frames on-device (with a cloud re-stitch fallback), uploads the result to the 360ghar backend (`api.360ghar.com`), and publishes a shareable public link with QR code and embed snippet. A capture can grow into a multi-room walkable tour (rooms + navigation hotspots) and carries view analytics. Auth is Supabase; tours/scenes/uploads go through a typed `BackendApi`; all asset/room data is stored locally in JSON collections (`LocalStore`) with an upload queue that persists each pipeline step so uploads survive crashes and offline periods.
 
 How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 document every feature as user stories with expected behavior derived from the code (file paths + line refs). "Known gap" lines flag behavior that is missing, silently skipped, or dead — they describe the current state only, nothing is fixed here. Section 13 is the cross-app contract with the web viewer. This doc is the contract for a later verification-and-fix pass: every expected behavior is concrete and testable.
 
@@ -726,13 +654,12 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 | `/lidar` | `features/lidar/presentation/lidar_scan_screen.dart` | Apple RoomPlan LiDAR room scan (Pro iPhones) |
 | `/settings` | `features/settings/presentation/settings_screen.dart` | Processing preference + capture hardware (LiDAR, Insta360) |
 | `/asset/:id` | `features/assets/presentation/asset_detail_screen.dart` | Asset detail: status, actions hub, delete |
-| `/asset/:id/view` | `features/viewer/presentation/viewer_screen.dart` | In-app WebView viewer (`mode=pano` → embed, `mode=3d` → view3d) |
+| `/asset/:id/view` | `features/viewer/presentation/viewer_screen.dart` | In-app WebView viewer (embed page) |
 | `/asset/:id/share` | `features/share/presentation/share_screen.dart` | Public link, native share sheet, QR code, embed code |
 | `/asset/:id/rooms` | `features/tours/presentation/room_list_screen.dart` | Room list of a multi-room tour (+ add room, delete room) |
-| `/asset/:id/rooms/:roomId/hotspots` | `features/tours/presentation/hotspot_editor_screen.dart` | Hotspot placement via web embed in edit mode |
-| `/asset/:id/generate3d` | `features/threed/presentation/generate_3d_screen.dart` | Cloud 3D-world job (polling) + on-device photogrammetry |
+| `/asset/:id/scenes/:sceneId/hotspots` | `features/tours/presentation/hotspot_editor_screen.dart` | Hotspot placement via web embed in edit mode |
 | `/asset/:id/floorplan` | `features/tours/presentation/floor_plan_screen.dart` | Floor plan images served by the backend |
-| `/asset/:id/analytics` | `features/analytics/presentation/analytics_screen.dart` | Views / time spent / "request showing" stats |
+| `/asset/:id/analytics` | `features/analytics/presentation/analytics_screen.dart` | Views / time spent / hotspot clicks |
 
 ## Features & User Stories
 
@@ -770,7 +697,7 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 - **Screens/Components:** `features/assets/presentation/asset_list_screen.dart`, `features/assets/presentation/asset_providers.dart` (`assetTickProvider` stream), `features/assets/data/local_asset_repository.dart` (`LocalStore` `assets` collection)
 - **User flow:**
   1. Signed-in user lands on `/`: a 2-column grid of the user's own scans (filtered by `ownerId`), newest first, live-updating from the `LocalStore` watch stream.
-  2. Each card shows a thumbnail (or placeholder icon), name, relative creation date, and a status badge when not `ready`: "Capturing", "Stitching…", "Uploading…" (pendingCloudStitch), "Building 3D…", "Failed".
+  2. Each card shows a thumbnail (or placeholder icon), name, relative creation date, and a status badge when not `ready`: "Capturing", "Stitching…", "Uploading…" (pendingCloudStitch), "Failed".
   3. Pull-to-refresh re-reads local state; a load error shows "Could not load your scans." with Retry.
   4. Empty state explains the flow: "Stand in the middle of a room, tap Scan, and follow the dots. Sixteen shots, under a minute."
   5. App bar: Settings (→ `/settings`), Sign out (→ confirm dialog). FAB "Scan a room" → `/capture`.
@@ -778,7 +705,7 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 - **User story:** "As a photographer, I want to see all my scans with their processing state, so that I know which ones are ready to share."
 - **Expected behavior:**
   - Only the signed-in owner's assets appear; cards update in place when status/thumbnail change (queue writes re-emit the stream).
-  - Badge colors: capturing=dim, stitching/pendingCloudStitch=accent, processing3d=accent, failed=danger, ready=no badge.
+  - Badge colors: capturing=dim, stitching/pendingCloudStitch=accent, failed=danger, ready=no badge.
   - Deleted assets disappear from the list without a restart.
 - **Acceptance criteria:**
   1. Two scans for the same user render in newest-first order with correct badges.
@@ -791,13 +718,13 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 - **Screens/Components:** `features/assets/presentation/asset_detail_screen.dart`, `features/assets/presentation/asset_providers.dart` (`assetProvider`)
 - **User flow:**
   1. Open `/asset/:id`: hero panorama preview (local file or placeholder), name, status line ("Ready to share", "Stitching and uploading. The share link is minutes away.", etc.).
-  2. Action list with enable/disable gating: **View 360°** and **Share link** need `status == ready && remoteTourId != null`; **Rooms & hotspots**, **Floor plan**, **Analytics** need only `remoteTourId`; **Generate 3D world** (or "View 3D world" once `model3dUrl` exists) needs ready + remote. Disabled rows show "Available after upload completes".
+  2. Action list with enable/disable gating: **View 360°** and **Share link** need `status == ready && remoteTourId != null`; **Rooms & hotspots**, **Floor plan**, **Analytics** need only `remoteTourId`; there is no 3D action (removed with splat removal). Disabled rows show "Available after upload completes".
   3. When status is `failed`, a "Retry upload" button appears: it sets status back to `stitching`, re-enqueues the upload (`repo.enqueueUpload`), shows "Retrying upload…"; on enqueue failure it reverts the status to `failed` and shows "Could not retry the upload." (`asset_detail_screen.dart:149-163`).
   4. "Delete scan" → confirmation dialog ("The panorama, its share link and the published tour are removed.") → `deleteAsset` removes local records, upload jobs, rooms, and local files; best-effort `DELETE /tours/:id`; navigates back to `/`.
 - **User story:** "As a photographer, I want one screen that tells me the state of a scan and lets me view, share, extend, or delete it."
 - **Expected behavior:**
   - Every action row is disabled with a hint until its precondition is met.
-  - Retry only re-runs the upload pipeline (it does not re-stitch).
+  - Retry re-runs the upload pipeline from where the job stopped (a finished cloud-stitch job re-enters at `uploadFrames` or `requestStitch`); it re-stitches on device only for an asset that has frames and no panorama.
   - Delete removes: `assets` + `rooms` + `upload_queue` entries, local panorama/thumbnail/frames, and best-effort remote tour/scene.
 - **Acceptance criteria:**
   1. A `failed` asset shows Retry upload; tapping it flips status to `stitching` and enqueues a job.
@@ -840,11 +767,11 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 - **User story:** "As a photographer, I want to add extra rooms to an existing tour, so that one property becomes a walkable multi-room tour."
 - **Expected behavior:**
   - Room upload waits for the main asset's tour job (`_advanceRoom` returns `idle` until `asset.remoteTourId` exists).
-  - The room's scene gets `order_index = index+1` server-side.
+  - The client sends no `order_index`: the server appends the scene, so the room job waits until the main scene exists.
 - **Acceptance criteria:**
   1. Saving a room adds a tile to `/asset/:id/rooms` and eventually shows "Uploaded".
   2. The room's panorama uploads to the same tour as the main asset.
-- **Known gap:** a failed room stitch/upload is invisible forever: `_stitchRoomAndUpload` swallows errors ("Room stays without a panorama; user can delete and recapture", `capture_controller.dart:382`) and `Room` has no status field, so the room list renders any room without `remoteSceneId` as "Uploading…" indefinitely — including rooms whose job terminally failed (`upload_queue.dart` `_advanceRoom` has no `onGiveUp`).
+- **Failure surfacing:** a room can fail at two points and both are visible. A stitch failure before the room is ever enqueued records `status: 'failed'` + `lastError` on the `Room` itself (`capture_controller.dart` `_stitchRoomAndUpload`); an upload failure is recorded by the queue job (`_advanceRoom`'s `onGiveUp`, or 8 auth holds). The room tile reads either source, so no room can sit on "Uploading…" indefinitely, and delete is always available.
 
 ### 4. Stitching & Processing
 
@@ -865,7 +792,7 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
   1. With `deviceFirst`, 16 frames produce a panorama via OpenCV or, if that fails/times out, via naive compositing — never an error state.
   2. With `cloudFirst`, no OpenCV attempt happens and the asset goes straight to `pendingCloudStitch`.
   3. Stitch output is 2:1; a thumbnail file exists next to the panorama.
-- **Known gap:** cloud re-stitch is silently skipped when fewer than 2 frames were uploaded: `if (urls.length >= 2)` (`upload_queue.dart:253-254`) — and missing local frame files are skipped without error during `uploadFrames` — while the asset is still marked `ready`.
+- **Cloud re-stitch with missing frames:** when fewer than 2 frames uploaded and local frame files were missing, the asset is marked `failed` with a re-capture message (never `ready`); when fewer than 2 frames were captured and none were lost, the naive panorama stays and the asset is `ready`.
 
 ### 5. Upload Queue & Background Reliability
 
@@ -873,18 +800,19 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 
 - **Screens/Components:** `core/upload/upload_queue.dart`, `core/storage/local_store.dart` (`upload_queue` collection), `core/api/backend_api.dart`, `main.dart` (startup pump)
 - **User flow:**
-  1. Saving a scan/room enqueues a persisted job: asset jobs (`id = assetId`, kind `asset`) run `createTour → presign → putCloudinary → confirm → createScene → publish → [uploadFrames → requestStitch]`; room jobs (`id = room-<roomId>`, kind `room`) run `presign → putCloudinary → confirm → createScene`.
+  1. Saving a scan/room enqueues a persisted job: asset jobs (`id = assetId`, kind `asset`) run `createTour → presign → putCloudinary → confirm → createScene → publish → [uploadFrames → requestStitch → awaitStitch]`; room jobs (`id = room-<roomId>`, kind `room`) run `presign → putCloudinary → confirm → createScene`.
   2. `enqueue` skips duplicates (one active job per asset); a previously `failed` job is reset via `_resumeStep` with `attempts = 0`.
   3. A single-flight drain processes jobs sequentially; each step persists (`LocalStore.upsert`) before the next, so a crash resumes mid-pipeline without duplicate tours.
-  4. `createTour` (`POST /tours`, unlisted, public) stores `remoteTourId` on the asset; `publish` (`POST /tours/:id/publish`) captures `short_code` and, when the asset is `pendingCloudStitch`, switches the job to frame upload + `POST /scenes/:id/stitch` (one frame per pass, resumable).
-  5. On failure: attempts++ with exponential backoff (5 s … 5 min) and a re-pump timer; after 8 attempts the job is marked `failed` and the asset status flips to `failed` (asset jobs) — room jobs get no status update.
-  6. Connectivity listener re-pumps whenever the network returns; `retry(assetId)` resets failed jobs to their resume step and re-pumps; startup calls `queue.pump()` once to resume interrupted uploads (`main.dart:68`).
+  4. `createTour` (`POST /tours`, `visibility: unlisted`, `Idempotency-Key`) stores `remoteTourId` on the asset; `createScene` stores the main scene id as `ScanAsset.remoteSceneId` (no `order_index` is sent; a job that has the id never uploads or creates a scene again); `publish` (`POST /tours/:id/publish`) captures `short_code` and, when the asset is `pendingCloudStitch`, switches the job to frame upload + `POST /scenes/:id/stitch` (one frame per pass, resumable). `awaitStitch` then polls `GET /ai/jobs/:id` and sets the asset `ready` or `failed` from the job.
+  5. On failure: a 4xx other than 408 and 429 fails the job at once; anything else is attempts++ with exponential backoff (5 s … 5 min, `Retry-After` honoured) and a re-pump timer; after 8 attempts the job is marked `failed` and the asset status flips to `failed` (asset jobs) or the room is marked `failed` (room jobs). The stored `lastError` is the error-envelope message, never raw Dio text.
+  6. Connectivity listener re-pumps whenever the network returns; `retry(assetId)` resets failed jobs to their resume step and re-pumps; at app start and after each sign-in `sweepStuckUploads` (`core/upload/upload_sweep.dart`) re-enqueues or fails assets and rooms that a process kill left without a job, then pumps. The queue runs only the signed-in account's jobs.
   7. UI feedback: none during queue progress — status text comes from the asset record ("Stitching…", "Uploading frames for cloud stitch…"); terminal failure shows the "Failed" badge + Retry upload.
 - **User story:** "As a photographer, I want uploads to survive a crash or a dead zone, so that a finished capture is not lost to a flaky connection."
 - **Expected behavior:**
   - Each successful step is persisted before the next API call (no duplicated tours on resume).
   - `_resumeStep` never recreates a tour once `tourId` exists, and re-presigns when the stored Cloudinary signature may be expired (`upload_queue.dart:371-380`).
   - Deleting an asset drops its queue jobs and stops pumps from reading its files (`local_asset_repository.dart` `deleteAsset`).
+  - A retry of a finished job (for example after a failed cloud stitch) resumes at `requestStitch`, `uploadFrames` or `publish`; it never rewinds to `presign` and never creates a second main scene.
   - Connectivity re-establishment resumes pending jobs automatically.
 - **Acceptance criteria:**
   1. A job killed between `createTour` and `presign` resumes at `presign` (not `createTour`) with the same `tourId` after restart.
@@ -900,25 +828,28 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 
 - **Screens/Components:** `features/tours/presentation/room_list_screen.dart`, `features/assets/data/local_asset_repository.dart` (`rooms` collection)
 - **User flow:**
-  1. `/asset/:id/rooms` lists the main capture (surfaced as "<name> (main)") plus all saved rooms, newest last; each tile shows a panorama thumbnail, "Uploaded" or "Uploading…", and (non-main, uploaded) a delete button.
-  2. "Add room" → `/capture?assetId=…`. Tap an uploaded room → hotspot editor. Empty state (no rooms) explains walkable tours and offers "Add room".
-  3. Delete room → confirm dialog → `deleteRoom` removes the local record + panorama file and best-effort `DELETE /scenes/:id`.
+  1. `/asset/:id/rooms` lists the main capture (surfaced as "<name> (main)") plus all saved rooms, newest last; each tile shows a panorama thumbnail and its upload state — "Uploaded", "Uploading…", "Paused — sign in to resume" (queue job held on `waiting-auth`) or "Upload failed" — plus a Retry/Sign-in control for the two stalled states and a delete button on every non-main room.
+  2. "Add room" → `/capture?assetId=…`. Tap an uploaded room (the main room too) → hotspot editor at `/asset/:id/scenes/:sceneId/hotspots` (the backend scene id). Empty state (no rooms) explains walkable tours and offers "Add room".
+  3. Delete room → confirm dialog → `deleteRoom` calls `DELETE /scenes/:id` first (a failed delete shows the reason and the room stays; 404 counts as gone), then removes the local record + panorama file. The server removes hotspots that pointed at the scene.
 - **User story:** "As a photographer, I want to manage the rooms of a property, so that a tour covers every room."
 - **Expected behavior:**
   - The main capture is scene 0 and is never deletable from this screen.
   - Rooms without `remoteSceneId` are not tappable (hotspot editing requires an uploaded scene).
+  - A room can always be deleted, whatever its upload state — a room the user cannot clear is worse than one deleted by mistake.
 - **Acceptance criteria:**
   1. A freshly saved room appears as "Uploading…" and flips to "Uploaded" once its scene is created.
-  2. Deleting a room removes it from the list and (best-effort) from the backend.
+  2. Deleting a room removes it from the backend first, then from the list.
+  3. A room whose upload terminally fails (8 attempts, or 8 auth holds with a dead session) reads "Upload failed" with Retry — never "Uploading…" forever.
+  4. Re-enqueuing a room that already has a `remoteSceneId` is a no-op: it never creates a second scene.
 
 #### Feature: Hotspot placement (web embed in edit mode)
 
-- **Screens/Components:** `features/tours/presentation/hotspot_editor_screen.dart`, `core/api/backend_api.dart` (`createHotspot`), `core/env.dart` (`viewerBase`)
+- **Screens/Components:** `features/tours/presentation/hotspot_editor_screen.dart`, `core/api/backend_api.dart` (`createHotspot`, `updateHotspot`, `getHotspots`, `deleteHotspot`), `core/env.dart` (`viewerBase`)
 - **User flow:**
-  1. Tap a room in the list → `/asset/:id/rooms/:roomId/hotspots`: a WebView loads `${viewerBase}/embed/<tourId>?editmode=1&minimal=1` with a JavaScript bridge injected (`FlutterBridge`).
+  1. Tap a room in the list → `/asset/:id/scenes/:sceneId/hotspots`: a WebView loads `${viewerBase}/embed/<tourId>?editmode=1&minimal=1` with a JavaScript bridge injected (`FlutterBridge`).
   2. The user taps a doorway in the panorama; the embed posts `panoramaClick {yaw, pitch, sceneId}` (degrees), which the bridge relays.
-  3. A bottom sheet lists candidate destinations (every uploaded room plus the main scene, minus the tapped one); if none exist, a snackbar says "Add another room first: a hotspot needs somewhere to go."
-  4. On selection, angles are clamped (±180° yaw, ±90° pitch) and `POST /scenes/<sceneId>/hotspots` creates a navigation hotspot (`type: navigation`, `target_scene_id`); the `__main__` destination is resolved to the real first-scene id via `GET /tours/:id` (lowest `order_index`).
+  3. A bottom sheet lists candidate destinations (every uploaded room plus the main scene, minus the scene the hotspot sits in); if none exist, a snackbar says "Add another room first: a hotspot needs somewhere to go."
+  4. On selection, angles are clamped (±180° yaw, ±90° pitch) and `POST /scenes/<sceneId>/hotspots` creates a navigation hotspot (`type: navigation`, `target_scene_id`). The main scene is an ordinary destination with its stored backend id (`ScanAsset.remoteSceneId`).
   5. Success → "Hotspot to 'X' placed" snackbar + WebView reload so the marker appears immediately; failure → error snackbar.
 - **User story:** "As a photographer, I want to link rooms by tapping doorways, so that visitors can walk the property in the browser."
 - **Expected behavior:**
@@ -928,22 +859,28 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
   1. Tapping the panorama with ≥1 other uploaded scene creates a hotspot and the embed reloads showing it.
   2. With zero other scenes, no API call happens and the explanatory snackbar shows.
   3. A network error on create shows an error snackbar and re-enables placement.
-- **Known gap:** the hotspot editor is write-only: it never lists, edits, or deletes existing hotspots, `BackendApi.deleteHotspot` (`backend_api.dart:88`) is never called, and the locally persisted `Room.hotspots`/`Hotspot.remoteId` (`models.dart`) are never populated or read — reloading the embed is the only way to see placed hotspots.
+- **List, edit, delete:** the panel under the panorama lists every hotspot of the scene (all `CursorPage` pages). Edit destination is offered for navigation hotspots only (the server drops a target on any other type) and is one `PATCH /hotspots/:id` (`target_scene_id`, `title`); a failed PATCH leaves the hotspot as it was and shows the server's reason, and an answer whose `target_scene_id` is not the chosen scene is shown as a failure. Delete asks first, then `DELETE /hotspots/:id`; a failed delete reads the list again. A hotspot whose stored position is invalid still lists.
 
 ### 7. Floor Plans & LiDAR
 
 #### Feature: Floor plan gallery
 
-- **Screens/Components:** `features/tours/presentation/floor_plan_screen.dart`
+- **Screens/Components:** `features/tours/presentation/floor_plan_screen.dart`, `core/api/backend_api.dart` (`getFloorPlans`, `generateFloorPlan`), `core/models/api_dtos.dart` (`FloorPlanDto`, `FloorPlanMarkerDto`)
 - **User flow:**
-  1. `/asset/:id/floorplan` (needs `remoteTourId`) fetches `GET /tours/:id/floor-plans` and renders each plan's `image_url` (cached network image) in a list.
-  2. Empty → "No floor plan yet." explains plans come from a LiDAR scan, with "Open LiDAR scan" → `/lidar`.
+  1. `/asset/:id/floorplan` (needs `remoteTourId`) fetches `GET /tours/:id/floor-plans` and renders each plan (name, "Floor N", cached network image) in a list. The list reads every `CursorPage` page of the floor-plans table.
+  2. **Generate from tour**: the app-bar action (or the empty state's "Generate from tour" button) posts `POST /tours/:id/floor-plans/generate` with no body, refetches the list and snackbars "Estimated from your rooms and doorways — schematic, not to scale." A failure shows the server's reason (e.g. "A floor plan needs at least two scenes.").
+  3. **Markers**: each stored marker (`x`/`y` percentages) renders as a numbered pin on the drawing, and the legend under it lists the same numbers with the marker's label (or "Room N"). Tapping a pin or a legend row opens that scene's hotspot editor (`/asset/:id/scenes/:sceneId/hotspots`).
+  4. Empty → "No floor plan yet." with the generate button; the text also says a measured plan added in the web editor shows here.
 - **User story:** "As a photographer, I want to attach a measured floor plan to a tour, so that buyers see real room dimensions."
 - **Expected behavior:**
   - Image load failures show "Image unavailable"; API errors show the error text.
+  - A pin's centre sits at the stored percentage of the drawing, and a bad `x`/`y` is clamped to the image instead of escaping it.
+  - Generating replaces the previous AI-estimated plan; it never claims a measured plan was generated.
 - **Acceptance criteria:**
-  1. A tour with floor plans renders one image per plan.
-  2. A tour without plans shows the empty state with the LiDAR CTA.
+  1. A tour with floor plans renders one entry per plan, with its markers numbered on the image and named in the legend.
+  2. A marker opens the hotspot editor of the scene it points at.
+  3. A tour without plans shows the empty state with the "Generate from tour" action, and running it lists the new plan.
+  4. A generation failure keeps the list and shows the server's reason.
 
 #### Feature: LiDAR room scan (Apple RoomPlan)
 
@@ -960,7 +897,7 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 - **Acceptance criteria:**
   1. Unsupported device shows the fallback screen, not a crash.
   2. A completed scan lists measurements with accuracy labels and can share the USDZ.
-- **Known gap:** the LiDAR scan is not wired into the asset pipeline — the USDZ is only shared to the system sheet; there is no upload of the scan to the tour in the app code (the floor plan association is backend-side, and the floor plan screen is read-only). Note `AssetType.lidar` (`models.dart`) is defined but never used.
+- **Known gap:** the LiDAR scan is not wired into the asset pipeline — the USDZ is only shared to the system sheet; there is no upload of the scan to the tour in the app code (the floor plan association is backend-side, and the floor plan screen reads and generates plans but cannot edit them). Note `AssetType.lidar` (`models.dart`) is defined but never used.
 
 ### 8. Publishing & Sharing
 
@@ -984,24 +921,21 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
   4. A publish network failure shows the friendly error and allows retry (invalidate).
 - **Known gap:** dead code: `ShareLink.embedCode` getter (`models.dart:334`, an `<iframe src="$url?embed=1" width="800" height="450">` snippet) is never used — the share screen uses `generateEmbedCode` from `embed_code.dart` instead; `ShareRepository.getLink` is a stub returning null (`api_share_repository.dart:66`) and never called in-app. `url_launcher` is declared in `pubspec.yaml` but unused anywhere in `lib/`.
 
-### 9. Tour Viewing (Embed / 3D)
+### 9. Tour Viewing (Embed)
 
 #### Feature: In-app WebView viewer
 
 - **Screens/Components:** `features/viewer/presentation/viewer_screen.dart`, `core/env.dart` (`viewerBase`)
 - **User flow:**
   1. From the asset detail "View 360°" → `/asset/:id/view` (pano mode): a WebView loads `${viewerBase}/embed/<tourId>?minimal=1&branding=0` — the same chromeless renderer the public share link uses.
-  2. "View 3D world" → `/asset/:id/view?mode=3d` loads `${viewerBase}/view3d/<tourId>`.
-  3. While `remoteTourId` is missing, the screen shows a spinner ("still loading") or "This tour is still uploading…"; terminal states show an actionable "not available to view yet" message.
-  4. Load errors show "Could not load the tour." with Retry (reloads the same tour id); main-frame errors only.
+  2. While `remoteTourId` is missing, the screen shows a spinner ("still loading") or "This tour is still uploading…"; terminal states show an actionable "not available to view yet" message.
+  3. Load errors show "Could not load the tour." with Retry (reloads the same tour id); main-frame errors only.
 - **User story:** "As a photographer, I want to preview exactly what my client will see, so that I can verify the tour before sharing it."
 - **Expected behavior:**
   - The load is kicked off once per tour id (`_loadStarted` guard), from `didChangeDependencies` or a provider listener — never from `build`.
-  - pano vs 3d mode selects the URL only; both live in the same screen.
 - **Acceptance criteria:**
   1. A ready asset with a tour id loads the embed and clears the loading spinner on page finish.
-  2. mode=3d loads `/view3d/<tourId>`; mode=pano loads `/embed/<tourId>?minimal=1&branding=0`.
-  3. Retry after a web-resource error reloads the same URL.
+  2. Retry after a web-resource error reloads the same URL.
 
 ### 10. Analytics
 
@@ -1009,37 +943,20 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 
 - **Screens/Components:** `features/analytics/presentation/analytics_screen.dart`, `features/share/data/api_share_repository.dart` (`getAnalytics`)
 - **User flow:**
-  1. `/asset/:id/analytics` (needs `remoteTourId`) fetches `GET /tours/:id/analytics` and maps `total_views` → Views, summed `session_durations` → Time spent (formatted s/m/h), summed `hotspot_clicks` values → "Showing requests" (viewers who tapped "Request showing").
+  1. `/asset/:id/analytics` (needs `remoteTourId`) fetches `GET /tours/:id/analytics` and maps `total_views` → Views, summed `session_durations` → Time spent (formatted s/m/h), summed `hotspot_clicks` values → "Hotspot clicks" (taps on hotspots inside the tour; the backend has no "showing request" event).
   2. Zero views → a CTA card "Share your tour to start getting views." → `/asset/:id/share`.
   3. Pull-to-refresh invalidates and re-fetches; API errors show "Analytics unavailable".
 - **User story:** "As a photographer, I want to see how many people opened my tour and how long they stayed, so that I can prove engagement to clients."
 - **Expected behavior:**
   - Stats render as three cards with labels and details; refresh works without leaving the screen.
 - **Acceptance criteria:**
-  1. A tour with data renders Views, Time spent, and Showing requests from the API payload fields.
+  1. A tour with data renders Views, Time spent, and Hotspot clicks from the API payload fields.
   2. A zero-view tour shows the share CTA linking to the share screen.
   3. Pull-to-refresh re-fetches from the backend.
 
 ### 11. 3D World Generation
 
-#### Feature: Cloud 3D world job (with polling) + on-device photogrammetry
-
-- **Screens/Components:** `features/threed/presentation/generate_3d_screen.dart`, `core/api/backend_api.dart` (`generate3dWorld`, `getAiJob`), `core/models/models.dart` (`model3dUrl`)
-- **User flow:**
-  1. `/asset/:id/generate3d` (needs `remoteTourId`; otherwise a message says upload first): "Generate 3D world" → `POST /tours/:id/generate-3d` → job id captured.
-  2. The screen polls `GET /ai/jobs/:id` every 5 s, showing a progress bar (5–99%). "completed" → saves `model3dUrl = ${viewerBase}/view3d/<tourId>` and `type: model3d` on the asset, shows "Your 3D world is ready." with "View 3D world" → `/asset/:id/view?mode=3d`. "failed" → error message from the job. Poll errors: 5 consecutive failures or 360 polls (30 min) → "Lost contact…"/"Generation is taking longer than expected."
-  3. If the asset has local frames and no job is running/done, an alternate "Build on device (photogrammetry)" button runs RealityKit photogrammetry (iOS 17+, LiDAR-class) over the frames and shares the resulting USDZ.
-  4. Assets with an existing `model3dUrl` show "View 3D world" directly (both from this screen and the detail screen's action label).
-- **User story:** "As a photographer, I want a walkable 3D version of a room, so that buyers can experience depth, not just a panorama."
-- **Expected behavior:**
-  - Progress is job-driven; completion persists `model3dUrl` so the detail screen's action becomes "View 3D world" after a restart.
-  - Leaving the screen cancels polling but not the backend job.
-- **Acceptance criteria:**
-  1. Starting generation calls `POST /tours/:id/generate-3d` and polls the returned job id.
-  2. On "completed", the asset persists `model3dUrl` and the UI offers "View 3D world".
-  3. On "failed", the job's error message is shown and Retry restarts.
-  4. Photogrammetry shares a USDZ or shows the iOS-17/LiDAR-unsupported message.
-- **Known gap:** `AssetStatus.processing3d` is never set — the enum and its UI badge ("Building 3D…", `asset_list_screen.dart:242`) exist, but the 3D screen only keeps widget-local `_jobId/_progress/_done` state, and the job state is not persisted: killing the app mid-generation loses the job id, and reopening shows "Generate 3D world" again (which would start a new job) instead of resuming.
+Removed with splat removal: the generate-3d screen, `POST /tours/:id/generate-3d` (the backend route is gone), the `processing3d` status and `model3dUrl`.
 
 ### 12. Settings & Processing Preferences
 
@@ -1060,11 +977,11 @@ How to read this doc: Section 2 is the route/screen inventory. Sections 3–13 d
 
 ### 13. Cross-App Flows (Mobile ↔ Web Viewer)
 
-The mobile `viewer` and `share` features load web routes at runtime over WebView. Root `AGENTS.md` requires byte-parity between `mobile/app/lib/features/share/domain/embed_code.dart` and `web/src/utils/embedCode.ts` (covered by `mobile/app/test/embed_code_test.dart`), and the web routes involved are `/view/:id`, `/view3d/:id`, `/embed/:id` (`web/src/constants/routes.ts`).
+The mobile `viewer` and `share` features load web routes at runtime over WebView. Root `AGENTS.md` requires byte-parity between `mobile/app/lib/features/share/domain/embed_code.dart` and `web/src/utils/embedCode.ts` (covered by `mobile/app/test/embed_code_test.dart`), and the web routes involved are `/view/:id`, `/embed/:id` (`web/src/constants/routes.ts`).
 
 #### Feature: Mobile publish → web public viewer
 
-- **Flow:** Mobile upload pipeline publishes the tour (`POST /tours/:id/publish`) and stores `short_code` (`upload_queue.dart` publish step). The share screen surfaces `${apiRoot}/v/<code>` (`Env.apiRoot`, `https://api.360ghar.com`) — a backend OG page that redirects to the web public viewer route `/view/:id` (`web/src/constants/routes.ts` `PUBLIC_TOUR`). Fallback for backends without short codes: `${viewerBase}/view/<tourId>` directly.
+- **Flow:** Mobile upload pipeline publishes the tour (`POST /tours/:id/publish`) and stores `short_code` (`upload_queue.dart` publish step). The share screen surfaces `${apiRoot}/v/<code>` (`Env.apiRoot`, `https://api.360ghar.com`) — a backend OG page that redirects to the web public viewer route `/view/:id` (`web/src/constants/routes.ts` `PUBLIC_TOUR`). A publish that returns no `short_code` is an error; the app builds no other public link (the backend sends no `share_url`).
 - **User story:** "As a photographer, I want the link I share from my phone to open the full public web viewer on any device."
 - **Expected behavior:** the URL is browser-openable without auth; the asset's `shareCode` persists so the same link is stable across app restarts.
 - **Acceptance criteria:** a published tour's share URL contains the tour's short code and resolves to the web viewer route; reopening Share after restart shows the same URL without a new publish call.
@@ -1075,11 +992,11 @@ The mobile `viewer` and `share` features load web routes at runtime over WebView
 - **User story:** "As a photographer, I want to paste one snippet into my listing site, so that the tour renders inline."
 - **Acceptance criteria:** the copied snippet contains the viewer host, the tour id, and the sandbox/allow attributes; pasting it into an HTML page loads the embed.
 
-#### Feature: Mobile viewer screen → web /embed/:id and /view3d/:id
+#### Feature: Mobile viewer screen → web /embed/:id
 
-- **Flow:** the in-app viewer (`viewer_screen.dart`) loads `${viewerBase}/embed/<tourId>?minimal=1&branding=0` for pano mode and `${viewerBase}/view3d/<tourId>` for 3d mode — the same web pages public visitors use, in a chromeless frame.
+- **Flow:** the in-app viewer (`viewer_screen.dart`) loads `${viewerBase}/embed/<tourId>?minimal=1&branding=0` — the same web pages public visitors use, in a chromeless frame.
 - **User story:** "As a photographer, I want to preview the exact public experience in the app before sharing."
-- **Acceptance criteria:** pano mode loads the embed URL with `minimal=1&branding=0`; 3d mode loads `/view3d/<tourId>`; both clear the loading spinner on page-finish.
+- **Acceptance criteria:** the viewer loads the embed URL with `minimal=1&branding=0` and clears the loading spinner on page-finish.
 
 #### Feature: Hotspot editor → web /embed/:id?editmode=1&minimal=1
 
@@ -1098,15 +1015,15 @@ The mobile `viewer` and `share` features load web routes at runtime over WebView
 
 #### Feature: Deep links into the app
 
-- **Flow:** `main.dart` listens on `AppLinks().uriLinkStream` and routes `/v/{code}` (share links) and `/view/{id}` / `/view3d/{id}` (viewer links) to the matching local asset when this device owns it, navigating to `/asset/:id` (`main.dart:97-115`).
+- **Flow:** `main.dart` listens on `AppLinks().uriLinkStream` and routes `/v/{code}` (share links) and `/view/{id}` (viewer links; legacy `/view3d/{id}` links open the same screen) to the matching local asset when this device owns it, navigating to `/asset/:id` (`main.dart:97-115`).
 - **User story:** "As a photographer, I want to tap my own share link on my phone and land on the tour, so that I can manage it immediately."
 - **Expected behavior:** only assets owned by the signed-in user match; unmatched links are ignored.
 - **Acceptance criteria:** tapping a `/v/<code>` link for an owned asset opens that asset's detail screen.
-- **Known gap:** deep-link gaps — `/view3d` and `/view` links both land on the plain detail screen (no 3D viewer routing, `main.dart:111-112`), links for assets not on this device are silently ignored, and cold-start links are dropped because only the streaming API is subscribed (`uriLinkStream`, no `getInitialUri`), so a link that launched the app never arrives.
+- **Known gap:** deep-link gaps — `/view` links land on the plain detail screen, links for assets not on this device are silently ignored, and cold-start links are dropped because only the streaming API is subscribed (`uriLinkStream`, no `getInitialUri`), so a link that launched the app never arrives.
 
 ## Cross-cutting notes
 
 - **Persistence:** all app data lives in JSON collections under the app documents dir (`assets`, `rooms`, `upload_queue`), written atomically (tmp file + rename) and streamed via `LocalStore.watch`.
-- **Known gap:** `LocalStore` quarantines corrupt JSON only on `FormatException` (`local_store.dart:44`) — other malformed shapes (e.g. a wrong-typed entry) propagate and can break the whole list read.
+- **Local store format:** each collection file is `{"schemaVersion": 1, "items": [...]}`. A corrupt, wrong-shape or newer-schema file is renamed `.corrupt-<ts>` (newest 3 kept). One unreadable record moves to `<collection>_quarantine` (newest 50 kept) and the rest of the list still loads. The asset repository filters by `ownerId` on the raw record before it parses, and an unknown status fails closed. `recoverQuarantined` runs at start and after sign-in and restores quarantined records and files that this build can read; data that is still unreadable stays quarantined with no screen to list it. Sign-out empties the image caches and keeps the local store (TD-023).
 - **Known gap:** there is no boot-time sweep for orphaned capture frames: `main()` only pumps the upload queue (`main.dart:68`), so `Documents/captures/*` directories from aborted capture sessions are never cleaned.
 - **Dead code inventory:** `ShareLink.embedCode` (`models.dart:334`), `getLink` stub (`api_share_repository.dart:66`), `AssetType.lidar` (never assigned), `BackendApi.deleteHotspot` (never called), `url_launcher` dependency (`pubspec.yaml:44`), and the `assets`/`viewer` features have no domain/data layers (presentation-only).
