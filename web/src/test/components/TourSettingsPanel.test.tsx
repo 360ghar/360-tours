@@ -2,28 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { fireEvent, render, screen } from '../test-utils';
 import { TourSettingsPanel } from '@/components/features/TourSettingsPanel';
+import { makeTour } from '@/test/fixtures';
 import type { Tour } from '@/types';
 
-const baseTour: Tour = {
-  id: 'tour-1',
-  user_id: 'user-1',
+const baseTour: Tour = makeTour({
   title: 'Original Tour',
   description: 'Original description',
-  status: 'draft',
-  visibility: 'private',
-  is_featured: false,
-  view_count: 0,
-  like_count: 0,
-  share_count: 0,
-  settings: null,
-  thumbnail_url: null,
-  published_at: null,
-  archived_at: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  deleted_at: null,
-  scenes: [],
-};
+});
 
 function Harness({ tour }: { tour: Tour }) {
   const [open, setOpen] = useState(true);

@@ -8,21 +8,18 @@ void main() {
       final intent = parseDeepLink(Uri.parse('tours360://v/abc12'))!;
       expect(intent.ref, 'abc12');
       expect(intent.toViewer, isFalse);
-      expect(intent.mode, 'pano');
     });
 
     test('view/{tourId} opens the pano viewer', () {
       final intent = parseDeepLink(Uri.parse('tours360://view/tour-1'))!;
       expect(intent.ref, 'tour-1');
       expect(intent.toViewer, isTrue);
-      expect(intent.mode, 'pano');
     });
 
-    test('view3d/{tourId} opens the 3D viewer', () {
+    test('legacy view3d/{tourId} falls back to the pano viewer', () {
       final intent = parseDeepLink(Uri.parse('tours360://view3d/tour-1'))!;
       expect(intent.ref, 'tour-1');
       expect(intent.toViewer, isTrue);
-      expect(intent.mode, '3d');
     });
 
     test('https share links parse the same way', () {
@@ -57,10 +54,10 @@ void main() {
       );
     });
 
-    test('custom-scheme 3d link is rebuilt', () {
+    test('custom-scheme legacy 3d link falls back to the pano viewer URL', () {
       expect(
         deepLinkBrowserUrl(Uri.parse('tours360://view3d/tour-1')),
-        Uri.parse('${Env.viewerBase}/view3d/tour-1'),
+        Uri.parse('${Env.viewerBase}/view/tour-1'),
       );
     });
 
@@ -72,16 +69,4 @@ void main() {
     });
   });
 
-  group('resolveViewerMode', () {
-    test('3d requests use the 3D viewer only when the asset has a model',
-        () {
-      expect(resolveViewerMode('3d', hasModel3d: true), '3d');
-      expect(resolveViewerMode('3d', hasModel3d: false), 'pano');
-    });
-
-    test('pano requests stay pano', () {
-      expect(resolveViewerMode('pano', hasModel3d: true), 'pano');
-      expect(resolveViewerMode('pano', hasModel3d: false), 'pano');
-    });
-  });
 }

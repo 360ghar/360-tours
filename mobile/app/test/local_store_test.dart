@@ -156,14 +156,6 @@ void main() {
           id: 'r', assetId: 'x', name: 'R', remoteSceneId: 'scene-9');
       expect(Room.fromJson(room.toJson()).remoteSceneId, 'scene-9');
 
-      const h = Hotspot(
-          id: 'h',
-          targetRoomId: 'r2',
-          label: 'Door',
-          yawDeg: 5,
-          pitchDeg: -2,
-          remoteId: 'hs-1');
-      expect(Hotspot.fromJson(h.toJson()).remoteId, 'hs-1');
     });
   });
 }

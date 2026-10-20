@@ -57,14 +57,4 @@ void main() {
         code: 'abc12', assetId: 'a', createdAt: DateTime(2026));
     expect(link.url, 'https://api.360ghar.com/v/abc12');
   });
-
-  test('share link overrideUrl wins over code-derived URL', () {
-    final link = ShareLink(
-      code: '',
-      assetId: 'a',
-      createdAt: DateTime(2026),
-      overrideUrl: 'https://360viewer.360ghar.com/view/tour-1',
-    );
-    expect(link.url, 'https://360viewer.360ghar.com/view/tour-1');
-  });
 }

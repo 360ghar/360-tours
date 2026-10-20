@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import axios from 'axios';
 import { GlobalErrorHandler } from '@/components/common/GlobalErrorHandler';
+import { useUIStore } from '@/stores';
 
 const ORIGIN = 'http://localhost:3000';
 
@@ -74,5 +75,62 @@ describe('GlobalErrorHandler 401 handling', () => {
     mountAndDispatch('/login');
 
     expect(replaceMock).toHaveBeenCalledWith(`${ORIGIN}/login`);
+  });
+});
+
+describe('GlobalErrorHandler error envelope', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal('PromiseRejectionEvent', PromiseRejectionEventPolyfill);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    useUIStore.setState({ toasts: [] });
+  });
+
+  function dispatchRejection(status: number, data: unknown) {
+    cleanup();
+    render(<GlobalErrorHandler />);
+    const error = new axios.AxiosError('Request failed', String(status), undefined, undefined, {
+      status,
+      data,
+      statusText: 'Error',
+      headers: {},
+      config: {} as never,
+    });
+    const promise = Promise.reject(error);
+    promise.catch(() => undefined);
+    act(() => {
+      window.dispatchEvent(
+        new PromiseRejectionEvent('unhandledrejection', { promise, reason: error })
+      );
+    });
+  }
+
+  it('lists the field errors of a 422 from error.details.fields', () => {
+    dispatchRejection(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: {
+          fields: [{ field: 'body.title', msg: 'Field required', type: 'missing' }],
+        },
+      },
+    });
+
+    expect(useUIStore.getState().toasts.at(-1)).toMatchObject({
+      title: 'Validation Error',
+      message: 'title: Field required',
+    });
+  });
+
+  it('shows the envelope message for another error and ignores the legacy {detail} body', () => {
+    dispatchRejection(409, { error: { code: 'JOB_NOT_CANCELLABLE', message: 'Job already ended' } });
+    expect(useUIStore.getState().toasts.at(-1)).toMatchObject({ message: 'Job already ended' });
+
+    dispatchRejection(409, { detail: 'Legacy text' });
+    expect(useUIStore.getState().toasts.at(-1)?.message).toBe('Request failed');
   });
 });

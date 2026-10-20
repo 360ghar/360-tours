@@ -11,17 +11,20 @@
 import { test, expect } from '@playwright/test';
 import { installMockAuth, TINY_PNG } from './fixtures/mockAuth';
 
+/** `AIJobBase` as `GET /ai/jobs/{id}` returns it. */
 const RUNNING_JOB = {
   id: 'job-1',
-  user_id: 1,
-  job_type: 'tour_generation',
+  job_type: 'generate_tour',
   status: 'processing',
   progress: 42,
+  tour_id: null,
+  scene_id: null,
   error_message: null,
-  input_data: { image_count: 1 },
-  output_data: null,
+  started_at: '2025-01-01T00:00:00Z',
+  completed_at: null,
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
+  actual_duration: null,
 };
 
 test.describe('AI Features — unauthenticated', () => {
@@ -55,13 +58,19 @@ test.describe('AI Tour Wizard — hermetic (mocked auth + API)', () => {
     page,
   }) => {
     await page.route('**/api/v1/ai/tours/generate', route =>
-      route.fulfill({ json: { job: RUNNING_JOB }, status: 202 })
+      route.fulfill({
+        json: { job: RUNNING_JOB, tour_id: 'tour-1', scene_ids: [] },
+        status: 201,
+      })
     );
     await page.route('**/api/v1/ai/jobs/job-1', route =>
       route.fulfill({ json: { job: RUNNING_JOB, result: null }, status: 200 })
     );
     await page.route('**/api/v1/ai/jobs/job-1/cancel', route =>
-      route.fulfill({ json: { success: true }, status: 200 })
+      route.fulfill({
+        json: { job: { ...RUNNING_JOB, status: 'cancelled' }, result: null },
+        status: 200,
+      })
     );
 
     await page.goto('/tours/create');

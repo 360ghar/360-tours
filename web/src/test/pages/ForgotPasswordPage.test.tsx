@@ -59,7 +59,11 @@ describe('ForgotPasswordPage account enumeration', () => {
     vi.mocked(authApi.requestPasswordResetOTP).mockClear();
   });
 
-  it('shows neutral copy for an unknown identifier and never sends an OTP', async () => {
+  // Neutral WORDS are not enough: if the unknown-identifier branch stops on the
+  // request step while the known one advances, the UI still answers "does this
+  // account exist?". Both branches must land on the same screen — only the
+  // dispatch differs (no code is sent, and none ever arrives).
+  it('is indistinguishable from the success path for an unknown identifier', async () => {
     vi.mocked(checkIdentifierStatusSafe).mockResolvedValue(NO_ACCOUNT_STATUS);
 
     renderPage();
@@ -67,7 +71,8 @@ describe('ForgotPasswordPage account enumeration', () => {
 
     expect(await screen.findByText(NEUTRAL_COPY)).toBeInTheDocument();
     expect(authApi.requestPasswordResetEmailOTP).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Enter the OTP sent to/)).not.toBeInTheDocument();
+    // Same verify step as an existing account — no observable difference.
+    expect(await screen.findByText(/Enter the OTP sent to/)).toBeInTheDocument();
   });
 
   it('blocks with the unavailable message when identifier-status cannot be reached', async () => {

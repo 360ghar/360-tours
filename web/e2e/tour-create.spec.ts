@@ -11,6 +11,7 @@ import {
   installMockAuth,
   MOCK_TOUR,
   MOCK_UPLOAD_RESPONSE,
+  cursorPage,
   TINY_PNG,
 } from './fixtures/mockAuth';
 
@@ -29,15 +30,15 @@ test.describe('Tour Creation — hermetic (mocked auth + API)', () => {
         await route.fulfill({ json: { ...MOCK_TOUR, id: 'new-tour-id' }, status: 201 });
       } else {
         await route.fulfill({
-          json: { items: [], total: 0, next_cursor: null, has_more: false, limit: 12 },
+          json: cursorPage([], 12),
         });
       }
     });
     // Upload succeeds by default; individual tests override this route.
     await page.route('**/api/v1/upload', route =>
-      route.fulfill({ json: MOCK_UPLOAD_RESPONSE, status: 200 })
+      route.fulfill({ json: MOCK_UPLOAD_RESPONSE, status: 201 })
     );
-    await page.route('**/api/v1/tours/*/scenes', async route => {
+    await page.route(/\/api\/v1\/tours\/[^/]+\/scenes(\?.*)?$/, async route => {
       if (route.request().method() === 'POST') {
         await route.fulfill({
           json: {
@@ -51,7 +52,7 @@ test.describe('Tour Creation — hermetic (mocked auth + API)', () => {
           status: 201,
         });
       } else {
-        await route.fulfill({ json: [] });
+        await route.fulfill({ json: cursorPage([]) });
       }
     });
   });
@@ -101,9 +102,18 @@ test.describe('Tour Creation — hermetic (mocked auth + API)', () => {
     let failUpload = true;
     await page.route('**/api/v1/upload', route => {
       if (failUpload) {
-        return route.fulfill({ status: 422, json: { detail: 'Mocked upload failure' } });
+        return route.fulfill({
+          status: 422,
+          json: {
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Mocked upload failure',
+              details: { fields: [] },
+            },
+          },
+        });
       }
-      return route.fulfill({ json: MOCK_UPLOAD_RESPONSE, status: 200 });
+      return route.fulfill({ json: MOCK_UPLOAD_RESPONSE, status: 201 });
     });
 
     await page.goto('/tours/create');
@@ -129,7 +139,7 @@ test.describe('Tour Creation — hermetic (mocked auth + API)', () => {
     await expect(page.getByRole('button', { name: 'Continue to Editor' })).toBeVisible();
   });
 
-  test('rejects invalid file types; removing them unblocks Continue', async ({ page }) => {
+  test('rejects invalid file types; removing them still blocks Continue', async ({ page }) => {
     await page.goto('/tours/create');
     await page.getByRole('button', { name: 'Upload panoramas' }).click();
     await page.locator('input[name="title"]').fill('E2E Create Test');
@@ -147,8 +157,74 @@ test.describe('Tour Creation — hermetic (mocked auth + API)', () => {
     await expect(page.getByText('No scenes were uploaded')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Continue to Editor' })).toHaveCount(0);
 
-    // Removing the invalid file leaves the tour shell creatable again.
+    // Removing the invalid file still leaves zero scenes — Continue stays blocked.
     await page.getByRole('button', { name: 'Remove notes.txt' }).click();
-    await expect(page.getByRole('button', { name: 'Continue to Editor' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue to Editor' })).toHaveCount(0);
+    await expect(
+      page.getByText('Upload at least one JPEG, PNG, or WebP panorama to open the editor.')
+    ).toBeVisible();
+  });
+
+  test('walks upload through to the editor after a successful scene create', async ({ page }) => {
+    await page.route('**/api/v1/tours/new-tour-id', route =>
+      route.fulfill({
+        json: {
+          ...MOCK_TOUR,
+          id: 'new-tour-id',
+          title: 'E2E Create Test',
+          scenes: [
+            {
+              id: 'scene-1',
+              tour_id: 'new-tour-id',
+              title: 'living-room',
+              image_url: MOCK_UPLOAD_RESPONSE.public_url,
+              order_index: 0,
+              hotspots: [],
+            },
+          ],
+        },
+        status: 200,
+      })
+    );
+    await page.route(/\/api\/v1\/tours\/new-tour-id\/scenes(\?.*)?$/, route => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({
+          json: cursorPage([
+            {
+              id: 'scene-1',
+              tour_id: 'new-tour-id',
+              title: 'living-room',
+              image_url: MOCK_UPLOAD_RESPONSE.public_url,
+              order_index: 0,
+              scene_metadata: null,
+              is_processed: true,
+              processing_error: null,
+              hotspots: [],
+            },
+          ]),
+          status: 200,
+        });
+      }
+      return route.fallback();
+    });
+    await page.route(/\.(jpg|jpeg|png|webp)(\?.*)?$/i, route =>
+      route.fulfill({ body: TINY_PNG, contentType: 'image/png', status: 200 })
+    );
+
+    await page.goto('/tours/create');
+    await page.getByRole('button', { name: 'Upload panoramas' }).click();
+    await page.locator('input[name="title"]').fill('E2E Create Test');
+    await page.getByRole('button', { name: 'Continue to Upload' }).click();
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({ name: 'living-room.png', mimeType: 'image/png', buffer: TINY_PNG });
+    await page.getByRole('button', { name: 'Upload 1 Files' }).click();
+    await expect(page.getByText('Uploaded')).toBeVisible({ timeout: 15000 });
+
+    await page.getByRole('button', { name: 'Continue to Editor' }).click();
+    await expect(page).toHaveURL(/\/tours\/new-tour-id\/edit/);
+    await expect(page.locator('[data-testid="toolbar"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="scene-panel"]')).toBeVisible();
+    await expect(page.locator('[data-testid="scene-card"]')).toContainText('living-room');
   });
 });

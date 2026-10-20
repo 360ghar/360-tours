@@ -7,15 +7,17 @@ describe('VirtualTourStructuredData', () => {
     vi.restoreAllMocks();
   });
 
-  it('emits @type VirtualTour in the JSON-LD script', () => {
+  // The emitted @type must be a REAL schema.org term: consumers drop an
+  // unknown type, which silently voids the whole block.
+  it('emits a valid schema.org @type in the JSON-LD script', () => {
     render(<VirtualTourStructuredData name="Beach House" description="A beach house tour" />);
 
-    const script = document.getElementById('structured-data-VirtualTour');
+    const script = document.getElementById('structured-data-ImageGallery');
     expect(script).not.toBeNull();
     expect(script?.getAttribute('type')).toBe('application/ld+json');
 
     const data = JSON.parse(script?.textContent ?? '{}') as Record<string, unknown>;
-    expect(data['@type']).toBe('VirtualTour');
+    expect(data['@type']).toBe('ImageGallery');
     expect(data.name).toBe('Beach House');
     expect(data.description).toBe('A beach house tour');
     expect(data.accessMode).toEqual(['visual']);

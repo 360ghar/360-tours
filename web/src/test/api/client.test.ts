@@ -298,6 +298,34 @@ describe('API Client', () => {
       }
     });
 
+    // A rate-limited POST must not be replayed: the caller cannot tell a
+    // pre-processing 429 (safe) from one raised after the write landed, and a
+    // replayed POST /tours duplicates the tour — the same rule the 5xx branch
+    // already applied.
+    it('never replays a non-idempotent method on 429', async () => {
+      (supabaseAuth.getAccessToken as Mock).mockResolvedValue('token');
+
+      const originalAdapter = apiClient.defaults.adapter;
+      let callCount = 0;
+      apiClient.defaults.adapter = async (config) => {
+        callCount++;
+        throw new axios.AxiosError('Too Many Requests', '429', config as never, undefined, {
+          status: 429,
+          data: {},
+          statusText: 'Too Many Requests',
+          headers: {},
+          config: config as never,
+        });
+      };
+
+      try {
+        await expect(apiClient.post('/tours', { title: 'T' })).rejects.toBeTruthy();
+        expect(callCount).toBe(1);
+      } finally {
+        apiClient.defaults.adapter = originalAdapter;
+      }
+    });
+
     it('respects Retry-After header on 429', async () => {
       (supabaseAuth.getAccessToken as Mock).mockResolvedValue('token');
 
@@ -418,10 +446,62 @@ describe('API Client', () => {
   });
 
   describe('response interceptor - error message extraction', () => {
-    it('extracts error from detail string', async () => {
+    it('reads the message of the error envelope', async () => {
       const interceptor = getResponseInterceptor();
 
-      const error = new axios.AxiosError('Server Error', '500', undefined, undefined, {
+      const error = new axios.AxiosError('Server Error', '404', undefined, undefined, {
+        status: 404,
+        data: { error: { code: 'TOUR_NOT_FOUND', message: 'Tour not found' } },
+        statusText: 'Not Found',
+        headers: {},
+        config: { headers: new axios.AxiosHeaders() } as never,
+      });
+      error.config = {
+        headers: new axios.AxiosHeaders(),
+        url: '/test',
+      } as never;
+
+      await expect(interceptor.rejected(error)).rejects.toThrow('Tour not found');
+    });
+
+    it('lists the field errors of a 422 from details.fields', async () => {
+      const interceptor = getResponseInterceptor();
+
+      const error = new axios.AxiosError('Unprocessable', '422', undefined, undefined, {
+        status: 422,
+        data: {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Request validation failed',
+            details: {
+              fields: [
+                {
+                  field: 'body.title',
+                  msg: 'String should have at most 255 characters',
+                  type: 'string_too_long',
+                },
+              ],
+            },
+          },
+        },
+        statusText: 'Unprocessable Entity',
+        headers: {},
+        config: { headers: new axios.AxiosHeaders() } as never,
+      });
+      error.config = {
+        headers: new axios.AxiosHeaders(),
+        url: '/test',
+      } as never;
+
+      await expect(interceptor.rejected(error)).rejects.toThrow(
+        'title: String should have at most 255 characters'
+      );
+    });
+
+    it('does not read the legacy {detail} body', async () => {
+      const interceptor = getResponseInterceptor();
+
+      const error = new axios.AxiosError('', '500', undefined, undefined, {
         status: 500,
         data: { detail: 'Custom error message' },
         statusText: 'Internal Server Error',
@@ -432,26 +512,9 @@ describe('API Client', () => {
         headers: new axios.AxiosHeaders(),
         url: '/test',
       } as never;
+      error.message = '';
 
-      await expect(interceptor.rejected(error)).rejects.toThrow('Custom error message');
-    });
-
-    it('extracts error from detail.message object', async () => {
-      const interceptor = getResponseInterceptor();
-
-      const error = new axios.AxiosError('Server Error', '500', undefined, undefined, {
-        status: 500,
-        data: { detail: { code: 'VALIDATION_ERROR', message: 'Title is required' } },
-        statusText: 'Internal Server Error',
-        headers: {},
-        config: { headers: new axios.AxiosHeaders() } as never,
-      });
-      error.config = {
-        headers: new axios.AxiosHeaders(),
-        url: '/test',
-      } as never;
-
-      await expect(interceptor.rejected(error)).rejects.toThrow('Title is required');
+      await expect(interceptor.rejected(error)).rejects.toThrow(ERROR_MESSAGES.GENERIC);
     });
 
     it('extracts error from error.message object', async () => {

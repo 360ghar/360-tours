@@ -221,6 +221,20 @@ describe('embedCode utilities', () => {
       expect(code).toContain('"vr": false');
       expect(code).toContain('"branding": false');
     });
+
+    // The config JSON is interpolated into an inline <script>. An id (or start
+    // scene id) containing `</script>` would otherwise close the block early
+    // and inject markup into the customer's page.
+    it('never lets the config JSON close the inline script block', () => {
+      const code = generateJsCode('abc</script><img src=x onerror=alert(1)>', {
+        startSceneId: '</script>',
+      });
+
+      expect(code).not.toContain('</script><img');
+      expect(code).toContain('\\u003c/script>');
+      // Exactly one real closing tag for each of the two script elements.
+      expect(code.match(/<\/script>/g)).toHaveLength(2);
+    });
   });
 
   // ─── generateResponsiveCode ─────────────────────────────────────────
@@ -282,6 +296,13 @@ describe('embedCode utilities', () => {
       const parsed = new URL(url);
       const redirect = parsed.searchParams.get('redirect');
       expect(redirect).toContain('rotate=true');
+    });
+
+    it('encodes the tour id in both the share and viewer URLs', () => {
+      const url = generateShareUrl('a b/../c?d=1');
+      expect(url).toContain('/share/tours/a%20b%2F..%2Fc%3Fd%3D1');
+      const redirect = new URL(url).searchParams.get('redirect');
+      expect(redirect).toBe(`${BASE_ORIGIN}/view/a%20b%2F..%2Fc%3Fd%3D1`);
     });
 
     it('uses /view/ path (not /embed/) for the viewer URL', () => {

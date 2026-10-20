@@ -148,6 +148,42 @@ describe('authStore', () => {
     });
   });
 
+  describe('login failure compensation', () => {
+    it('preserves the Supabase session when completeSession fails transiently', async () => {
+      const session = createMockSession();
+      vi.mocked(supabaseAuth.signInWithEmailPassword).mockResolvedValue(session);
+      // The credential step succeeded; GET /users/me then 5xx'd.
+      vi.mocked(authApi.completeSession).mockRejectedValue({
+        response: { status: 502, data: {} },
+        message: 'Request failed with status code 502',
+      });
+
+      await expect(
+        useAuthStore.getState().loginWithPassword('email', 'test@example.com', 'password')
+      ).rejects.toBeTruthy();
+
+      // A transient backend failure must never revoke the refresh token.
+      expect(authApi.logout).not.toHaveBeenCalled();
+      expect(useAuthStore.getState().error).toBeTruthy();
+      expect(useAuthStore.getState().isLoading).toBe(false);
+    });
+
+    it('discards the session when Supabase rejects the credentials', async () => {
+      const authApiError = Object.assign(new Error('Invalid login credentials'), {
+        __isAuthError: true,
+        status: 400,
+      });
+      vi.mocked(supabaseAuth.signInWithEmailPassword).mockRejectedValue(authApiError);
+
+      await expect(
+        useAuthStore.getState().loginWithPassword('email', 'test@example.com', 'nope')
+      ).rejects.toBeTruthy();
+
+      expect(authApi.logout).toHaveBeenCalled();
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    });
+  });
+
   describe('identifier auth completion', () => {
     it('completes email password login through the canonical session helper', async () => {
       const session = createMockSession();

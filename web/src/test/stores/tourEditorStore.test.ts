@@ -1,70 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useTourEditorStore } from '@/stores/tourEditorStore';
-import type { Tour, Scene, Hotspot } from '@/types';
+import { makeHotspot, makeScene, makeTourWithScenes } from '@/test/fixtures';
+import type { TourWithScenes } from '@/types';
 
-const createMockScene = (overrides?: Partial<Scene>): Scene => ({
-  id: 'scene-1',
-  tour_id: 'tour-1',
-  title: 'Scene 1',
-  description: null,
-  image_url: 'https://example.com/scene1.jpg',
-  thumbnail_url: null,
-  vr_url: null,
-  order_index: 0,
-  metadata: null,
-  is_processed: true,
-  processing_error: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  hotspots: [],
-  ...overrides,
-});
-
-const createMockHotspot = (overrides?: Partial<Hotspot>): Hotspot => ({
-  id: 'hotspot-1',
-  scene_id: 'scene-1',
-  type: 'info',
-  position: { yaw: 0, pitch: 0 },
-  target_scene_id: null,
-  title: 'Test Hotspot',
-  description: null,
-  icon: null,
-  icon_name: null,
-  icon_color: null,
-  icon_size: null,
-  content: null,
-  custom_data: {},
-  order_index: 0,
-  is_active: true,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  ...overrides,
-});
-
-const createMockTour = (overrides?: Partial<Tour>): Tour => ({
-  id: 'tour-1',
-  user_id: '1',
-  title: 'Test Tour',
-  description: null,
-  status: 'draft',
-  visibility: 'private',
-  is_featured: false,
-  view_count: 0,
-  like_count: 0,
-  share_count: 0,
-  settings: null,
-  thumbnail_url: null,
-  published_at: null,
-  archived_at: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  deleted_at: null,
-  scenes: [
-    createMockScene({ id: 'scene-1', order_index: 0, title: 'Scene 1' }),
-    createMockScene({ id: 'scene-2', order_index: 1, title: 'Scene 2' }),
-  ],
-  ...overrides,
-});
+const createMockScene = makeScene;
+const createMockHotspot = makeHotspot;
+const createMockTour = (overrides?: Partial<TourWithScenes>): TourWithScenes =>
+  makeTourWithScenes(overrides);
 
 describe('tourEditorStore', () => {
   beforeEach(() => {
@@ -80,7 +22,7 @@ describe('tourEditorStore', () => {
       expect(state.isEditing).toBe(false);
       expect(state.isPreviewing).toBe(false);
       expect(state.showScenePanel).toBe(true);
-      expect(state.showHotspotPanel).toBe(false);
+      expect(state.showHotspotPanel).toBe(true);
       expect(state.showSettingsPanel).toBe(false);
       expect(state.hasUnsavedChanges).toBe(false);
       expect(state.pendingChanges).toEqual({});
@@ -291,6 +233,8 @@ describe('tourEditorStore', () => {
     });
 
     it('toggleHotspotPanel toggles showHotspotPanel', () => {
+      expect(useTourEditorStore.getState().showHotspotPanel).toBe(true);
+      useTourEditorStore.getState().toggleHotspotPanel();
       expect(useTourEditorStore.getState().showHotspotPanel).toBe(false);
       useTourEditorStore.getState().toggleHotspotPanel();
       expect(useTourEditorStore.getState().showHotspotPanel).toBe(true);
@@ -334,7 +278,7 @@ describe('tourEditorStore', () => {
       expect(state.isEditing).toBe(false);
       expect(state.isPreviewing).toBe(false);
       expect(state.showScenePanel).toBe(true);
-      expect(state.showHotspotPanel).toBe(false);
+      expect(state.showHotspotPanel).toBe(true);
       expect(state.showSettingsPanel).toBe(false);
       expect(state.hasUnsavedChanges).toBe(false);
       expect(state.pendingChanges).toEqual({});

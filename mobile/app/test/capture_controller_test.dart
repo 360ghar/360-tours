@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tours360/core/api/backend_api.dart';
 import 'package:tours360/core/models/models.dart';
 import 'package:tours360/core/storage/local_store.dart';
 import 'package:tours360/core/upload/upload_queue.dart';
@@ -12,6 +10,8 @@ import 'package:tours360/features/assets/data/local_asset_repository.dart';
 import 'package:tours360/features/capture/domain/capture_targets.dart';
 import 'package:tours360/features/capture/domain/stitcher_service.dart';
 import 'package:tours360/features/capture/presentation/capture_controller.dart';
+
+import 'fakes.dart';
 
 class _FakeStitcher extends StitcherService {
   _FakeStitcher({required this.outDir, this.fail = false});
@@ -31,73 +31,6 @@ class _FakeStitcher extends StitcherService {
     await File(pano).writeAsBytes([0xFF, 0xD8, 0xFF, 0xD9]);
     await File('$outDir/thumb.jpg').writeAsBytes([0xFF, 0xD8, 0xFF, 0xD9]);
     return StitchResult(panoramaPath: pano, thumbnailPath: '$outDir/thumb.jpg');
-  }
-}
-
-class _FakeApi extends BackendApi {
-  _FakeApi() : super(Dio());
-
-  final calls = <String>[];
-
-  @override
-  Future<Map<String, dynamic>> createTour({
-    required String title,
-    String? description,
-  }) async {
-    calls.add('createTour');
-    return {'id': 'tour-1', 'title': title};
-  }
-
-  @override
-  Future<Map<String, dynamic>> createPresignedUpload({
-    required String filename,
-    required String folderType,
-    String? tourId,
-    String? sceneId,
-    int? fileSize,
-  }) async {
-    calls.add('presign');
-    return {
-      'upload_id': 'up-1',
-      'signed_url': 'https://cloudinary.example/upload',
-      'token': 'sig',
-      'api_key': 'key',
-      'timestamp': 1,
-      'public_id': 'pid',
-      'public_url': 'https://res.cloudinary.example/pano.jpg',
-      'path': 'p',
-    };
-  }
-
-  @override
-  Future<void> uploadToCloudinary({
-    required Map<String, dynamic> presigned,
-    required File file,
-  }) async {
-    calls.add('putCloudinary');
-  }
-
-  @override
-  Future<Map<String, dynamic>> confirmUpload(String uploadId) async {
-    calls.add('confirm:$uploadId');
-    return {'media': {}, 'message': 'ok'};
-  }
-
-  @override
-  Future<Map<String, dynamic>> createScene({
-    required String tourId,
-    required String imageUrl,
-    String? title,
-    int? orderIndex,
-  }) async {
-    calls.add('createScene');
-    return {'id': 'scene-1', 'image_url': imageUrl};
-  }
-
-  @override
-  Future<Map<String, dynamic>> publishTour(String tourId) async {
-    calls.add('publish');
-    return {'id': tourId, 'status': 'published', 'short_code': 'abc12'};
   }
 }
 
@@ -163,7 +96,7 @@ void main() {
       // like main.dart's composition root.
       queue = UploadQueue(
         store,
-        _FakeApi(),
+        FakeBackendApi(),
         getAsset: (id) => repo.getAsset(id),
         saveAsset: (a) => repo.saveAsset(a),
         getRooms: (assetId) => repo.getRooms(assetId),

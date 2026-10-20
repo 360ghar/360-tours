@@ -49,7 +49,7 @@ const SCENE_LIVING = {
       scene_id: 'scene-1',
       type: 'info',
       title: 'About this room',
-      content: { kind: 'info', text: 'Sunny corner room with a fireplace' },
+      content: { text: 'Sunny corner room with a fireplace' },
     }),
     hotspot({
       id: 'hs-nav-1',
@@ -57,7 +57,6 @@ const SCENE_LIVING = {
       type: 'navigation',
       title: 'Go to Kitchen',
       target_scene_id: 'scene-2',
-      content: { kind: 'navigation', label: 'Go to Kitchen' },
       position: { yaw: 45, pitch: 0 },
     }),
   ],
@@ -77,7 +76,7 @@ const SCENE_KITCHEN = {
       scene_id: 'scene-2',
       type: 'info',
       title: 'Kitchen tip',
-      content: { kind: 'info', text: 'New quartz countertops' },
+      content: { text: 'New quartz countertops' },
     }),
   ],
   created_at: '2025-01-01T00:00:00Z',
@@ -103,17 +102,13 @@ async function mockPublicTourApi(
           status: 'published',
           visibility: 'public',
           like_count: 12,
-          is_liked: true,
+          floor_plans: [],
+          main_scene_id: 'scene-1',
           scenes: [SCENE_LIVING, SCENE_KITCHEN],
         } as object),
       status: 200,
     });
   });
-
-  // Floor-plan fallback endpoint (returns nothing for this tour).
-  await page.route(new RegExp(`/public/tours/${TOUR_ID}/floor-plans(\\?.*)?$`), route =>
-    route.fulfill({ json: [], status: 200 })
-  );
 
   // Analytics events: accepted, never asserted.
   await page.route(new RegExp(`/public/tours/${TOUR_ID}/events(\\?.*)?$`), route =>
@@ -168,14 +163,26 @@ test.describe('Public Tour Viewer — hermetic (mocked API)', () => {
     await expect(page.locator('[data-marker-id="hs-kitchen"]')).toBeVisible({ timeout: 15000 });
   });
 
-  test('hydrates the like state from the tour payload', async ({ page }) => {
+  test('shows the like count from the tour payload and takes the new count from the like answer', async ({
+    page,
+  }) => {
+    // The public tour has no per-viewer liked flag; POST /like answers {like_count}.
+    await page.route(new RegExp(`/public/tours/${TOUR_ID}/like(\\?.*)?$`), route =>
+      route.fulfill({ json: { like_count: 13 }, status: 200 })
+    );
     await page.goto(`/view/${TOUR_ID}`);
 
-    const likeButton = page.getByRole('button', { name: 'Unlike this tour' });
+    const likeButton = page.getByRole('button', { name: 'Like this tour' });
     await expect(likeButton).toBeVisible({ timeout: 15000 });
-    await expect(likeButton).toHaveAttribute('aria-pressed', 'true');
-    // Server-authoritative count rendered.
-    await expect(page.getByText('12')).toBeVisible();
+    await expect(likeButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(likeButton).toContainText('12');
+
+    await likeButton.click();
+
+    const liked = page.getByRole('button', { name: 'Unlike this tour' });
+    await expect(liked).toBeVisible({ timeout: 15000 });
+    await expect(liked).toHaveAttribute('aria-pressed', 'true');
+    await expect(liked).toContainText('13');
   });
 
   test('shows Tour Not Found for a missing tour (404)', async ({ page }) => {
@@ -188,6 +195,27 @@ test.describe('Public Tour Viewer — hermetic (mocked API)', () => {
     await page.goto(`/view/${TOUR_ID}`);
 
     await expect(page.getByText('Tour Not Found')).toBeVisible({ timeout: 15000 });
+  });
+
+  test('does not treat a draft payload as a playable public tour', async ({ page }) => {
+    await page.unroute(new RegExp(`/public/tours/${TOUR_ID}(\\?.*)?$`));
+    await page.route(new RegExp(`/public/tours/${TOUR_ID}(\\?.*)?$`), route =>
+      route.fulfill({
+        json: {
+          ...MOCK_TOUR,
+          id: TOUR_ID,
+          status: 'draft',
+          visibility: 'private',
+          scenes: [SCENE_LIVING, SCENE_KITCHEN],
+        },
+        status: 200,
+      })
+    );
+
+    await page.goto(`/view/${TOUR_ID}`);
+
+    await expect(page.getByText('Tour Not Found')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="panorama-viewer"]')).toHaveCount(0);
   });
 
   test('distinguishes server failures from 404 and retries', async ({ page }) => {
@@ -208,5 +236,108 @@ test.describe('Public Tour Viewer — hermetic (mocked API)', () => {
 
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(page.getByRole('heading', { name: 'E2E Tour' })).toBeVisible({ timeout: 15000 });
+  });
+});
+
+/**
+ * Public routes must render without waiting on the auth bootstrap.
+ *
+ * The router used to be gated on `authStore.isLoading`, so a slow or failing
+ * `GET /users/me` blanked the public viewer (and the embedded iframe) for the
+ * whole retry window even though those routes are anonymous by contract.
+ */
+test.describe('Public viewer is independent of the auth bootstrap', () => {
+  test.beforeEach(async ({ page }) => {
+    await installMockAuth(page);
+    mockPublicTourApi(page);
+
+    // Stall the profile fetch that checkAuth awaits. Registered last, so it
+    // takes precedence over the fixture's own /users/me handler.
+    await page.route('**/api/v1/users/me', async route => {
+      await new Promise(resolve => setTimeout(resolve, 30_000));
+      await route.abort();
+    });
+  });
+
+  test('renders /view/:id while checkAuth is still in flight', async ({ page }) => {
+    await page.goto(`/view/${TOUR_ID}`);
+
+    await expect(page.getByRole('heading', { name: 'E2E Tour' })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+  });
+
+  test('renders /embed/:id while checkAuth is still in flight', async ({ page }) => {
+    await page.goto(`/embed/${TOUR_ID}`);
+
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-marker-id="hs-info-1"]')).toBeVisible({ timeout: 15000 });
+  });
+});
+
+/**
+ * The embed's outbound messages are the contract the Flutter WebView and
+ * public/embed.js consume. Loaded top-level (window.parent === window) the page
+ * posts to itself, so an in-page listener can observe the same payloads.
+ */
+test.describe('Embed outbound messages', () => {
+  test.beforeEach(async ({ page }) => {
+    await installMockAuth(page);
+    mockPublicTourApi(page);
+    await page.addInitScript(() => {
+      (window as unknown as { __embedMessages: unknown[] }).__embedMessages = [];
+      window.addEventListener('message', event => {
+        const data = event.data as { type?: string } | null;
+        if (data && typeof data.type === 'string') {
+          (window as unknown as { __embedMessages: unknown[] }).__embedMessages.push(data);
+        }
+      });
+    });
+  });
+
+  test('posts ready with the opening scene, then sceneChange on navigation', async ({ page }) => {
+    await page.goto(`/embed/${TOUR_ID}`);
+    await expect(page.locator('[data-marker-id="hs-nav-1"]')).toBeVisible({ timeout: 15000 });
+
+    const ready = await page.waitForFunction(
+      () =>
+        (window as unknown as { __embedMessages: { type: string }[] }).__embedMessages.find(
+          m => m.type === 'ready'
+        ),
+      undefined,
+      { timeout: 15000 }
+    );
+    expect(await ready.jsonValue()).toMatchObject({
+      type: 'ready',
+      tourId: TOUR_ID,
+      data: { sceneCount: 2, currentSceneId: 'scene-1' },
+    });
+
+    await page.locator('[data-marker-id="hs-nav-1"]').click();
+
+    const sceneChange = await page.waitForFunction(
+      () =>
+        (window as unknown as { __embedMessages: { type: string; data?: { sceneId?: string } }[] })
+          .__embedMessages.find(m => m.type === 'sceneChange' && m.data?.sceneId === 'scene-2'),
+      undefined,
+      { timeout: 15000 }
+    );
+    expect(await sceneChange.jsonValue()).toMatchObject({ type: 'sceneChange' });
+  });
+
+  test('honors ?scene= as the opening scene in ready', async ({ page }) => {
+    await page.goto(`/embed/${TOUR_ID}?scene=scene-2`);
+    await expect(page.locator('canvas').first()).toBeVisible({ timeout: 15000 });
+
+    const ready = await page.waitForFunction(
+      () =>
+        (window as unknown as { __embedMessages: { type: string }[] }).__embedMessages.find(
+          m => m.type === 'ready'
+        ),
+      undefined,
+      { timeout: 15000 }
+    );
+    expect(await ready.jsonValue()).toMatchObject({
+      data: { currentSceneId: 'scene-2' },
+    });
   });
 });

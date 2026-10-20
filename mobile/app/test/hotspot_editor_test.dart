@@ -8,38 +8,13 @@ import 'package:tours360/features/tours/presentation/hotspot_editor_screen.dart'
 import 'fakes.dart';
 
 void main() {
-  group('HotspotEntry.fromJson', () {
-    test('parses backend hotspot fields', () {
-      final e = HotspotEntry.fromJson({
-        'id': 'h1',
-        'type': 'navigation',
-        'title': 'Kitchen',
-        'position': {'yaw': 45.5, 'pitch': -12.25},
-        'target_scene_id': 'scene-2',
-      });
-      expect(e.id, 'h1');
-      expect(e.type, 'navigation');
-      expect(e.title, 'Kitchen');
-      expect(e.yawDeg, 45.5);
-      expect(e.pitchDeg, -12.25);
-      expect(e.targetSceneId, 'scene-2');
-    });
-
-    test('defaults for sparse records', () {
-      final e = HotspotEntry.fromJson({'id': 'h1'});
-      expect(e.title, 'Untitled hotspot');
-      expect(e.type, 'navigation');
-      expect(e.yawDeg, 0);
-      expect(e.pitchDeg, 0);
-    });
-  });
-
   group('hotspotDestinations', () {
     final asset = ScanAsset(
       id: 'a1',
       ownerId: 'u1',
       name: 'Living room',
       remoteTourId: 'tour-1',
+      remoteSceneId: 'scene-main',
       createdAt: DateTime(2026),
       status: AssetStatus.ready,
     );
@@ -61,14 +36,33 @@ void main() {
         () {
       final out = hotspotDestinations(
           currentSceneId: 'scene-k', asset: asset, rooms: rooms);
-      expect(out.map((d) => d.sceneId), ['__main__', 'scene-b']);
+      expect(out.map((d) => d.sceneId), ['scene-main', 'scene-b']);
       expect(out.map((d) => d.label), ['Living room (main)', 'Bedroom']);
     });
 
-    test('excludes the tapped scene itself', () {
+    test('excludes the scene the hotspot sits in, the main scene included',
+        () {
       final out = hotspotDestinations(
-          currentSceneId: '__main__', asset: asset, rooms: rooms);
+          currentSceneId: 'scene-main', asset: asset, rooms: rooms);
       expect(out.map((d) => d.sceneId), ['scene-k', 'scene-b']);
+    });
+
+    test('a hotspot can never lead to its own scene', () {
+      for (final current in ['scene-main', 'scene-k', 'scene-b']) {
+        final out = hotspotDestinations(
+            currentSceneId: current, asset: asset, rooms: rooms);
+        expect(out.any((d) => d.sceneId == current), isFalse);
+      }
+    });
+
+    test('the main scene is offered only once its id is stored', () {
+      final out = hotspotDestinations(
+        currentSceneId: 'scene-k',
+        asset: asset.copyWith(remoteSceneId: null),
+        rooms: rooms,
+      );
+      expect(out.map((d) => d.sceneId), ['scene-b']);
+      expect(out.map((d) => d.sceneId), isNot(contains('__main__')));
     });
 
     test('empty when there is nowhere to go', () {
@@ -79,23 +73,8 @@ void main() {
 
     test('unuploaded rooms never appear as destinations', () {
       final out = hotspotDestinations(
-          currentSceneId: '__main__', asset: asset, rooms: rooms);
+          currentSceneId: 'scene-main', asset: asset, rooms: rooms);
       expect(out.any((d) => d.label == 'Not uploaded'), isFalse);
-    });
-  });
-
-  group('resolveMainSceneId', () {
-    test('picks the lowest order_index', () {
-      final scenes = [
-        {'id': 's2', 'order_index': 2},
-        {'id': 's0', 'order_index': 0},
-        {'id': 's1', 'order_index': 1},
-      ];
-      expect(resolveMainSceneId(scenes), 's0');
-    });
-
-    test('null for an empty tour', () {
-      expect(resolveMainSceneId(const []), isNull);
     });
   });
 
@@ -116,7 +95,7 @@ void main() {
           authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
         ],
         child: const MaterialApp(
-          home: HotspotEditorScreen(assetId: 'a1', roomId: 'r1'),
+          home: HotspotEditorScreen(assetId: 'a1', sceneId: 's1'),
         ),
       ));
       await tester.pumpAndSettle();

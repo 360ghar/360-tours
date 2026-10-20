@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render } from '@testing-library/react';
+import { makeScene } from '@/test/fixtures';
 import type { Scene } from '@/types';
 
 // --- Photo Sphere Viewer mocks -------------------------------------------
@@ -57,22 +58,8 @@ vi.mock('@photo-sphere-viewer/stereo-plugin', () => ({
 
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 
-const createScene = (overrides?: Partial<Scene>): Scene => ({
-  id: 'scene-1',
-  tour_id: 'tour-1',
-  title: 'Test Scene',
-  description: null,
-  image_url: 'https://example.com/scene-1.jpg',
-  thumbnail_url: null,
-  vr_url: null,
-  order_index: 0,
-  metadata: undefined,
-  is_processed: true,
-  processing_error: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  ...overrides,
-});
+const createScene = (overrides?: Partial<Scene>): Scene =>
+  makeScene({ title: 'Test Scene', image_url: 'https://example.com/scene-1.jpg', ...overrides });
 
 async function waitForViewerInit() {
   await act(async () => {

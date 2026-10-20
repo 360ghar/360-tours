@@ -5,8 +5,10 @@ import { fireEvent, render, screen, userEvent, waitFor } from '../test-utils';
 import { Dialog } from '@/components/ui';
 import { HotspotEditorModal } from '@/components/features/HotspotEditorModal';
 import { useTourEditorStore } from '@/stores/tourEditorStore';
+import { useUIStore } from '@/stores/uiStore';
 import { QUERY_KEYS } from '@/constants';
-import type { Scene, Tour, Hotspot } from '@/types';
+import { makeHotspot, makeScene, makeTourWithScenes } from '@/test/fixtures';
+import type { Scene, Hotspot } from '@/types';
 
 // Stub VideoUploader: exposes the upload result so the test can verify the
 // video URL field is filled on completion (no network, no real dropzone).
@@ -50,21 +52,7 @@ vi.mock('@/api', () => ({
   uploadApi: { uploadFile: vi.fn() },
 }));
 
-const scene: Scene = {
-  id: 'scene-1',
-  tour_id: 'tour-1',
-  title: 'Living Room',
-  description: null,
-  image_url: 'https://example.com/scene.jpg',
-  thumbnail_url: null,
-  vr_url: null,
-  order_index: 0,
-  metadata: {},
-  is_processed: true,
-  processing_error: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-};
+const scene: Scene = makeScene({ id: 'scene-1', title: 'Living Room' });
 
 function renderEditor() {
   return render(
@@ -119,68 +107,21 @@ describe('HotspotEditorModal video upload', () => {
   });
 });
 
-const createMockScene = (overrides?: Partial<Scene>): Scene => ({
-  id: 'scene-1',
-  tour_id: 'tour-1',
-  title: 'Living Room',
-  description: null,
-  image_url: 'https://example.com/living.jpg',
-  thumbnail_url: null,
-  vr_url: null,
-  order_index: 0,
-  metadata: null,
-  is_processed: true,
-  processing_error: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  hotspots: [],
-  ...overrides,
-});
+const createMockScene = (overrides?: Partial<Scene>): Scene =>
+  makeScene({ title: 'Living Room', image_url: 'https://example.com/living.jpg', ...overrides });
 
-const createMockHotspot = (overrides?: Partial<Hotspot>): Hotspot => ({
-  id: 'hotspot-1',
-  scene_id: 'scene-1',
-  type: 'info',
-  position: { yaw: 0, pitch: 0 },
-  target_scene_id: null,
-  title: 'Existing Hotspot',
-  description: null,
-  icon: null,
-  icon_name: 'info',
-  icon_color: '#FF5733',
-  icon_size: 32,
-  content: null,
-  custom_data: {},
-  order_index: 0,
-  is_active: true,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  ...overrides,
-});
+const createMockHotspot = (overrides?: Partial<Hotspot>): Hotspot =>
+  makeHotspot({
+    title: 'Existing Hotspot',
+    icon_name: 'info',
+    icon_color: '#FF5733',
+    ...overrides,
+  });
 
 const scene1 = createMockScene({ id: 'scene-1', order_index: 0 });
 const scene2 = createMockScene({ id: 'scene-2', order_index: 1, title: 'Kitchen' });
 
-const tour: Tour = {
-  id: 'tour-1',
-  user_id: 'user-1',
-  title: 'Test Tour',
-  description: null,
-  status: 'draft',
-  visibility: 'private',
-  is_featured: false,
-  view_count: 0,
-  like_count: 0,
-  share_count: 0,
-  settings: null,
-  thumbnail_url: null,
-  published_at: null,
-  archived_at: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  deleted_at: null,
-  scenes: [scene1, scene2],
-};
+const tour = makeTourWithScenes({ scenes: [scene1, scene2] });
 
 // Mirrors TourEditPage's sync effect: watches the [SCENES, tourId] query and
 // merges fresh data into the editor store, so a modal mutation that only
@@ -305,5 +246,340 @@ describe('HotspotEditorModal mutation-sync contract', () => {
     });
     // The edited hotspot stays selected after saving.
     expect(useTourEditorStore.getState().selectedHotspotId).toBe('hotspot-1');
+  });
+});
+
+describe('HotspotEditorModal Kuula-core actions', () => {
+  beforeEach(() => {
+    toursApiMock.createHotspot.mockReset();
+    toursApiMock.updateHotspot.mockReset();
+    toursApiMock.getScenes.mockReset();
+    useTourEditorStore.getState().reset();
+  });
+
+  it('blocks navigation save without a target scene and saves when one is selected', async () => {
+    toursApiMock.createHotspot.mockResolvedValue(
+      createMockHotspot({
+        id: 'hotspot-nav',
+        type: 'navigation',
+        target_scene_id: 'scene-2',
+      })
+    );
+
+    render(
+      <HotspotEditorModal
+        open
+        onOpenChange={vi.fn()}
+        hotspot={null}
+        sceneId="scene-1"
+        scenes={[scene1, scene2]}
+        mode="create"
+      />
+    );
+
+    const saveButton = screen.getByRole('button', { name: 'Add Hotspot' });
+    expect(saveButton).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Select a target scene/);
+
+    await userEvent.click(screen.getByLabelText('Target Scene'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Kitchen' }));
+
+    expect(saveButton).toBeEnabled();
+    await userEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(toursApiMock.createHotspot).toHaveBeenCalledTimes(1);
+    });
+    expect(toursApiMock.createHotspot).toHaveBeenCalledWith(
+      'scene-1',
+      expect.objectContaining({
+        type: 'navigation',
+        target_scene_id: 'scene-2',
+      })
+    );
+  });
+
+  it('shows the server field errors of a 422 instead of a generic message', async () => {
+    useUIStore.setState({ toasts: [] });
+    toursApiMock.createHotspot.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Request validation failed',
+            details: {
+              fields: [
+                {
+                  field: 'body.content.url',
+                  msg: 'URL scheme is not allowed',
+                  type: 'value_error',
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    render(
+      <HotspotEditorModal
+        open
+        onOpenChange={vi.fn()}
+        hotspot={null}
+        sceneId="scene-1"
+        scenes={[scene1, scene2]}
+        mode="create"
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Info' }));
+    await userEvent.type(screen.getByLabelText('Description'), 'Sunny corner room');
+    await userEvent.click(screen.getByRole('button', { name: 'Add Hotspot' }));
+
+    await waitFor(() => {
+      expect(useUIStore.getState().toasts.map(t => t.message)).toContain(
+        'content.url: URL scheme is not allowed'
+      );
+    });
+  });
+
+  it('saves an info hotspot with card text via the create API', async () => {
+    toursApiMock.createHotspot.mockResolvedValue(
+      createMockHotspot({ id: 'hotspot-info', type: 'info', title: 'Fireplace' })
+    );
+
+    render(
+      <HotspotEditorModal
+        open
+        onOpenChange={vi.fn()}
+        hotspot={null}
+        sceneId="scene-1"
+        scenes={[scene1, scene2]}
+        mode="create"
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Info' }));
+    expect(screen.getByRole('button', { name: 'Add Hotspot' })).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText('Description'), 'Sunny corner room');
+    await userEvent.click(screen.getByRole('button', { name: 'Add Hotspot' }));
+
+    await waitFor(() => {
+      expect(toursApiMock.createHotspot).toHaveBeenCalledWith(
+        'scene-1',
+        expect.objectContaining({
+          type: 'info',
+          content: { text: 'Sunny corner room' },
+        })
+      );
+    });
+    // The content holds the keys of its type only: no `kind`.
+    const [, body] = toursApiMock.createHotspot.mock.calls[0];
+    expect(body.content).not.toHaveProperty('kind');
+  });
+
+  it('rejects disallowed link protocols and saves http links', async () => {
+    toursApiMock.createHotspot.mockResolvedValue(
+      createMockHotspot({ id: 'hotspot-link', type: 'link' })
+    );
+
+    render(
+      <HotspotEditorModal
+        open
+        onOpenChange={vi.fn()}
+        hotspot={null}
+        sceneId="scene-1"
+        scenes={[scene1, scene2]}
+        mode="create"
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Link' }));
+    const urlInput = screen.getByLabelText('Link URL');
+    await userEvent.type(urlInput, 'javascript:alert(1)');
+    expect(screen.getByRole('button', { name: 'Add Hotspot' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/http, https, mailto, or tel/);
+
+    await userEvent.clear(urlInput);
+    await userEvent.type(urlInput, 'https://360ghar.com/listing');
+    await userEvent.click(screen.getByRole('button', { name: 'Add Hotspot' }));
+
+    await waitFor(() => {
+      expect(toursApiMock.createHotspot).toHaveBeenCalledWith(
+        'scene-1',
+        expect.objectContaining({
+          type: 'link',
+          content: { url: 'https://360ghar.com/listing', target: '_blank' },
+        })
+      );
+    });
+    const [, body] = toursApiMock.createHotspot.mock.calls[0];
+    expect(body.content).not.toHaveProperty('kind');
+    expect(body.content).not.toHaveProperty('link_url');
+  });
+
+  it.each(['mailto:sales@360ghar.com', 'tel:+911234567890'])(
+    'saves a %s link: the backend accepts http, https, mailto and tel',
+    async url => {
+      toursApiMock.createHotspot.mockResolvedValue(
+        createMockHotspot({ id: 'hotspot-link', type: 'link' })
+      );
+
+      render(
+        <HotspotEditorModal
+          open
+          onOpenChange={vi.fn()}
+          hotspot={null}
+          sceneId="scene-1"
+          scenes={[scene1, scene2]}
+          mode="create"
+        />
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'Link' }));
+      await userEvent.type(screen.getByLabelText('Link URL'), url);
+      await userEvent.click(screen.getByRole('button', { name: 'Add Hotspot' }));
+
+      await waitFor(() => {
+        expect(toursApiMock.createHotspot).toHaveBeenCalledWith(
+          'scene-1',
+          expect.objectContaining({ type: 'link', content: { url, target: '_blank' } })
+        );
+      });
+    }
+  );
+
+  it('saves an audio hotspot with an http URL', async () => {
+    toursApiMock.createHotspot.mockResolvedValue(
+      createMockHotspot({ id: 'hotspot-audio', type: 'audio' })
+    );
+
+    render(
+      <HotspotEditorModal
+        open
+        onOpenChange={vi.fn()}
+        hotspot={null}
+        sceneId="scene-1"
+        scenes={[scene1, scene2]}
+        mode="create"
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Audio' }));
+    expect(screen.getByRole('button', { name: 'Add Hotspot' })).toBeDisabled();
+
+    await userEvent.type(
+      screen.getByLabelText('Audio URL'),
+      'https://cdn.example.com/narration.mp3'
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Add Hotspot' }));
+
+    await waitFor(() => {
+      expect(toursApiMock.createHotspot).toHaveBeenCalledWith(
+        'scene-1',
+        expect.objectContaining({
+          type: 'audio',
+          content: { audio_url: 'https://cdn.example.com/narration.mp3' },
+        })
+      );
+    });
+    const [, body] = toursApiMock.createHotspot.mock.calls[0];
+    expect(body.content).not.toHaveProperty('kind');
+  });
+});
+
+describe('HotspotEditorModal limits and clearing', () => {
+  beforeEach(() => {
+    toursApiMock.createHotspot.mockReset();
+    toursApiMock.updateHotspot.mockReset();
+    toursApiMock.getScenes.mockReset();
+    useTourEditorStore.getState().reset();
+  });
+
+  it('limits the title to 255 and the description to 2000 characters, as the schema does', async () => {
+    render(
+      <HotspotEditorModal
+        open
+        onOpenChange={vi.fn()}
+        hotspot={null}
+        sceneId="scene-1"
+        scenes={[scene1, scene2]}
+        mode="create"
+      />
+    );
+
+    expect(screen.getByLabelText('Title')).toHaveAttribute('maxlength', '255');
+    await userEvent.click(screen.getByRole('button', { name: 'Info' }));
+    expect(screen.getByLabelText('Description')).toHaveAttribute('maxlength', '2000');
+  });
+
+  it('sends an explicit null for a cleared title, description and content', async () => {
+    const existing = createMockHotspot({
+      id: 'hotspot-1',
+      type: 'info',
+      title: 'Old Title',
+      description: 'Old text',
+      content: { text: 'Old text' },
+    });
+    toursApiMock.updateHotspot.mockResolvedValue({ ...existing, title: null, content: null });
+
+    render(
+      <HotspotEditorModal
+        open
+        onOpenChange={vi.fn()}
+        hotspot={existing}
+        sceneId="scene-1"
+        scenes={[scene1, scene2]}
+        mode="edit"
+      />
+    );
+
+    // An info hotspot needs a title or a description: clear the description, keep the title,
+    // then clear the title and type a description. Here: clear the description only.
+    await userEvent.clear(screen.getByLabelText('Description'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(toursApiMock.updateHotspot).toHaveBeenCalledTimes(1));
+    const [id, body] = toursApiMock.updateHotspot.mock.calls[0];
+    expect(id).toBe('hotspot-1');
+    // A cleared value is null, never undefined: an omitted key keeps the stored text.
+    expect(body.description).toBeNull();
+    expect(body.content).toBeNull();
+    expect(body.title).toBe('Old Title');
+    expect(Object.keys(body)).toContain('description');
+    expect(Object.keys(body)).toContain('content');
+    expect(body).not.toHaveProperty('kind');
+  });
+
+  it('clears the title with an explicit null', async () => {
+    const existing = createMockHotspot({
+      id: 'hotspot-2',
+      type: 'info',
+      title: 'Old Title',
+      description: 'Kept text',
+      content: { text: 'Kept text' },
+    });
+    toursApiMock.updateHotspot.mockResolvedValue({ ...existing, title: null });
+
+    render(
+      <HotspotEditorModal
+        open
+        onOpenChange={vi.fn()}
+        hotspot={existing}
+        sceneId="scene-1"
+        scenes={[scene1, scene2]}
+        mode="edit"
+      />
+    );
+
+    await userEvent.clear(screen.getByLabelText('Title'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(toursApiMock.updateHotspot).toHaveBeenCalledTimes(1));
+    const [, body] = toursApiMock.updateHotspot.mock.calls[0];
+    expect(body.title).toBeNull();
+    expect(body.content).toEqual({ text: 'Kept text' });
   });
 });

@@ -23,7 +23,7 @@ test.describe('Public tour routes (no backend)', () => {
     // The public tour endpoint is anonymous; a 404 (not a 5xx, which would be
     // retried) resolves the page into its not-found state deterministically.
     await page.route('**/api/v1/public/tours/**', route => {
-      void route.fulfill({ status: 404, json: { detail: 'Tour not found' } });
+      void route.fulfill({ status: 404, json: { error: { code: 'TOUR_NOT_FOUND', message: 'Tour not found' } } });
     });
 
     await page.goto('/view/test-tour-id');
@@ -34,7 +34,7 @@ test.describe('Public tour routes (no backend)', () => {
 
   test('embed page surfaces a load error for a missing tour', async ({ page }) => {
     await page.route('**/api/v1/public/tours/**', route => {
-      void route.fulfill({ status: 404, json: { detail: 'Tour not found' } });
+      void route.fulfill({ status: 404, json: { error: { code: 'TOUR_NOT_FOUND', message: 'Tour not found' } } });
     });
 
     await page.goto('/embed/test-tour-id');

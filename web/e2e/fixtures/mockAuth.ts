@@ -38,14 +38,19 @@ function resolveAuthStorageKey(): string {
 
 export const AUTH_TOKENS_STORAGE_KEY = resolveAuthStorageKey();
 
+/** `GET /users/me` (SelfUser): the id is an integer. */
 export interface MockStaffUser {
   id: number;
   supabase_user_id: string;
   email: string;
   full_name: string;
   is_active: boolean;
+  is_verified: boolean;
   role: 'user' | 'agent' | 'admin';
   profile_image_url: string | null;
+  preferences: Record<string, unknown>;
+  notification_settings: Record<string, boolean>;
+  privacy_settings: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -56,8 +61,17 @@ export const MOCK_STAFF_USER: MockStaffUser = {
   email: 'e2e@example.com',
   full_name: 'E2E Test User',
   is_active: true,
+  is_verified: true,
   role: 'agent',
   profile_image_url: null,
+  preferences: {},
+  notification_settings: {
+    push_notifications: true,
+    email_notifications: true,
+    sms_notifications: false,
+    promotional_emails: false,
+  },
+  privacy_settings: {},
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
 };
@@ -107,19 +121,30 @@ export async function installMockAuth(
   });
 }
 
-/** Minimal Tour-shaped payload the pages under test actually read. */
+/** A list route answers a CursorPage; `total` is null unless `include_total` is sent. */
+export function cursorPage<T>(items: T[], limit = 20) {
+  return { items, next_cursor: null, has_more: false, limit, total: null };
+}
+
+/** Tour payload with the keys the pages under test read (`Tour`, integer `user_id`). */
 export const MOCK_TOUR = {
   id: 'tour-1',
+  user_id: 1,
   title: 'E2E Tour',
   description: null,
   status: 'draft',
+  is_public: false,
   visibility: 'private',
+  short_code: null,
+  is_featured: false,
   settings: {},
   thumbnail_url: null,
   view_count: 0,
   like_count: 0,
   share_count: 0,
   scene_count: 2,
+  main_scene_id: 'scene-1',
+  floor_plans: [] as unknown[],
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
 };
@@ -132,6 +157,9 @@ export const MOCK_SCENES = [
     title: 'Living Room',
     image_url: 'https://example.com/living-room.jpg',
     order_index: 0,
+    scene_metadata: null,
+    is_processed: true,
+    processing_error: null,
     hotspots: [],
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
@@ -142,20 +170,24 @@ export const MOCK_SCENES = [
     title: 'Kitchen',
     image_url: 'https://example.com/kitchen.jpg',
     order_index: 1,
+    scene_metadata: null,
+    is_processed: true,
+    processing_error: null,
     hotspots: [],
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
   },
 ];
 
-/** Shape of the `POST /api/v1/upload` response (FileUploadResponse). */
+/** `POST /api/v1/upload` answers 201 with an UploadResult. */
 export const MOCK_UPLOAD_RESPONSE = {
-  file_path: '/scenes/e2e.png',
+  file_path: '/tour_original/e2e.png',
   public_url: 'https://example.com/e2e-scene.png',
   file_type: 'image',
   file_size: 1,
   content_type: 'image/png',
   original_filename: 'e2e.png',
+  media: null,
 };
 
 /** 1x1 PNG — tiny but valid, passes image validation. */

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, userEvent, waitFor } from '../test-utils';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { makeTour } from '@/test/fixtures';
+import type { CursorPaginatedResponse, Tour } from '@/types';
 
 vi.mock('@/api', () => ({
   authApi: {
@@ -14,23 +16,23 @@ vi.mock('@/api', () => ({
   },
 }));
 
-import { toursApi } from '@/api';
+import { toursApi, usersApi } from '@/api';
 
-const publishedToursResponse = {
+const publishedToursResponse: CursorPaginatedResponse<Tour> = {
   items: [
-    { id: 'tour-1', title: 'Lake House', status: 'published' },
-    { id: 'tour-2', title: 'Downtown Loft', status: 'published' },
+    makeTour({ id: 'tour-1', title: 'Lake House', status: 'published' }),
+    makeTour({ id: 'tour-2', title: 'Downtown Loft', status: 'published' }),
   ],
   total: 2,
   next_cursor: null,
   has_more: false,
-  limit: 50,
+  limit: 1,
 };
 
 describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(toursApi.getTours).mockResolvedValue(publishedToursResponse as never);
+    vi.mocked(toursApi.getTours).mockResolvedValue(publishedToursResponse);
   });
 
   it('renders the Custom Domains section with the published-tours count', async () => {
@@ -41,7 +43,12 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/2 published tours/)).toBeInTheDocument();
     });
-    expect(toursApi.getTours).toHaveBeenCalledWith({ status: 'published', limit: 50 });
+    // `total` is null unless include_total is sent.
+    expect(toursApi.getTours).toHaveBeenCalledWith({
+      status: 'published',
+      limit: 1,
+      include_total: true,
+    });
   });
 
   it('shows an empty state when the user has no published tours', async () => {
@@ -50,8 +57,8 @@ describe('SettingsPage', () => {
       total: 0,
       next_cursor: null,
       has_more: false,
-      limit: 50,
-    } as never);
+      limit: 1,
+    });
 
     render(<SettingsPage />);
 
@@ -77,5 +84,34 @@ describe('SettingsPage', () => {
     expect(
       screen.getByText('Connect your own domain to serve tours from your branded URL.')
     ).toBeInTheDocument();
+  });
+
+  it('saves the marketing switch as promotional_emails and sends only that key', async () => {
+    vi.mocked(usersApi.updateProfile).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof usersApi.updateProfile>>
+    );
+    render(<SettingsPage />);
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Marketing Emails/ }));
+
+    await waitFor(() => expect(usersApi.updateProfile).toHaveBeenCalledTimes(1));
+    // The server merges the keys it gets; `marketing_emails` is not a key it knows (422).
+    expect(usersApi.updateProfile).toHaveBeenCalledWith({
+      notification_settings: { promotional_emails: true },
+    });
+  });
+
+  it('saves the email switch as email_notifications only', async () => {
+    vi.mocked(usersApi.updateProfile).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof usersApi.updateProfile>>
+    );
+    render(<SettingsPage />);
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Email Notifications/ }));
+
+    await waitFor(() => expect(usersApi.updateProfile).toHaveBeenCalledTimes(1));
+    expect(usersApi.updateProfile).toHaveBeenCalledWith({
+      notification_settings: { email_notifications: false },
+    });
   });
 });

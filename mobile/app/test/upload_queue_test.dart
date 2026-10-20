@@ -1,104 +1,24 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tours360/core/api/backend_api.dart';
+import 'package:tours360/core/api/api_exception.dart';
+import 'package:tours360/core/models/api_dtos.dart';
 import 'package:tours360/core/models/models.dart';
+import 'package:tours360/core/models/wire_enums.dart';
 import 'package:tours360/core/storage/local_store.dart';
 import 'package:tours360/core/upload/upload_queue.dart';
 
-class _FakeApi extends BackendApi {
-  _FakeApi() : super(Dio());
-
-  final calls = <String>[];
-  bool failPublishOnce = false;
-  bool failWithAuth = false;
-  bool failScene = false;
-
-  @override
-  Future<Map<String, dynamic>> createTour({
-    required String title,
-    String? description,
-  }) async {
-    if (failWithAuth) {
-      throw DioException(
-        requestOptions: RequestOptions(path: '/tours'),
-        response: Response(
-          requestOptions: RequestOptions(path: '/tours'),
-          statusCode: 401,
-        ),
-      );
-    }
-    calls.add('createTour');
-    return {'id': 'tour-1', 'title': title};
-  }
-
-  @override
-  Future<Map<String, dynamic>> createPresignedUpload({
-    required String filename,
-    required String folderType,
-    String? tourId,
-    String? sceneId,
-    int? fileSize,
-  }) async {
-    calls.add('presign');
-    return {
-      'upload_id': 'up-1',
-      'signed_url': 'https://cloudinary.example/upload',
-      'token': 'sig',
-      'api_key': 'key',
-      'timestamp': 1,
-      'public_id': 'pid',
-      'public_url': 'https://res.cloudinary.example/pano.jpg',
-      'path': 'p',
-    };
-  }
-
-  @override
-  Future<void> uploadToCloudinary({
-    required Map<String, dynamic> presigned,
-    required File file,
-  }) async {
-    calls.add('putCloudinary');
-  }
-
-  @override
-  Future<Map<String, dynamic>> confirmUpload(String uploadId) async {
-    calls.add('confirm:$uploadId');
-    return {'media': {}, 'message': 'ok'};
-  }
-
-  @override
-  Future<Map<String, dynamic>> createScene({
-    required String tourId,
-    required String imageUrl,
-    String? title,
-    int? orderIndex,
-  }) async {
-    if (failScene) throw Exception('scene boom');
-    calls.add('createScene:$tourId:$orderIndex');
-    return {'id': 'scene-1', 'image_url': imageUrl};
-  }
-
-  @override
-  Future<Map<String, dynamic>> publishTour(String tourId) async {
-    if (failPublishOnce) {
-      failPublishOnce = false;
-      throw DioException(requestOptions: RequestOptions(path: '/publish'));
-    }
-    calls.add('publish:$tourId');
-    return {'id': tourId, 'status': 'published', 'short_code': 'abc12'};
-  }
-}
+import 'fakes.dart';
 
 void main() {
   late Directory dir;
   late LocalStore store;
-  late _FakeApi api;
+  late FakeBackendApi api;
   late Map<String, ScanAsset> assets;
   late List<Room> rooms;
   late UploadQueue queue;
+  late bool saveAssetThrowsOnce;
 
   ScanAsset makeAsset(String id, {String? panoPath, String? tourId}) =>
       ScanAsset(
@@ -114,14 +34,21 @@ void main() {
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('queue_test');
     store = LocalStore(dir);
-    api = _FakeApi();
+    api = FakeBackendApi();
     assets = {};
     rooms = [];
+    saveAssetThrowsOnce = false;
     queue = UploadQueue(
       store,
       api,
       getAsset: (id) async => assets[id],
-      saveAsset: (a) async => assets[a.id] = a,
+      saveAsset: (a) async {
+        if (saveAssetThrowsOnce) {
+          saveAssetThrowsOnce = false;
+          throw StateError('asset store unavailable');
+        }
+        assets[a.id] = a;
+      },
       getRooms: (assetId) async =>
           rooms.where((r) => r.assetId == assetId).toList(),
       saveRoom: (r) async {
@@ -151,7 +78,7 @@ void main() {
       'presign',
       'putCloudinary',
       'confirm:up-1',
-      'createScene:tour-1:0',
+      'createScene:tour-1',
       'publish:tour-1',
     ]);
     final done = assets['a1']!;
@@ -200,8 +127,10 @@ void main() {
     await queue.enqueue(assets['a1']!);
     await queue.pump();
 
-    expect(api.calls, contains('createScene:tour-1:1'));
-    expect(rooms.single.remoteSceneId, 'scene-1');
+    // The main scene is created first, so the server orders it first.
+    expect(api.calls.where((c) => c.startsWith('createScene')).length, 2);
+    expect(assets['a1']!.remoteSceneId, 'scene-1');
+    expect(rooms.single.remoteSceneId, 'scene-2');
     expect(rooms.single.panoramaUrl, isNotNull);
     expect(rooms.single.status, 'ready');
   });
@@ -245,7 +174,7 @@ void main() {
       'presigned': {
         'upload_id': 'up-old',
         'signed_url': 'https://cloudinary.example/old',
-        'token': 'old-sig',
+        'signature': 'old-sig',
         'api_key': 'key',
         'timestamp': 1,
         'public_id': 'pid',
@@ -262,6 +191,8 @@ void main() {
         reason: 'stale signature must be re-issued before upload');
     expect(api.calls.where((c) => c == 'presign').length, 1);
     expect(api.calls.where((c) => c == 'createTour'), isEmpty);
+    // The backend folder enum has tour_original. The old 'tour' value returns 422.
+    expect(api.folderTypes, everyElement(StorageFolderType.tourOriginal));
     expect(assets['a1']!.status, AssetStatus.ready);
   });
 
@@ -280,7 +211,7 @@ void main() {
       'presigned': {
         'upload_id': 'up-1',
         'signed_url': 'https://cloudinary.example/upload',
-        'token': 'sig',
+        'signature': 'sig',
         'api_key': 'key',
         'timestamp': 1,
         'public_id': 'pid',
@@ -328,6 +259,62 @@ void main() {
     api.failWithAuth = false;
     await queue.pump();
     expect(assets['a1']!.status, AssetStatus.ready);
+  });
+
+  test('a permanently expired session eventually fails the job', () async {
+    final pano = await writePano();
+    assets['a1'] = makeAsset('a1', panoPath: pano);
+    api.failWithAuth = true; // never recovers
+    await queue.enqueue(assets['a1']!);
+
+    // Every pump releases the held job, it 401s again and is re-held. Without
+    // a bound on the holds this loops forever and the UI is stuck on
+    // "Uploading…" with no retry, no delete and no error.
+    for (var i = 0; i < 10; i++) {
+      await queue.pump();
+    }
+
+    final job = (await store.readAll('upload_queue')).single;
+    expect(job['step'], 'failed');
+    expect(job['lastError'], contains('Session expired'));
+    expect(assets['a1']!.status, AssetStatus.failed);
+  });
+
+  test('a failure after createTour never creates a second tour', () async {
+    final pano = await writePano();
+    assets['a1'] = makeAsset('a1', panoPath: pano);
+    // POST /tours succeeds, then persisting the id throws — the job is left on
+    // the createTour step with its tourId already recorded.
+    saveAssetThrowsOnce = true;
+
+    await queue.enqueue(assets['a1']!);
+    await queue.pump(); // createTour succeeds, save throws → backoff
+    await queue.pump(); // retry must resume at presign, not re-create
+
+    expect(api.calls.where((c) => c == 'createTour').length, 1,
+        reason: 'the backoff retry must not POST /tours again');
+    expect(assets['a1']!.status, AssetStatus.ready);
+  });
+
+  test('re-enqueuing an already-uploaded room does not duplicate the scene',
+      () async {
+    final pano = await writePano();
+    assets['a1'] = makeAsset('a1', panoPath: pano, tourId: 'tour-1');
+    rooms.add(Room(
+      id: 'r1',
+      assetId: 'a1',
+      name: 'Kitchen',
+      panoramaPath: pano,
+      remoteSceneId: 'scene-9',
+      status: 'ready',
+    ));
+
+    await queue.enqueueRoom(assets['a1']!, rooms.first);
+    await queue.pump();
+
+    expect(api.calls.where((c) => c.startsWith('createScene')), isEmpty,
+        reason: 'the room already has a scene; retry must be a no-op');
+    expect(rooms.single.remoteSceneId, 'scene-9');
   });
 
   test('an asset without a panorama fails with a readable message', () async {
@@ -400,5 +387,413 @@ void main() {
     expect(seen.last?['assetId'], 'a1');
     expect(seen.last?['step'], 'done');
     await sub.cancel();
+  });
+
+  // ---- Pass A: contract rules ------------------------------------------------
+
+  Future<List<String>> writeFrames(int n) async => [
+        for (var i = 0; i < n; i++)
+          (File('${dir.path}/frame_$i.jpg')
+                ..writeAsBytesSync([0xFF, 0xD8, 0xFF, 0xD9]))
+              .path,
+      ];
+
+  Map<String, dynamic> doneJob({
+    required String sceneId,
+    bool cloudStitch = false,
+    List<String> frameUrls = const [],
+    int missingFrames = 0,
+  }) =>
+      {
+        'id': 'a1',
+        'kind': 'asset',
+        'assetId': 'a1',
+        'step': 'done',
+        'tourId': 'tour-1',
+        'sceneId': sceneId,
+        'cloudStitch': cloudStitch,
+        'frameUrls': frameUrls,
+        'missingFrames': missingFrames,
+        'attempts': 0,
+      };
+
+  group('main scene', () {
+    test('the pipeline stores the main scene id on the asset', () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano);
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+      expect(assets['a1']!.remoteSceneId, 'scene-1');
+    });
+
+    test('retrying a finished job creates no second scene and uploads nothing',
+        () async {
+      final pano = await writePano();
+      assets['a1'] =
+          makeAsset('a1', panoPath: pano, tourId: 'tour-1').copyWith(
+        remoteSceneId: 'scene-9',
+      );
+      await store.upsert('upload_queue', doneJob(sceneId: 'scene-9'));
+
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+
+      expect(api.calls.where((c) => c.startsWith('createScene')), isEmpty);
+      expect(api.calls.where((c) => c == 'presign'), isEmpty);
+      expect(api.calls, ['publish:tour-1']);
+      expect(assets['a1']!.status, AssetStatus.ready);
+    });
+
+    test('a fresh job for an asset that has a scene starts at publish',
+        () async {
+      final pano = await writePano();
+      assets['a1'] =
+          makeAsset('a1', panoPath: pano, tourId: 'tour-1').copyWith(
+        remoteSceneId: 'scene-9',
+      );
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+      expect(api.calls, ['publish:tour-1']);
+    });
+
+    test('a scene id only on the job (older build) is copied to the asset',
+        () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano, tourId: 'tour-1');
+      await store.upsert('upload_queue', {
+        ...doneJob(sceneId: 'scene-5'),
+        'step': 'createScene',
+        'panoramaUrl': 'https://res.cloudinary.example/pano.jpg',
+      });
+      await queue.pump();
+      expect(api.calls.where((c) => c.startsWith('createScene')), isEmpty);
+      expect(assets['a1']!.remoteSceneId, 'scene-5');
+    });
+
+    test('a room job waits until the main scene exists', () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano, tourId: 'tour-1');
+      rooms.add(Room(
+          id: 'r1', assetId: 'a1', name: 'Kitchen', panoramaPath: pano));
+      // The asset job failed before it created the main scene.
+      await store.upsert('upload_queue', {
+        'id': 'a1',
+        'kind': 'asset',
+        'assetId': 'a1',
+        'step': 'failed',
+        'lastStep': 'presign',
+        'tourId': 'tour-1',
+        'attempts': 8,
+      });
+      await queue.enqueueRoom(assets['a1']!, rooms.first);
+      await queue.pump();
+      expect(api.calls.where((c) => c.startsWith('createScene')), isEmpty,
+          reason: 'a room scene made first would become the main scene');
+
+      assets['a1'] = assets['a1']!.copyWith(remoteSceneId: 'scene-0');
+      await queue.pump();
+      expect(rooms.single.remoteSceneId, 'scene-1');
+    });
+  });
+
+  group('cloud stitch', () {
+    Future<void> enqueueCloudAsset() async {
+      final pano = await writePano();
+      final frames = await writeFrames(2);
+      assets['a1'] = ScanAsset(
+        id: 'a1',
+        ownerId: 'u1',
+        name: 'Room a1',
+        status: AssetStatus.pendingCloudStitch,
+        createdAt: DateTime(2026, 7, 23),
+        panoramaPath: pano,
+        framePaths: frames,
+      );
+      await queue.enqueue(assets['a1']!);
+    }
+
+    test('the asset becomes ready only when the job completes', () async {
+      api.jobStatuses
+        ..clear()
+        ..add(AIJobStatus.processing);
+      await enqueueCloudAsset();
+      await queue.pump();
+
+      expect(api.calls.where((c) => c.startsWith('requestStitch')).length, 1);
+      expect(assets['a1']!.status, AssetStatus.pendingCloudStitch,
+          reason: 'a running job is not a finished stitch');
+      final waiting = (await store.readAll('upload_queue')).single;
+      expect(waiting['step'], 'awaitStitch');
+
+      api.jobStatuses
+        ..clear()
+        ..add(AIJobStatus.completed);
+      await queue.pump();
+      expect(assets['a1']!.status, AssetStatus.ready);
+      expect((await store.readAll('upload_queue')).single['step'], 'done');
+    });
+
+    test('a failed job fails the asset with the server reason', () async {
+      api.jobStatuses
+        ..clear()
+        ..add(AIJobStatus.failed);
+      api.jobError = 'Not enough overlap between frames';
+      await enqueueCloudAsset();
+      await queue.pump();
+
+      expect(assets['a1']!.status, AssetStatus.failed);
+      final job = (await store.readAll('upload_queue')).single;
+      expect(job['lastError'],
+          'Cloud stitch failed: Not enough overlap between frames');
+    });
+
+    test('a cancelled job fails the asset', () async {
+      api.jobStatuses
+        ..clear()
+        ..add(AIJobStatus.cancelled);
+      await enqueueCloudAsset();
+      await queue.pump();
+      expect(assets['a1']!.status, AssetStatus.failed);
+    });
+
+    test('a retry after a failed job asks for the stitch again, nothing else',
+        () async {
+      final pano = await writePano();
+      assets['a1'] = ScanAsset(
+        id: 'a1',
+        ownerId: 'u1',
+        name: 'Room a1',
+        status: AssetStatus.stitching, // the detail screen's Retry sets this
+        createdAt: DateTime(2026, 7, 23),
+        panoramaPath: pano,
+        framePaths: await writeFrames(2),
+        remoteTourId: 'tour-1',
+        remoteSceneId: 'scene-9',
+      );
+      await store.upsert(
+        'upload_queue',
+        doneJob(
+          sceneId: 'scene-9',
+          cloudStitch: true,
+          frameUrls: ['https://res.cloudinary.com/a', 'https://res.cloudinary.com/b'],
+        ),
+      );
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+
+      expect(api.calls.where((c) => c.startsWith('createScene')), isEmpty);
+      expect(api.calls.where((c) => c == 'presign'), isEmpty,
+          reason: 'frames are already uploaded');
+      expect(api.calls.first, 'requestStitch:scene-9:2');
+      expect(assets['a1']!.status, AssetStatus.ready);
+    });
+
+    test('a retry with missing frames stays failed and creates no scene',
+        () async {
+      final pano = await writePano();
+      assets['a1'] = ScanAsset(
+        id: 'a1',
+        ownerId: 'u1',
+        name: 'Room a1',
+        status: AssetStatus.stitching,
+        createdAt: DateTime(2026, 7, 23),
+        panoramaPath: pano,
+        framePaths: ['${dir.path}/gone_0.jpg', '${dir.path}/gone_1.jpg'],
+        remoteTourId: 'tour-1',
+        remoteSceneId: 'scene-9',
+      );
+      await store.upsert(
+        'upload_queue',
+        doneJob(sceneId: 'scene-9', cloudStitch: true, missingFrames: 2),
+      );
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+
+      expect(assets['a1']!.status, AssetStatus.failed,
+          reason: 'never ready while frames are missing');
+      expect(api.calls.where((c) => c.startsWith('createScene')), isEmpty);
+      final job = (await store.readAll('upload_queue')).single;
+      expect(job['lastError'], contains('please re-capture'));
+    });
+  });
+
+  group('failures', () {
+    const nameTooLong = ApiException(
+      statusCode: 422,
+      code: 'VALIDATION_ERROR',
+      message: 'Request validation failed',
+      fields: [
+        ApiFieldError(
+          field: 'body.title',
+          msg: 'String should have at most 255 characters',
+          type: 'string_too_long',
+        ),
+      ],
+    );
+
+    test('a 4xx other than 408 and 429 fails the job at once, with the field',
+        () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano);
+      api.tourError = nameTooLong;
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+
+      final job = (await store.readAll('upload_queue')).single;
+      expect(job['step'], 'failed');
+      expect(job['attempts'], 0, reason: 'no backoff retry for a 422');
+      expect(job['lastError'], 'title: String should have at most 255 characters');
+      expect(assets['a1']!.status, AssetStatus.failed);
+    });
+
+    test('a 429 is retried and its Retry-After is honoured', () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano);
+      api.tourError = const ApiException(
+        statusCode: 429,
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'Too many requests',
+        retryAfter: Duration(seconds: 120),
+      );
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+
+      final job = (await store.readAll('upload_queue')).single;
+      expect(job['step'], 'createTour');
+      expect(job['attempts'], greaterThan(0));
+      final wait = (job['nextRetryAt'] as int) -
+          DateTime.now().millisecondsSinceEpoch;
+      expect(wait, greaterThan(100 * 1000),
+          reason: 'the server asked for 120 s; the backoff would be 10 s');
+    });
+
+    test('a 404 is terminal and the stored text is the envelope message',
+        () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano, tourId: 'tour-1');
+      api.sceneError = const ApiException(
+          statusCode: 404, code: 'NOT_FOUND', message: 'Tour not found');
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+      final job = (await store.readAll('upload_queue')).single;
+      expect(job['step'], 'failed');
+      expect(job['lastError'], 'Tour not found');
+      expect(job['lastError'], isNot(contains('DioException')));
+    });
+
+    test('a network failure reads as a connection problem, never Dio text',
+        () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano);
+      api.tourError = const ApiException(
+        message: 'Could not reach the server. Check your connection and try '
+            'again.',
+        isNetwork: true,
+      );
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+      final job = (await store.readAll('upload_queue')).single;
+      expect(job['step'], 'createTour');
+      expect(job['lastError'], contains('Check your connection'));
+    });
+
+    test('a rejected Cloudinary signature signs again instead of failing',
+        () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano);
+      api.uploadError = const ApiException(
+          statusCode: 401, message: 'Invalid Signature', fromStorage: true);
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+      await queue.pump();
+
+      expect(api.calls.where((c) => c == 'presign').length, 2);
+      expect(assets['a1']!.status, AssetStatus.ready);
+      expect((await store.readAll('upload_queue')).single['step'], 'done',
+          reason: 'a Cloudinary 401 is not an expired session');
+    });
+
+    test('a stored presign that cannot be read is signed again', () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano, tourId: 'tour-1');
+      await store.upsert('upload_queue', {
+        'id': 'a1',
+        'kind': 'asset',
+        'assetId': 'a1',
+        'step': 'putCloudinary',
+        'tourId': 'tour-1',
+        'presigned': {'upload_id': 'old', 'token': 'old-shape'},
+        'presignedAt': DateTime.now().millisecondsSinceEpoch,
+        'attempts': 0,
+      });
+      await queue.pump();
+      expect(api.calls.first, 'presign');
+      expect(assets['a1']!.status, AssetStatus.ready);
+    });
+  });
+
+  group('idempotency', () {
+    test('creates carry a key that is the same on every retry', () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano);
+      api.sceneError = const ApiException(statusCode: 503, message: 'down');
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+      await queue.pump();
+
+      expect(api.tourKeys, ['tour-a1']);
+      expect(api.sceneKeys, ['scene-a1', 'scene-a1']);
+    });
+
+    test('a retry after a lost scene response adopts the scene it finds',
+        () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano);
+      // The server created the scene, then the response was lost.
+      api.sceneError = const ApiException(message: 'timeout', isNetwork: true);
+      api.tourScenes.add(const SceneDto(
+        id: 'scene-77',
+        tourId: 'tour-1',
+        title: null,
+        imageUrl: 'https://res.cloudinary.example/pano.jpg',
+        orderIndex: 0,
+      ));
+      await queue.enqueue(assets['a1']!);
+      await queue.pump();
+      await queue.pump();
+
+      expect(api.calls.where((c) => c.startsWith('createScene')), isEmpty,
+          reason: 'the scene already exists on the server');
+      expect(assets['a1']!.remoteSceneId, 'scene-77');
+      expect(assets['a1']!.status, AssetStatus.ready);
+    });
+  });
+
+  group('account scope', () {
+    test('the queue runs only the signed-in account jobs', () async {
+      final pano = await writePano();
+      assets['a1'] = makeAsset('a1', panoPath: pano); // owned by u1
+      String? owner = 'u2';
+      final scoped = UploadQueue(
+        store,
+        api,
+        getAsset: (id) async => assets[id],
+        saveAsset: (a) async => assets[a.id] = a,
+        currentOwnerId: () => owner,
+        connectivityChanges: const Stream.empty(),
+      );
+      await scoped.enqueue(assets['a1']!);
+      await scoped.pump();
+      expect(api.calls, isEmpty, reason: 'u2 must not upload u1 scans');
+
+      owner = null; // signed out
+      await scoped.pump();
+      expect(api.calls, isEmpty);
+
+      owner = 'u1';
+      await scoped.pump();
+      expect(assets['a1']!.status, AssetStatus.ready);
+      await scoped.dispose();
+    });
   });
 }
