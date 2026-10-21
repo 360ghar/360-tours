@@ -1,3 +1,5 @@
+import { escapeHtml } from '@/utils/escapeHtml';
+
 export const HOTSPOT_HTML_CSP = [
   "default-src 'none'",
   "script-src 'none'",
@@ -77,19 +79,6 @@ const TAG_HTML_ATTRIBUTES: Record<string, Set<string>> = {
 const NUMERIC_HTML_ATTRIBUTES = new Set(['width', 'height', 'colspan', 'rowspan']);
 const LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 const IMAGE_PROTOCOLS = new Set(['http:', 'https:']);
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, char => {
-    const entities: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    };
-    return entities[char] ?? char;
-  });
-}
 
 function stripProtocolWhitespace(value: string): string {
   let compact = '';

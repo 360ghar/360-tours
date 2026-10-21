@@ -27,6 +27,18 @@ export function AuthCallbackPage() {
   const clearAuth = useAuthStore((s) => s.clearAuth);
   // Guard against React 18 StrictMode double-invoke and code reuse.
   const handledRef = useRef(false);
+  // The OAuth return path is consumed exactly once. Reading it in render
+  // would drop the stash on StrictMode's double-render; reading it inside the
+  // handled effect makes it vulnerable to an effect re-run mid-flight. A
+  // separate idempotent effect writes the ref once, and every later pass
+  // (double-invoke, remount, re-navigation) sees the already-consumed value.
+  const safeNextRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (safeNextRef.current === null) {
+      safeNextRef.current = consumeOAuthNext(searchParams.get('next'), ROUTES.DASHBOARD);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (handledRef.current) return;
@@ -34,8 +46,9 @@ export function AuthCallbackPage() {
 
     const code = searchParams.get('code');
     const errorParam = searchParams.get('error_description') || searchParams.get('error');
-    // Prefer sessionStorage stash; URL ?next= is legacy fallback.
-    const safeNext = consumeOAuthNext(searchParams.get('next'), ROUTES.DASHBOARD);
+    // Prefer sessionStorage stash; URL ?next= is legacy fallback. The stash is
+    // consumed by the effect above — this ref is StrictMode-stable.
+    const safeNext = safeNextRef.current ?? ROUTES.DASHBOARD;
 
     async function handleCallback() {
       if (errorParam) {
@@ -55,7 +68,7 @@ export function AuthCallbackPage() {
 
         // Staff-gate: only provisioned staff may use this internal tool.
         const user = await authApi.getCurrentUser();
-        if (!STAFF_ROLES.has(user.role)) {
+        if (!STAFF_ROLES.has(user.role ?? 'user')) {
           await supabaseAuth.signOut().catch(() => {});
           clearAuth();
           navigate(`${ROUTES.LOGIN}?error=not_staff`, { replace: true });

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -10,12 +12,9 @@ import '../../assets/presentation/asset_providers.dart';
 /// In-app 360 viewer: the web viewer's chromeless /embed/{tourId} page in a
 /// WebView — same renderer the public share link uses.
 class ViewerScreen extends ConsumerStatefulWidget {
-  const ViewerScreen({super.key, required this.assetId, this.mode = 'pano'});
+  const ViewerScreen({super.key, required this.assetId});
 
   final String assetId;
-
-  /// 'pano' → /embed/{id}; '3d' → /view3d/{id}
-  final String mode;
 
   @override
   ConsumerState<ViewerScreen> createState() => _ViewerScreenState();
@@ -27,27 +26,70 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
   String? _error;
   String? _tourId;
   bool _loadStarted = false;
+  bool _timedOut = false;
+  Timer? _loadTimeout;
+
+  /// Longest we wait for the main frame before offering a retry — a slow
+  /// or dead tour must not leave an eternal spinner under "Loading…".
+  static const _loadTimeoutMs = 30 * 1000;
 
   void _load(String tourId) {
     _tourId = tourId;
-    final url = widget.mode == '3d'
-        ? '${Env.viewerBase}/view3d/$tourId'
-        : '${Env.viewerBase}/embed/$tourId?minimal=1&branding=0';
+    final url = '${Env.viewerBase}/embed/$tourId?minimal=1&branding=0';
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(AppColors.background)
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (_) {
-          if (mounted) setState(() => _loading = false);
+          if (!mounted) return;
+          setState(() {
+            _loading = false;
+            _loadTimeout?.cancel();
+            // The page made it eventually — drop a timeout message.
+            if (_timedOut) {
+              _timedOut = false;
+              _error = null;
+            }
+          });
         },
         onWebResourceError: (e) {
-          if (e.isForMainFrame ?? true) {
-            if (mounted) setState(() => _error = 'Could not load the tour.');
-          }
+          // Only main-frame failures are fatal: subframe errors (thumbnails,
+          // iframes) must not kill a working viewer.
+          if (e.isForMainFrame == true) _fail('Could not load the tour.');
+        },
+        onHttpError: (e) {
+          // The platform interface exposes only the request URI here, so
+          // treat an HTTP error on the page we loaded as fatal; errors on
+          // subresources are ignored (same policy as onWebResourceError).
+          final requestUri = e.request?.uri;
+          if (requestUri == null) return;
+          final base = requestUri.replace(queryParameters: null);
+          final loaded = Uri.parse(url).replace(queryParameters: null);
+          if (base == loaded) _fail('Could not load the tour.');
         },
       ))
       ..loadRequest(Uri.parse(url));
     _controller = controller;
+    _loading = true;
+    _error = null;
+    _timedOut = false;
+    _loadTimeout?.cancel();
+    _loadTimeout = Timer(const Duration(milliseconds: _loadTimeoutMs), () {
+      if (!mounted || !_loading || _error != null) return;
+      setState(() {
+        _timedOut = true;
+        _error = 'Still loading? The tour may be unavailable.';
+      });
+    });
+  }
+
+  void _fail(String message) {
+    _loadTimeout?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _error = message;
+      _loading = false;
+    });
   }
 
   /// Starts loading the panorama once the remote tour id is known. Guarded so
@@ -73,12 +115,13 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
   void _retry() {
     final tourId = _tourId;
     if (tourId == null) return;
-    setState(() {
-      _error = null;
-      _loading = true;
-      _controller = null;
-    });
-    _load(tourId);
+    setState(() => _load(tourId));
+  }
+
+  @override
+  void dispose() {
+    _loadTimeout?.cancel();
+    super.dispose();
   }
 
   @override
@@ -171,7 +214,6 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
         AssetStatus.capturing => true,
         AssetStatus.stitching => true,
         AssetStatus.pendingCloudStitch => true,
-        AssetStatus.processing3d => true,
         AssetStatus.ready => false,
         AssetStatus.failed => false,
       };

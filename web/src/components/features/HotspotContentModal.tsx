@@ -303,16 +303,19 @@ function VideoContent({ hotspot }: { hotspot: Hotspot }) {
   if (content?.youtube_id) {
     videoUrl = buildVideoEmbedUrl(
       { youtubeId: content.youtube_id },
-      { autoplay: content.autoplay }
+      { autoplay: content.autoplay ?? undefined }
     );
     isEmbed = true;
   } else if (content?.vimeo_id) {
-    videoUrl = buildVideoEmbedUrl({ vimeoId: content.vimeo_id }, { autoplay: content.autoplay });
+    videoUrl = buildVideoEmbedUrl(
+      { vimeoId: content.vimeo_id },
+      { autoplay: content.autoplay ?? undefined }
+    );
     isEmbed = true;
   } else if (videoUrl) {
     const parsed = parseVideoUrl(videoUrl);
     if (parsed.youtubeId || parsed.vimeoId) {
-      videoUrl = buildVideoEmbedUrl(parsed, { autoplay: content?.autoplay });
+      videoUrl = buildVideoEmbedUrl(parsed, { autoplay: content?.autoplay ?? undefined });
       isEmbed = true;
     }
   }
@@ -339,8 +342,8 @@ function VideoContent({ hotspot }: { hotspot: Hotspot }) {
         ) : (
           <VideoPlayer
             src={videoUrl}
-            poster={content?.poster_url || content?.poster}
-            autoPlay={content?.autoplay}
+            poster={content?.poster_url ?? undefined}
+            autoPlay={content?.autoplay ?? undefined}
           />
         )}
       </div>
@@ -351,8 +354,8 @@ function VideoContent({ hotspot }: { hotspot: Hotspot }) {
 function LinkContent({ hotspot, onClose }: { hotspot: Hotspot; onClose: () => void }) {
   const content = parseLinkHotspotContent(hotspot.content);
 
-  const url = getSafeExternalUrl(content?.url || content?.link_url);
-  const target = content?.target || (content?.link_new_tab === false ? '_self' : '_blank');
+  const url = getSafeExternalUrl(content?.url);
+  const target = content?.target ?? '_blank';
   const label = content?.label || url || 'Open link';
 
   const handleOpenLink = () => {
@@ -387,7 +390,7 @@ function LinkContent({ hotspot, onClose }: { hotspot: Hotspot; onClose: () => vo
 function CustomContent({ hotspot }: { hotspot: Hotspot }) {
   const content = parseCustomHotspotContent(hotspot.content);
 
-  const htmlContent = content?.html || content?.custom_html;
+  const htmlContent = content?.html;
 
   return (
     <div className="space-y-4">
