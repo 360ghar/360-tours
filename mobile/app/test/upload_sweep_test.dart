@@ -133,6 +133,43 @@ void main() {
       expect((await store.readAll('upload_queue')).single['step'], 'failed');
     });
 
+    test('a stitching asset whose job already failed is marked failed', () async {
+      await repo.saveAsset(asset('a1', pano: writeFile('pano.jpg')));
+      await store.upsert('upload_queue', {
+        'id': 'a1',
+        'kind': 'asset',
+        'assetId': 'a1',
+        'step': 'failed',
+        'attempts': 8,
+      });
+      await sweep();
+      expect((await repo.getAsset('a1'))!.status, AssetStatus.failed);
+    });
+
+    test('a room whose job already failed is marked failed with the reason',
+        () async {
+      await repo.saveAsset(asset('a1',
+          status: AssetStatus.ready, tourId: 't', sceneId: 's'));
+      await repo.saveRoom(Room(
+          id: 'r1',
+          assetId: 'a1',
+          name: 'Kitchen',
+          panoramaPath: writeFile('room.jpg'),
+          status: 'uploading'));
+      await store.upsert('upload_queue', {
+        'id': 'room-r1',
+        'kind': 'room',
+        'assetId': 'a1',
+        'roomId': 'r1',
+        'step': 'failed',
+        'lastError': 'The server said no',
+      });
+      await sweep();
+      final room = (await repo.getRooms('a1')).single;
+      expect(room.status, 'failed');
+      expect(room.lastError, 'The server said no');
+    });
+
     test('a ready or failed asset is not touched', () async {
       await repo.saveAsset(asset('r', status: AssetStatus.ready));
       await repo.saveAsset(asset('f', status: AssetStatus.failed));

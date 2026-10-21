@@ -161,6 +161,7 @@ class _Body extends ConsumerWidget {
     // "panorama file missing" and burn all backoff attempts.
     if (asset.status == AssetStatus.failed &&
         asset.framePaths.isNotEmpty &&
+        asset.remoteSceneId == null &&
         !_hasPanoramaFile(asset)) {
       final preferDevice = ref.read(processingPreferenceProvider).value !=
           ProcessingPreference.cloudFirst;
@@ -332,6 +333,7 @@ class _QueueStatusState extends State<_QueueStatus> {
     }
     if (widget.asset.status == AssetStatus.failed) {
       final canRestitch = widget.asset.framePaths.isNotEmpty &&
+          widget.asset.remoteSceneId == null &&
           !_hasPanoramaFile(widget.asset);
       return _Notice(
         icon: Icons.error_outline,

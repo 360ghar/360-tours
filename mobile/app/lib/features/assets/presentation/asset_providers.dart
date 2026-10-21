@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 
-/// Shared asset loaders. Other features may import this file; they must not
-/// import `asset_detail_screen.dart` (cross-feature screen imports are banned).
 /// Restarts [assetProvider] when the signed-in account changes.
 final _authUserProvider = StreamProvider.autoDispose<AppUser?>(
     (ref) => ref.watch(authRepositoryProvider).authStateChanges());
 
+/// Shared asset loaders. Other features may import this file; they must not
+/// import `asset_detail_screen.dart` (cross-feature screen imports are banned).
 final assetProvider =
     FutureProvider.autoDispose.family<ScanAsset?, String>((ref, id) async {
   ref.watch(_authUserProvider);

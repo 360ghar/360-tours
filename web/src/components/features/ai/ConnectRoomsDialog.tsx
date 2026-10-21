@@ -74,6 +74,8 @@ export function ConnectRoomsDialog({
     const message = errorMessage || 'Room linking failed';
     setError(message);
     toastError(message, { title: 'Room linking failed' });
+    // A failed job has also cleared the old AI links: refresh the editor.
+    onApplied();
   };
 
   const handleOpenChange = (next: boolean) => {

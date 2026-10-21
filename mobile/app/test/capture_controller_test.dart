@@ -205,4 +205,41 @@ void main() {
           reason: 'frames referenced by an asset are kept for cloud re-stitch');
     });
   });
+
+  group('sweepOrphanedCaptures and set-aside data', () {
+    test('keeps frames that a quarantined record owns', () async {
+      final dir = await Directory.systemTemp.createTemp('sweep_q');
+      addTearDown(() => dir.delete(recursive: true));
+      final old = Directory('${dir.path}/captures/4444');
+      await old.create(recursive: true);
+      final frame = '${old.path}/frame_0.jpg';
+      await File(frame).writeAsBytes([1]);
+      final store = LocalStore(dir);
+      await store.upsert('assets_quarantine', {
+        'id': 'q1',
+        'record': {
+          'id': 'a9',
+          'framePaths': [frame],
+        },
+      });
+
+      await sweepOrphanedCaptures(store: store, docsDir: dir);
+
+      expect(await old.exists(), isTrue);
+    });
+
+    test('deletes nothing while a corrupt collection file waits for restore',
+        () async {
+      final dir = await Directory.systemTemp.createTemp('sweep_c');
+      addTearDown(() => dir.delete(recursive: true));
+      final old = Directory('${dir.path}/captures/5555');
+      await old.create(recursive: true);
+      await File('${old.path}/frame_0.jpg').writeAsBytes([1]);
+      await File('${dir.path}/assets.json.corrupt-1').writeAsString('{}');
+
+      await sweepOrphanedCaptures(store: LocalStore(dir), docsDir: dir);
+
+      expect(await old.exists(), isTrue);
+    });
+  });
 }

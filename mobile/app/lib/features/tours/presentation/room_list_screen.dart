@@ -284,10 +284,15 @@ class _RoomTile extends ConsumerWidget {
       ));
       return;
     }
-    await repo.retryRoomUpload(assetId, room.id);
+    final queued = await repo.retryRoomUpload(assetId, room.id);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Retrying upload…')),
+        SnackBar(
+          content: Text(queued
+              ? 'Retrying upload…'
+              : 'This room has no stitched photo to upload. Delete it and '
+                  'capture it again.'),
+        ),
       );
     }
   }

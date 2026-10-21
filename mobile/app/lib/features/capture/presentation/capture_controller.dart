@@ -78,14 +78,40 @@ Future<void> sweepOrphanedCaptures({
   final root = docsDir ?? await getApplicationDocumentsDirectory();
   final captures = Directory('${root.path}/captures');
   if (!await captures.exists()) return;
+  // A collection file set aside as corrupt may still hold records that name
+  // these folders, and nothing can read it yet: delete nothing until it is
+  // restored or removed.
+  await for (final e in root.list()) {
+    final name = e.uri.pathSegments.where((s) => s.isNotEmpty).lastOrNull ?? '';
+    if (e is File &&
+        (name.startsWith('assets.json.corrupt-') ||
+            name.startsWith('rooms.json.corrupt-'))) {
+      return;
+    }
+  }
+  // Records the app set aside (unreadable now, restorable later) still own
+  // their files, like live ones.
+  Iterable<Map<String, dynamic>> held(List<Map<String, dynamic>> entries) => [
+        for (final entry in entries)
+          if (entry['record'] is Map)
+            Map<String, dynamic>.from(entry['record'] as Map),
+      ];
+  final assetRecords = [
+    ...await store.readAll('assets'),
+    ...held(await store.readAll('assets_quarantine')),
+  ];
+  final roomRecords = [
+    ...await store.readAll('rooms'),
+    ...held(await store.readAll('rooms_quarantine')),
+  ];
   final referenced = <String>{
-    for (final a in await store.readAll('assets')) ...[
+    for (final a in assetRecords) ...[
       if (a['panoramaPath'] is String) a['panoramaPath'] as String,
       if (a['thumbnailPath'] is String) a['thumbnailPath'] as String,
       for (final f in (a['framePaths'] as List? ?? const []))
         if (f is String) f,
     ],
-    for (final r in await store.readAll('rooms'))
+    for (final r in roomRecords)
       if (r['panoramaPath'] is String) r['panoramaPath'] as String,
   };
   final now = DateTime.now();

@@ -153,17 +153,19 @@ export function SceneAnalysis({
     setSelectedScenes(new Set());
   };
 
+  // A blank suggestion (a malformed result row) must never erase metadata, so
+  // only rows with something to apply count.
+  const updates = analysisResults
+    .filter(a => selectedScenes.has(a.scene_id))
+    .map(a => ({
+      scene_id: a.scene_id,
+      title: applyTitles && a.suggested_title ? a.suggested_title : undefined,
+      description:
+        applyDescriptions && a.suggested_description ? a.suggested_description : undefined,
+    }))
+    .filter(u => u.title !== undefined || u.description !== undefined);
+
   const handleApply = () => {
-    const updates = analysisResults
-      .filter(a => selectedScenes.has(a.scene_id))
-      .map(a => ({
-        scene_id: a.scene_id,
-        // A blank suggestion (a malformed result row) must never erase metadata.
-        title: applyTitles && a.suggested_title ? a.suggested_title : undefined,
-        description:
-          applyDescriptions && a.suggested_description ? a.suggested_description : undefined,
-      }))
-      .filter(u => u.title !== undefined || u.description !== undefined);
 
     onApply(updates);
     onOpenChange(false);
@@ -420,11 +422,11 @@ export function SceneAnalysis({
           </Button>
           <Button
             onClick={handleApply}
-            disabled={selectedScenes.size === 0 || (!applyTitles && !applyDescriptions)}
+            disabled={updates.length === 0}
             isLoading={isLoading}
           >
             <Check className="h-4 w-4" />
-            Apply to {selectedScenes.size} Scene{selectedScenes.size !== 1 ? 's' : ''}
+            Apply to {updates.length} Scene{updates.length !== 1 ? 's' : ''}
           </Button>
         </DialogFooter>
       </DialogContent>

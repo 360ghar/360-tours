@@ -42,11 +42,21 @@ export function SettingsPage() {
 
   // The account's existing domain, so reopening the dialog manages it instead of
   // showing a blank Add Domain form.
-  const { data: domains, refetch: refetchDomains } = useQuery({
+  const {
+    data: domains,
+    isError: isDomainsError,
+    refetch: refetchDomains,
+  } = useQuery({
     queryKey: [QUERY_KEYS.USER, 'custom-domains'],
     queryFn: () => customDomainsApi.listDomains(),
   });
-  const currentDomain = domains?.[0];
+  // The domain the dialog manages; null opens it to add a new one.
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
+  const currentDomain = domains?.find(d => d.id === selectedDomainId);
+  const openDomainDialog = (domainId: string | null) => {
+    setSelectedDomainId(domainId);
+    setDomainSetupOpen(true);
+  };
 
   // Notification settings state. The backend knows four keys (push_notifications,
   // email_notifications, sms_notifications, promotional_emails); marketing consent
@@ -216,7 +226,30 @@ export function SettingsPage() {
                 domain.
               </p>
             )}
-            <Button onClick={() => setDomainSetupOpen(true)}>Set up custom domain</Button>
+            {isDomainsError && (
+              <p className="text-sm text-[var(--color-error-600)]" role="alert">
+                Could not load your domains.{' '}
+                <button type="button" className="underline" onClick={() => void refetchDomains()}>
+                  Try again
+                </button>
+              </p>
+            )}
+            {domains && domains.length > 0 && (
+              <ul className="space-y-2">
+                {domains.map(d => (
+                  <li key={d.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span>
+                      <span className="font-medium text-[var(--color-text-primary)]">{d.domain}</span>{' '}
+                      <span className="text-[var(--color-text-muted)]">{d.verification_status}</span>
+                    </span>
+                    <Button variant="outline" size="sm" onClick={() => openDomainDialog(d.id)}>
+                      Manage
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Button onClick={() => openDomainDialog(null)}>Set up custom domain</Button>
             <CustomDomainSetup
               open={domainSetupOpen}
               onOpenChange={next => {
@@ -228,6 +261,17 @@ export function SettingsPage() {
               verificationStatus={currentDomain?.verification_status}
               sslStatus={currentDomain?.ssl_status}
               verificationToken={currentDomain?.verification_token}
+              onAddDomain={async domain => {
+                const created = await customDomainsApi.createDomain(domain);
+                await refetchDomains();
+                return created;
+              }}
+              onRemoveDomain={async () => {
+                if (!currentDomain) return;
+                await customDomainsApi.deleteDomain(currentDomain.id);
+                setSelectedDomainId(null);
+                await refetchDomains();
+              }}
             />
           </div>
         </CardContent>

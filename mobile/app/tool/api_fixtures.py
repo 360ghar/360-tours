@@ -363,9 +363,10 @@ def fixtures():
             ),
         },
         # The wire values of every enum the app uses (the same source as
-        # lib/core/models/wire_enums.dart), so tests need no access to contract-audit.
+        # lib/core/models/wire_enums.dart), so tests need no access outside the repo.
         "enums": {
-            name: json.loads(gen_enums.ENUMS.read_text())[name] for name in gen_enums.USED
+            name: json.loads(gen_enums.SPEC.read_text())["components"]["schemas"][name]["enum"]
+            for name in gen_enums.USED
         },
         # Request contract: the app must send only keys these schemas declare.
         "request_schemas": {

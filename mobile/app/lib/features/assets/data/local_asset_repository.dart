@@ -227,17 +227,20 @@ class LocalAssetRepository implements AssetRepository {
   /// (the existing tour is reused — the room job never recreates it) and
   /// re-pumps the queue. Safe to call for rooms that are not failed (the
   /// queue upserts the same job id and keeps a single record).
-  Future<void> retryRoomUpload(String assetId, String roomId) async {
+  ///
+  /// Returns false when nothing was queued: a room that failed before it had a
+  /// stitched panorama has nothing to upload, so the caller must tell the user
+  /// to delete it and capture it again.
+  Future<bool> retryRoomUpload(String assetId, String roomId) async {
     final enqueueRoom = _enqueueRoom;
-    if (enqueueRoom == null) return;
+    if (enqueueRoom == null) return false;
     final asset = await getAsset(assetId);
-    if (asset == null) return;
+    if (asset == null) return false;
     final rooms = await getRooms(assetId);
     final room = rooms.where((r) => r.id == roomId).firstOrNull;
-    // A room that failed before it had a stitched panorama has nothing to
-    // upload: enqueueing it can only fail again. It needs a re-capture.
-    if (room == null || room.panoramaPath == null) return;
+    if (room == null || room.panoramaPath == null) return false;
     await enqueueRoom(asset, room);
+    return true;
   }
 
 }
