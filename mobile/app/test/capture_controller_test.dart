@@ -228,6 +228,23 @@ void main() {
       expect(await old.exists(), isTrue);
     });
 
+    test('a malformed quarantined record does not stop the cleanup', () async {
+      final dir = await Directory.systemTemp.createTemp('sweep_m');
+      addTearDown(() => dir.delete(recursive: true));
+      final old = Directory('${dir.path}/captures/6666');
+      await old.create(recursive: true);
+      await File('${old.path}/frame_0.jpg').writeAsBytes([1]);
+      final store = LocalStore(dir);
+      await store.upsert('assets_quarantine', {
+        'id': 'q2',
+        'record': {'id': 'a8', 'framePaths': 'not a list'},
+      });
+
+      await sweepOrphanedCaptures(store: store, docsDir: dir);
+
+      expect(await old.exists(), isFalse);
+    });
+
     test('deletes nothing while a corrupt collection file waits for restore',
         () async {
       final dir = await Directory.systemTemp.createTemp('sweep_c');

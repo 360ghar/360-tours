@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Eye, EyeOff, Bell, Shield, Palette, Trash2, Globe } from 'lucide-react';
@@ -53,7 +53,11 @@ export function SettingsPage() {
   // The domain the dialog manages; null opens it to add a new one.
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
   const currentDomain = domains?.find(d => d.id === selectedDomainId);
+  // A domain added inside the open dialog: the dialog keeps its own state for it,
+  // but a later Remove still has to know which id to delete.
+  const createdDomainIdRef = useRef<string | null>(null);
   const openDomainDialog = (domainId: string | null) => {
+    createdDomainIdRef.current = null;
     setSelectedDomainId(domainId);
     setDomainSetupOpen(true);
   };
@@ -263,12 +267,15 @@ export function SettingsPage() {
               verificationToken={currentDomain?.verification_token}
               onAddDomain={async domain => {
                 const created = await customDomainsApi.createDomain(domain);
+                createdDomainIdRef.current = created.id;
                 await refetchDomains();
                 return created;
               }}
               onRemoveDomain={async () => {
-                if (!currentDomain) return;
-                await customDomainsApi.deleteDomain(currentDomain.id);
+                const id = currentDomain?.id ?? createdDomainIdRef.current;
+                if (!id) return;
+                await customDomainsApi.deleteDomain(id);
+                createdDomainIdRef.current = null;
                 setSelectedDomainId(null);
                 await refetchDomains();
               }}

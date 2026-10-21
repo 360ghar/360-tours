@@ -108,8 +108,11 @@ Future<void> sweepOrphanedCaptures({
     for (final a in assetRecords) ...[
       if (a['panoramaPath'] is String) a['panoramaPath'] as String,
       if (a['thumbnailPath'] is String) a['thumbnailPath'] as String,
-      for (final f in (a['framePaths'] as List? ?? const []))
-        if (f is String) f,
+      // Read defensively: a quarantined record may hold anything, and one bad
+      // record must not stop the cleanup.
+      if (a['framePaths'] case final List frames)
+        for (final f in frames)
+          if (f is String) f,
     ],
     for (final r in roomRecords)
       if (r['panoramaPath'] is String) r['panoramaPath'] as String,
