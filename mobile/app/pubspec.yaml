@@ -45,7 +45,7 @@ dependencies:
   uuid: ^4.6.0
   path_provider: ^2.1.6
   shared_preferences: ^2.5.5
-  image: ^4.9.1
+  image: ^4.12.0
   google_sign_in: ^7.2.0
   sign_in_with_apple: ^8.1.0
   opencv_dart: ^1.4.5
