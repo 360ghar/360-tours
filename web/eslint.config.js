@@ -29,6 +29,10 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-empty-object-type': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
+      // eslint-plugin-react-hooks 7.1 (required by eslint 10) flags these existing
+      // effects. Warn until they are reworked; they are not new bugs.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/immutability': 'warn',
     },
   },
 ])
