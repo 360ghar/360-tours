@@ -14,9 +14,35 @@ vi.mock('@/api', () => ({
   toursApi: {
     getTours: vi.fn(),
   },
+  customDomainsApi: {
+    listDomains: vi.fn(),
+    createDomain: vi.fn(),
+    deleteDomain: vi.fn(),
+    verifyDomain: vi.fn(),
+  },
 }));
 
-import { toursApi, usersApi } from '@/api';
+// The dialog talks to this module directly (the page reaches it through '@/api').
+vi.mock('@/api/customDomains', () => ({
+  customDomainsApi: {
+    verifyDomain: vi.fn().mockResolvedValue({
+      domain: 'tours.example.com',
+      is_verified: false,
+      txt_record_name: '_verify.tours.example.com',
+      txt_record_value: 'tok',
+    }),
+    createDomain: vi.fn(),
+    deleteDomain: vi.fn(),
+  },
+}));
+
+// The confirmation dialog is rendered by the app shell, which is not mounted here.
+vi.mock('@/stores', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/stores')>()),
+  confirm: vi.fn().mockResolvedValue(true),
+}));
+
+import { customDomainsApi, toursApi, usersApi } from '@/api';
 
 const publishedToursResponse: CursorPaginatedResponse<Tour> = {
   items: [
@@ -33,6 +59,7 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(toursApi.getTours).mockResolvedValue(publishedToursResponse);
+    vi.mocked(customDomainsApi.listDomains).mockResolvedValue([]);
   });
 
   it('renders the Custom Domains section with the published-tours count', async () => {
@@ -84,6 +111,32 @@ describe('SettingsPage', () => {
     expect(
       screen.getByText('Connect your own domain to serve tours from your branded URL.')
     ).toBeInTheDocument();
+  });
+
+  it('removes a domain that was added in the same dialog by its created id', async () => {
+    const created = {
+      id: 'dom-1',
+      user_id: 1,
+      domain: 'tours.example.com',
+      verification_status: 'pending',
+      ssl_status: 'pending',
+      verification_token: 'tok',
+      created_at: '2026-10-21T00:00:00Z',
+    } as Awaited<ReturnType<typeof customDomainsApi.createDomain>>;
+    vi.mocked(customDomainsApi.createDomain).mockResolvedValue(created);
+    vi.mocked(customDomainsApi.deleteDomain).mockResolvedValue(undefined);
+    render(<SettingsPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Set up custom domain' }));
+    await userEvent.type(await screen.findByLabelText('Your Domain'), 'tours.example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Add Domain' }));
+    await waitFor(() => expect(customDomainsApi.createDomain).toHaveBeenCalledWith('tours.example.com'));
+
+    const remove = (await screen.findAllByRole('button', { name: 'Remove Domain' }))[0];
+    await waitFor(() => expect(remove).toBeEnabled());
+    await userEvent.click(remove);
+
+    await waitFor(() => expect(customDomainsApi.deleteDomain).toHaveBeenCalledWith('dom-1'));
   });
 
   it('saves the marketing switch as promotional_emails and sends only that key', async () => {
