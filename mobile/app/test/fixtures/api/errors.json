@@ -1,0 +1,29 @@
+{
+  "not_found": {
+    "error": {
+      "code": "NOT_FOUND",
+      "message": "Tour not found"
+    }
+  },
+  "upload_not_in_storage": {
+    "error": {
+      "code": "UPLOAD_NOT_IN_STORAGE",
+      "message": "File not found in storage"
+    }
+  },
+  "validation": {
+    "error": {
+      "code": "VALIDATION_ERROR",
+      "details": {
+        "fields": [
+          {
+            "field": "body.title",
+            "msg": "String should have at most 255 characters",
+            "type": "string_too_long"
+          }
+        ]
+      },
+      "message": "Request validation failed"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Info, Volume2, Play, Link, Code } from 'lucide-react';
+import { ArrowRight, Info, Volume2, Play, Link, Code, Upload } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -25,11 +25,21 @@ import {
 } from '@/components/ui';
 import { HotspotIconPicker, type HotspotIconConfig } from './HotspotIconPicker';
 import { HOTSPOT_ICON_BY_NAME, getHotspotIconForeground } from './hotspotIcons';
+import { VideoUploader } from './VideoUploader';
 import { toursApi } from '@/api';
+import { errorText } from '@/api/errors';
 import { QUERY_KEYS } from '@/constants';
 import { useToast } from '@/hooks/useToast';
+import { useTourEditorStore } from '@/stores';
 import { cn } from '@/utils';
-import { parseVideoUrl } from '@/utils/videoUrl';
+import { getHotspotValidationError } from '@/utils/hotspotValidation';
+import {
+  buildHotspotContent,
+  buildHotspotCreate,
+  buildHotspotUpdate,
+  type HotspotFormValues,
+} from '@/utils/hotspotPayload';
+import { API_LIMITS } from '@/lib/api/limits.gen';
 import {
   parseAudioHotspotContent,
   parseCustomHotspotContent,
@@ -37,7 +47,7 @@ import {
   parseLinkHotspotContent,
   parseVideoHotspotContent,
 } from '@/types/hotspotContent';
-import type { Hotspot, HotspotContent, HotspotType, HotspotUpdateInput, Scene } from '@/types';
+import type { Hotspot, HotspotType, HotspotUpdateInput, Scene } from '@/types';
 
 interface HotspotEditorModalProps {
   open: boolean;
@@ -103,77 +113,6 @@ function getDefaultIconConfig(type: HotspotType): HotspotIconConfig {
   };
 }
 
-function isHttpUrl(value: string): boolean {
-  if (!value.trim()) return false;
-
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-function isSafeLinkUrl(value: string): boolean {
-  if (!value.trim()) return false;
-
-  try {
-    const url = new URL(value);
-    return ['http:', 'https:', 'mailto:', 'tel:'].includes(url.protocol);
-  } catch {
-    return false;
-  }
-}
-
-function getValidationError({
-  type,
-  targetSceneId,
-  hasAvailableTargetScene,
-  title,
-  description,
-  audioUrl,
-  videoUrl,
-  linkUrl,
-  customHtml,
-}: {
-  type: HotspotType;
-  targetSceneId: string;
-  hasAvailableTargetScene: boolean;
-  title: string;
-  description: string;
-  audioUrl: string;
-  videoUrl: string;
-  linkUrl: string;
-  customHtml: string;
-}): string | null {
-  if (type === 'navigation') {
-    if (!hasAvailableTargetScene) return 'Add another scene before creating a navigation hotspot.';
-    if (!targetSceneId) return 'Select a target scene for this navigation hotspot.';
-  }
-
-  if (type === 'info' && !title.trim() && !description.trim()) {
-    return 'Add a title or description for this info hotspot.';
-  }
-
-  if (type === 'audio' && !isHttpUrl(audioUrl)) {
-    return 'Enter a valid audio URL that starts with http:// or https://.';
-  }
-
-  if (type === 'video' && !isHttpUrl(videoUrl)) {
-    return 'Enter a valid video URL that starts with http:// or https://.';
-  }
-
-  if (type === 'link' && !isSafeLinkUrl(linkUrl)) {
-    return 'Enter a valid link URL using http, https, mailto, or tel.';
-  }
-
-  if (type === 'custom' && !customHtml.trim()) {
-    return 'Add custom HTML before saving this hotspot.';
-  }
-
-  return null;
-}
-
 // parseVideoUrl imported from shared utility — see @/utils/videoUrl
 
 export function HotspotEditorModal({
@@ -234,13 +173,16 @@ function HotspotEditorModalForm({
   const [targetSceneId, setTargetSceneId] = useState(
     isEdit && hotspot ? hotspot.target_scene_id || '' : ''
   );
-  const [position, setPosition] = useState(isEdit && hotspot ? hotspot.position : initialPosition);
+  // `position` is null when the stored position failed validation: start from the click.
+  const [position, setPosition] = useState(
+    isEdit && hotspot?.position ? hotspot.position : initialPosition
+  );
   const [iconConfig, setIconConfig] = useState<HotspotIconConfig>(() => {
     if (isEdit && hotspot) {
       return {
         iconName: hotspot.icon_name || TYPE_ICON_NAME[hotspot.type] || 'info',
         iconColor: hotspot.icon_color || '#FF5733',
-        iconSize: hotspot.icon_size || 32,
+        iconSize: hotspot.icon_size,
       };
     }
     return getDefaultIconConfig(initialType);
@@ -263,31 +205,34 @@ function HotspotEditorModalForm({
   const [linkUrl, setLinkUrl] = useState(() => {
     if (!isEdit || !hotspot) return '';
     const content = parseLinkHotspotContent(hotspot.content);
-    return content?.url || content?.link_url || '';
+    return content?.url || '';
   });
   const [linkNewTab, setLinkNewTab] = useState(() => {
     if (!isEdit || !hotspot) return true;
     const content = parseLinkHotspotContent(hotspot.content);
-    if (content?.target) return content.target === '_blank';
-    return content?.link_new_tab !== false;
+    return content?.target ? content.target === '_blank' : true;
   });
+  const [videoUploaderOpen, setVideoUploaderOpen] = useState(false);
   const [customHtml, setCustomHtml] = useState(() => {
     if (!isEdit || !hotspot) return '';
     const content = parseCustomHotspotContent(hotspot.content);
-    return content?.html || content?.custom_html || '';
+    return content?.html || '';
   });
 
   // Create mutation
   const createMutation = useMutation({
     mutationFn: (data: Parameters<typeof toursApi.createHotspot>[1]) =>
       toursApi.createHotspot(sceneId, data),
-    onSuccess: () => {
+    onSuccess: createdHotspot => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES] });
+      // Select the new hotspot so the user sees it highlighted in the viewer
+      // and in the HotspotPanel immediately after saving.
+      useTourEditorStore.getState().selectHotspot(createdHotspot.id);
       toast('success', 'The hotspot has been added to the scene.', { title: 'Hotspot created' });
       onOpenChange(false);
     },
-    onError: () => {
-      toast('error', 'Something went wrong. Please try again.', {
+    onError: error => {
+      toast('error', errorText(error, 'Something went wrong. Please try again.'), {
         title: 'Failed to create hotspot',
       });
     },
@@ -297,13 +242,15 @@ function HotspotEditorModalForm({
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: HotspotUpdateInput }) =>
       toursApi.updateHotspot(id, data),
-    onSuccess: () => {
+    onSuccess: (updatedHotspot, variables) => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES] });
+      // Keep the edited hotspot selected after saving.
+      useTourEditorStore.getState().selectHotspot(variables.id || updatedHotspot.id);
       toast('success', 'Your changes have been saved.', { title: 'Hotspot updated' });
       onOpenChange(false);
     },
-    onError: () => {
-      toast('error', 'Something went wrong. Please try again.', {
+    onError: error => {
+      toast('error', errorText(error, 'Something went wrong. Please try again.'), {
         title: 'Failed to update hotspot',
       });
     },
@@ -320,7 +267,7 @@ function HotspotEditorModalForm({
   };
 
   const availableTargetScenes = scenes.filter(s => s.id !== sceneId);
-  const validationError = getValidationError({
+  const validationError = getHotspotValidationError({
     type,
     targetSceneId,
     hasAvailableTargetScene: availableTargetScenes.length > 0,
@@ -336,60 +283,31 @@ function HotspotEditorModalForm({
   const handleSubmit = () => {
     if (!canSave || createMutation.isPending || updateMutation.isPending) return;
 
-    // Build content object based on type
-    const content: HotspotContent = {};
-    if (type === 'info' && description) {
-      content.kind = 'info';
-      content.text = description;
-    }
-    if (type === 'audio' && audioUrl) {
-      content.kind = 'audio';
-      content.audio_url = audioUrl;
-    }
-    if (type === 'video' && videoUrl) {
-      content.kind = 'video';
-      const parsed = parseVideoUrl(videoUrl);
-      if (parsed.youtubeId) {
-        content.youtube_id = parsed.youtubeId;
-      } else if (parsed.vimeoId) {
-        content.vimeo_id = parsed.vimeoId;
-      } else {
-        content.video_url = parsed.url || videoUrl;
-      }
-    }
-    if (type === 'link' && linkUrl) {
-      content.kind = 'link';
-      content.url = linkUrl;
-      content.target = linkNewTab ? '_blank' : '_self';
-    }
-    if (type === 'custom' && customHtml) {
-      content.kind = 'custom';
-      content.html = customHtml;
-    }
-
-    // Clamp yaw/pitch to their valid ranges so manual entry can't push the
-    // hotspot outside the panorama's coordinate space.
-    const clampedPosition = {
-      yaw: Math.max(-180, Math.min(180, Number(position.yaw) || 0)),
-      pitch: Math.max(-90, Math.min(90, Number(position.pitch) || 0)),
-    };
-
-    const data: HotspotUpdateInput = {
+    const values: HotspotFormValues = {
       type,
-      position: clampedPosition,
-      title: title || undefined,
-      description: description || undefined,
-      target_scene_id: type === 'navigation' ? targetSceneId || undefined : undefined,
-      icon_name: iconConfig.iconName,
-      icon_color: iconConfig.iconColor,
-      icon_size: iconConfig.iconSize,
-      content: Object.keys(content).length > 0 ? content : undefined,
+      title,
+      description,
+      targetSceneId,
+      position,
+      iconName: iconConfig.iconName,
+      iconColor: iconConfig.iconColor,
+      iconSize: iconConfig.iconSize,
+      audioUrl,
+      videoUrl,
+      linkUrl,
+      linkNewTab,
+      customHtml,
     };
 
     if (mode === 'create') {
-      createMutation.mutate(data as Parameters<typeof toursApi.createHotspot>[1]);
+      const content = buildHotspotContent(values, null);
+      createMutation.mutate(buildHotspotCreate(values, content));
     } else if (hotspot) {
-      updateMutation.mutate({ id: hotspot.id, data });
+      // Keys the form does not edit (autoplay, poster_url, label, ...) are carried
+      // over only while the type is unchanged.
+      const stored = hotspot.type === type ? hotspot.content : null;
+      const content = buildHotspotContent(values, stored);
+      updateMutation.mutate({ id: hotspot.id, data: buildHotspotUpdate(values, content) });
     }
   };
 
@@ -468,6 +386,7 @@ function HotspotEditorModalForm({
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 placeholder="Enter hotspot title"
+                maxLength={API_LIMITS.hotspot.titleMax}
               />
             </div>
 
@@ -503,7 +422,11 @@ function HotspotEditorModalForm({
                   onChange={e => setDescription(e.target.value)}
                   placeholder="Enter information to display"
                   rows={4}
+                  maxLength={API_LIMITS.hotspot.descriptionMax}
                 />
+                <p className="text-right text-xs text-[var(--color-text-muted)]">
+                  {description.length}/{API_LIMITS.hotspot.descriptionMax}
+                </p>
               </div>
             )}
 
@@ -517,6 +440,7 @@ function HotspotEditorModalForm({
                   value={audioUrl}
                   onChange={e => setAudioUrl(e.target.value)}
                   placeholder="https://example.com/audio.mp3"
+                  maxLength={API_LIMITS.hotspot.mediaUrlMax}
                 />
                 <p className="text-xs text-[var(--color-text-muted)]">
                   Enter a direct link to an MP3 or other audio file.
@@ -534,10 +458,27 @@ function HotspotEditorModalForm({
                   value={videoUrl}
                   onChange={e => setVideoUrl(e.target.value)}
                   placeholder="https://youtube.com/watch?v=... or video file URL"
+                  maxLength={API_LIMITS.hotspot.mediaUrlMax}
                 />
                 <p className="text-xs text-[var(--color-text-muted)]">
                   Supports YouTube, Vimeo, or direct video file links.
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setVideoUploaderOpen(true)}
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload video
+                </Button>
+                <VideoUploader
+                  open={videoUploaderOpen}
+                  onOpenChange={setVideoUploaderOpen}
+                  multiple={false}
+                  onUploadComplete={({ url }) => setVideoUrl(url)}
+                />
               </div>
             )}
 
@@ -552,6 +493,7 @@ function HotspotEditorModalForm({
                     value={linkUrl}
                     onChange={e => setLinkUrl(e.target.value)}
                     placeholder="https://example.com"
+                    maxLength={API_LIMITS.hotspot.linkUrlMax}
                   />
                 </div>
                 <div className="flex items-center justify-between">
@@ -571,18 +513,13 @@ function HotspotEditorModalForm({
                   onChange={e => setCustomHtml(e.target.value)}
                   placeholder="<div>Your custom content...</div>"
                   rows={6}
+                  maxLength={API_LIMITS.hotspot.customHtmlMax}
                   className="font-mono text-sm"
                 />
                 <p className="text-xs text-[var(--color-text-muted)]">
                   Enter custom HTML that will be rendered when the hotspot is clicked.
                 </p>
               </div>
-            )}
-
-            {validationError && (
-              <p id="hotspot-validation-error" className="text-sm text-[var(--color-error-600)]">
-                {validationError}
-              </p>
             )}
           </TabsContent>
 
@@ -674,6 +611,18 @@ function HotspotEditorModalForm({
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Persistent validation reason: shown regardless of the active tab so
+          Save is never disabled without a visible explanation. */}
+      {validationError && (
+        <p
+          id="hotspot-validation-error"
+          role="alert"
+          className="px-6 pb-2 text-sm text-[var(--color-error-600)]"
+        >
+          {validationError}
+        </p>
+      )}
 
       <DialogFooter className="border-t border-[var(--color-border)] pt-4">
         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>

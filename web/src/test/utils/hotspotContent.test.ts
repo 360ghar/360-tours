@@ -4,8 +4,8 @@ import {
   parseCustomHotspotContent,
   parseInfoHotspotContent,
   parseLinkHotspotContent,
-  parseNavigationHotspotContent,
   parseVideoHotspotContent,
+  parseVideoHotspotFields,
 } from '@/types/hotspotContent';
 
 describe('hotspot content parsers', () => {
@@ -38,13 +38,15 @@ describe('hotspot content parsers', () => {
     });
   });
 
-  it('parses video content from raw urls, provider ids, and poster fields', () => {
+  it('parses video content: provider ids, raw url, poster_url, and drops the poster alias', () => {
     expect(
-      parseVideoHotspotContent({
+      parseVideoHotspotFields({
         video_url: 'https://example.com/video.mp4',
         youtube_id: 'abc123',
         vimeo_id: '987',
         autoplay: false,
+        muted: true,
+        loop: 'yes',
         poster: '/poster.jpg',
         poster_url: '/poster-2.jpg',
       })
@@ -53,46 +55,53 @@ describe('hotspot content parsers', () => {
       youtube_id: 'abc123',
       vimeo_id: '987',
       autoplay: false,
-      poster: '/poster.jpg',
+      muted: true,
       poster_url: '/poster-2.jpg',
     });
   });
 
-  it('parses link content while rejecting invalid targets', () => {
+  it('rejects video content without exactly one source', () => {
+    expect(parseVideoHotspotContent({ poster_url: '/p.jpg' })).toBeNull();
+    expect(parseVideoHotspotContent({ video_url: 'https://e.com/v.mp4', youtube_id: 'abc' })).toBeNull();
+    expect(parseVideoHotspotContent({ youtube_id: 'abc' })).toEqual({ youtube_id: 'abc' });
+  });
+
+  it('parses link content with the url and target keys only', () => {
     expect(
       parseLinkHotspotContent({
         url: 'https://example.com',
         link_url: 'https://fallback.example.com',
-        target: '_top',
+        target: '_self',
         link_new_tab: false,
         label: 'Open listing',
       })
     ).toEqual({
       url: 'https://example.com',
-      link_url: 'https://fallback.example.com',
-      link_new_tab: false,
+      target: '_self',
       label: 'Open listing',
     });
   });
 
-  it('parses custom html aliases', () => {
-    expect(parseCustomHotspotContent({ html: '<p>Hi</p>', custom_html: '<b>Legacy</b>' })).toEqual({
-      html: '<p>Hi</p>',
-      custom_html: '<b>Legacy</b>',
+  it('drops a link target outside _blank and _self, and rejects content without a url', () => {
+    expect(parseLinkHotspotContent({ url: 'https://example.com', target: '_top' })).toEqual({
+      url: 'https://example.com',
     });
+    expect(parseLinkHotspotContent({ link_url: 'https://example.com' })).toBeNull();
   });
 
-  it('parses navigation content without requiring backend kind metadata', () => {
+  it('parses custom content with html, component_key and props, and drops aliases', () => {
     expect(
-      parseNavigationHotspotContent({
-        label: 'Kitchen',
-        scene_id: 'scene-1',
-        target_scene_id: 'scene-2',
+      parseCustomHotspotContent({
+        html: '<p>Hi</p>',
+        custom_html: '<b>Legacy</b>',
+        component_key: 'floor-switcher',
+        props: { floor: 2 },
       })
     ).toEqual({
-      label: 'Kitchen',
-      scene_id: 'scene-1',
-      target_scene_id: 'scene-2',
+      html: '<p>Hi</p>',
+      component_key: 'floor-switcher',
+      props: { floor: 2 },
     });
+    expect(parseCustomHotspotContent({ custom_html: '<b>Legacy</b>' })).toBeNull();
   });
 });

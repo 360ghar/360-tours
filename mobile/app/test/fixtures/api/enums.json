@@ -1,0 +1,58 @@
+{
+  "AIJobStatus": [
+    "pending",
+    "processing",
+    "completed",
+    "failed",
+    "cancelled"
+  ],
+  "AIJobType": [
+    "analyze_scene",
+    "analyze_scenes",
+    "generate_description",
+    "generate_descriptions",
+    "generate_tour",
+    "optimize_tour",
+    "spatial_connect",
+    "analyze_floor_plan",
+    "suggest_hotspots",
+    "suggest_tour_hotspots",
+    "panorama_stitch"
+  ],
+  "HotspotType": [
+    "navigation",
+    "info",
+    "audio",
+    "video",
+    "link",
+    "custom"
+  ],
+  "StorageFolderType": [
+    "avatar",
+    "property_image",
+    "property_video",
+    "property_document",
+    "tour_thumbnail",
+    "tour_original",
+    "scene",
+    "document_lease",
+    "document_maintenance",
+    "document_general",
+    "generic"
+  ],
+  "TourStatus": [
+    "draft",
+    "published",
+    "archived"
+  ],
+  "TourVisibility": [
+    "private",
+    "unlisted",
+    "public"
+  ],
+  "UploadStatus": [
+    "pending",
+    "complete",
+    "failed"
+  ]
+}

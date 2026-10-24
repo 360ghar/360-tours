@@ -5,13 +5,10 @@
  *
  * Never store the raw identifier — only a masked hint suitable for display.
  */
+import type { components } from '@/lib/api/schema.gen';
 
-export type AuthMethod =
-  | 'google'
-  | 'email_password'
-  | 'phone_password'
-  | 'phone_otp'
-  | 'email_otp';
+/** The backend AuthMethod enum (`POST /auth/last-method`). */
+export type AuthMethod = components['schemas']['AuthMethod'];
 
 export interface LastAuthMethod {
   method: AuthMethod;
@@ -25,6 +22,7 @@ const STORAGE_KEY = '360ghar:lastAuthMethod';
 
 const VALID_METHODS: ReadonlySet<AuthMethod> = new Set<AuthMethod>([
   'google',
+  'apple',
   'email_password',
   'phone_password',
   'phone_otp',

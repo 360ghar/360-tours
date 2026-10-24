@@ -5,18 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'core/api/api_client.dart';
 import 'core/api/backend_api.dart';
+import 'core/deep_links.dart';
 import 'core/env.dart';
 import 'core/models/models.dart';
 import 'core/providers.dart';
 import 'core/router.dart';
+import 'core/storage/account_caches.dart';
 import 'core/storage/local_store.dart';
 import 'core/theme/app_theme.dart';
 import 'core/upload/upload_queue.dart';
+import 'core/upload/upload_sweep.dart';
 import 'features/assets/data/local_asset_repository.dart';
 import 'features/auth/data/supabase_auth_repository.dart';
+import 'features/capture/presentation/capture_controller.dart' show sweepOrphanedCaptures;
 import 'features/share/data/api_share_repository.dart';
 
 Future<void> main() async {
@@ -41,6 +46,7 @@ Future<void> main() async {
 
   // Wire the object graph once, here — everything else uses providers.
   late final LocalAssetRepository assets;
+  late final SupabaseAuthRepository auth;
   final queue = UploadQueue(
     store,
     api,
@@ -48,24 +54,51 @@ Future<void> main() async {
     saveAsset: (a) => assets.saveAsset(a),
     getRooms: (assetId) => assets.getRooms(assetId),
     saveRoom: (r) => assets.saveRoom(r),
+    // The queue runs only the signed-in account's jobs.
+    currentOwnerId: () => auth.currentUser?.id,
   );
   assets = LocalAssetRepository(
     store,
     enqueue: queue.enqueue,
+    enqueueRoom: queue.enqueueRoom,
     remoteDelete: (a) => api.deleteTour(a.remoteTourId!),
-    remoteDeleteScene: (sceneId) async {
-      try {
-        await api.deleteScene(sceneId);
-      } catch (_) {
-        // best-effort
-      }
-    },
+    remoteDeleteScene: api.deleteScene,
   );
-  final auth = SupabaseAuthRepository(Supabase.instance.client, api);
+  auth = SupabaseAuthRepository(Supabase.instance.client, api);
   final share = ApiShareRepository(api, saveAsset: assets.saveAsset);
 
-  // Resume any interrupted uploads from the last session.
-  queue.pump();
+  // Resume interrupted uploads and reconcile what a kill left half-done: now,
+  // and again each time a different account signs in. A queue with nobody
+  // signed in runs nothing, so the sweep waits for a user.
+  void resumeUploads(AppUser? user) {
+    if (user == null) return;
+    unawaited(sweepStuckUploads(
+      store: store,
+      ownerId: user.id,
+      queue: queue,
+      api: api,
+    ));
+  }
+
+  // Reclaim capture folders of sessions that were never saved.
+  unawaited(sweepOrphanedCaptures(store: store));
+
+  resumeUploads(auth.currentUser);
+  var sweptFor = auth.currentUser?.id;
+  auth.authStateChanges().listen((user) {
+    if (user == null) {
+      // Signed out (or the session could not be refreshed): drop the cached
+      // server data of the account that was here.
+      unawaited(purgeAccountCaches());
+      return;
+    }
+    if (user.id != sweptFor) {
+      sweptFor = user.id;
+      resumeUploads(user);
+    } else {
+      unawaited(queue.pump()); // the same account signed in again
+    }
+  });
 
   runApp(ProviderScope(
     overrides: [
@@ -88,37 +121,84 @@ class ToursApp extends ConsumerStatefulWidget {
 
 class _ToursAppState extends ConsumerState<ToursApp> {
   StreamSubscription<Uri>? _links;
+  StreamSubscription<AppUser?>? _authSub;
+
+  /// Cold-start / signed-out deep link waiting for a session.
+  Uri? _pendingDeepLink;
 
   @override
   void initState() {
     super.initState();
     // Deep links: share links (/v/{code}) and viewer links (/view/{id})
-    // open the matching local asset when this device owns it.
-    _links = AppLinks().uriLinkStream.listen(_onLink);
+    // open the matching local asset when this device owns it. Legacy
+    // /view3d/{id} links fall back to the same panorama viewer.
+    final appLinks = AppLinks();
+    _links = appLinks.uriLinkStream.listen(_onLink);
+    // Cold start: the URI that launched the app only arrives via
+    // getInitialLink, never through the stream — without this the link that
+    // opened the app is silently dropped.
+    appLinks.getInitialLink().then((uri) {
+      if (uri != null) _onLink(uri);
+    }).catchError((Object _) {
+      // No initial URI (normal cold start) — nothing to do.
+    });
+    // A deep link that arrives while signed out is stashed and re-runs once
+    // a session exists (the router parks on /splash until then).
+    _authSub =
+        ref.read(authRepositoryProvider).authStateChanges().listen((user) {
+      final pending = _pendingDeepLink;
+      if (user != null && pending != null) {
+        _pendingDeepLink = null;
+        _onLink(pending);
+      }
+    });
   }
 
   Future<void> _onLink(Uri uri) async {
-    final segments = uri.pathSegments;
-    if (segments.length < 2) return;
-    final assets = ref.read(assetRepositoryProvider);
-    final user = ref.read(authRepositoryProvider).currentUser;
-    if (user == null) return;
-    final all = await assets.watchAssets(user.id).first;
+    final intent = parseDeepLink(uri);
+    if (intent == null) return;
+    final auth = ref.read(authRepositoryProvider);
+    final user = auth.currentUser;
+    if (user == null) {
+      // Signed out: keep the link and navigate after sign-in.
+      _pendingDeepLink = uri;
+      return;
+    }
+    final all = await ref
+        .read(assetRepositoryProvider)
+        .watchAssets(user.id)
+        .first;
+    if (!mounted) return;
 
     ScanAsset? match;
-    if (segments[0] == 'v') {
-      match = all.where((a) => a.shareCode == segments[1]).firstOrNull;
-    } else if (segments[0] == 'view' || segments[0] == 'view3d') {
-      match = all.where((a) => a.remoteTourId == segments[1]).firstOrNull;
+    if (intent.toViewer) {
+      match = all.where((a) => a.remoteTourId == intent.ref).firstOrNull;
+    } else {
+      match = all.where((a) => a.shareCode == intent.ref).firstOrNull;
     }
-    if (match != null && mounted) {
-      ref.read(routerProvider).go('/asset/${match.id}');
+    if (match == null) {
+      // Not owned by this device: open the web viewer in the system browser
+      // instead of silently ignoring the link.
+      try {
+        await launchUrl(deepLinkBrowserUrl(uri),
+            mode: LaunchMode.externalApplication);
+      } catch (e) {
+        debugPrint('Could not open deep link in browser: $e');
+      }
+      return;
+    }
+    final router = ref.read(routerProvider);
+    if (intent.toViewer) {
+      router.go('/asset/${match.id}/view');
+    } else {
+      router.go('/asset/${match.id}');
     }
   }
 
   @override
   void dispose() {
     _links?.cancel();
+    _authSub?.cancel();
     super.dispose();
   }
 
