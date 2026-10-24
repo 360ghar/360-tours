@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   generateIframeCode,
@@ -106,6 +108,23 @@ describe('embedCode utilities', () => {
       expect(code).toContain('border-radius: 8px');
     });
 
+    it('default output is byte-identical to the cross-app golden fixture', () => {
+      // Cross-app contract (root AGENTS.md): mobile/app/test/embed_code_test.dart
+      // asserts the same golden file against the Dart generator, so a change on
+      // either side fails its own suite until both match.
+      // Read via process.cwd() (web/ in vitest and CI) — Vite rewrites
+      // `new URL(..., import.meta.url)` to a dev-server URL under jsdom and
+      // denies `?raw` imports of files outside the project root, so a plain
+      // fs read of the repo-root golden is the CI-robust option.
+      const golden = readFileSync(
+        resolve(process.cwd(), '../docs/embed-parity-golden.html'),
+        'utf8'
+      )
+        .replaceAll('__VIEWER_BASE__', BASE_ORIGIN)
+        .replaceAll('__TOUR_ID__', TEST_TOUR_ID);
+      expect(generateIframeCode(TEST_TOUR_ID)).toBe(golden);
+    });
+
     it('applies custom width and height as numbers', () => {
       const code = generateIframeCode(TEST_TOUR_ID, { width: 800, height: 600 });
       expect(code).toContain('width="800px"');
@@ -202,6 +221,20 @@ describe('embedCode utilities', () => {
       expect(code).toContain('"vr": false');
       expect(code).toContain('"branding": false');
     });
+
+    // The config JSON is interpolated into an inline <script>. An id (or start
+    // scene id) containing `</script>` would otherwise close the block early
+    // and inject markup into the customer's page.
+    it('never lets the config JSON close the inline script block', () => {
+      const code = generateJsCode('abc</script><img src=x onerror=alert(1)>', {
+        startSceneId: '</script>',
+      });
+
+      expect(code).not.toContain('</script><img');
+      expect(code).toContain('\\u003c/script>');
+      // Exactly one real closing tag for each of the two script elements.
+      expect(code.match(/<\/script>/g)).toHaveLength(2);
+    });
   });
 
   // ─── generateResponsiveCode ─────────────────────────────────────────
@@ -263,6 +296,13 @@ describe('embedCode utilities', () => {
       const parsed = new URL(url);
       const redirect = parsed.searchParams.get('redirect');
       expect(redirect).toContain('rotate=true');
+    });
+
+    it('encodes the tour id in both the share and viewer URLs', () => {
+      const url = generateShareUrl('a b/../c?d=1');
+      expect(url).toContain('/share/tours/a%20b%2F..%2Fc%3Fd%3D1');
+      const redirect = new URL(url).searchParams.get('redirect');
+      expect(redirect).toBe(`${BASE_ORIGIN}/view/a%20b%2F..%2Fc%3Fd%3D1`);
     });
 
     it('uses /view/ path (not /embed/) for the viewer URL', () => {
@@ -390,7 +430,10 @@ describe('embedCode utilities', () => {
 
     it('handles tour ID with special characters', () => {
       const url = generateEmbedUrl('tour/with spaces&special=chars');
-      expect(url).toContain('/embed/tour/with spaces&special=chars');
+      // The id is URL-encoded so it can never inject path/query content into
+      // the embed URL (regression: previously interpolated raw).
+      expect(url).toContain('/embed/tour%2Fwith%20spaces%26special%3Dchars');
+      expect(url).not.toContain('/embed/tour/with spaces&special=chars');
     });
 
     it('generates iframe code with only width override', () => {

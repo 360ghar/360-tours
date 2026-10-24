@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatDateOnly,
   formatDateOnlyForApi,
   getLocalDateKey,
   localInputToServerTimestamp,
@@ -47,5 +48,16 @@ describe('datetime helpers', () => {
 
   it('builds stable local date keys for grouping', () => {
     expect(getLocalDateKey('2026-03-12T10:15:30Z')).toMatch(/2026-03-\d{2}/);
+  });
+});
+
+describe('formatDateOnly', () => {
+  it('shows the calendar day of a date-only value in every time zone', () => {
+    expect(formatDateOnly('2026-10-01', 'MMM d')).toBe('Oct 1');
+    expect(formatDateOnly('2026-10-01', 'EEEE, MMMM d, yyyy')).toBe('Thursday, October 1, 2026');
+  });
+
+  it('returns a value that is not a date-only string unchanged', () => {
+    expect(formatDateOnly('not a date')).toBe('not a date');
   });
 });

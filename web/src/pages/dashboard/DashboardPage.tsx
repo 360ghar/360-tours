@@ -14,7 +14,12 @@ import {
 import { toursApi } from '@/api';
 import { useAuthStore } from '@/stores';
 import { ROUTES, QUERY_KEYS } from '@/constants';
-import { formatBytes, formatCompactNumber, formatRelativeTime } from '@/utils/format';
+import {
+  formatBytes,
+  formatCompactNumber,
+  formatRelativeTime,
+  parseServerTimestamp,
+} from '@/utils/format';
 import {
   LineChart,
   Line,
@@ -24,6 +29,11 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+
+/** `recent_views[].timestamp` is the UTC start of a 5-minute bucket; show it in local time. */
+function formatBucketTime(value: string): string {
+  return parseServerTimestamp(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 export function DashboardPage() {
   const { user } = useAuthStore();
@@ -196,7 +206,8 @@ export function DashboardPage() {
                   <LineChart data={viewsData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis
-                      dataKey="date"
+                      dataKey="timestamp"
+                      tickFormatter={formatBucketTime}
                       stroke="var(--color-text-muted)"
                       fontSize={12}
                       tickLine={false}
@@ -214,13 +225,7 @@ export function DashboardPage() {
                         border: '1px solid var(--color-border)',
                         borderRadius: '8px',
                       }}
-                      labelFormatter={value =>
-                        new Date(value).toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                        })
-                      }
+                      labelFormatter={value => formatBucketTime(String(value))}
                     />
                     <Line
                       type="monotone"

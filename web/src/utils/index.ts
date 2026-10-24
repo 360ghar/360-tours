@@ -1,4 +1,12 @@
 export { cn } from './cn';
+export { escapeHtml } from './escapeHtml';
+export { openHotspotLink, watermarkPositionClass } from './publicViewer';
+export { isPlayablePublicTour } from './publicTour';
+export {
+  getHotspotValidationError,
+  isHttpUrl,
+  isSafeLinkUrl,
+} from './hotspotValidation';
 export * from './coordinates';
 export * from './format';
 export * from './url';
