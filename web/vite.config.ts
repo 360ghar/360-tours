@@ -11,7 +11,6 @@ const chunkGroups: Record<string, string[]> = {
   tanstack: ['@tanstack/react-query', '@tanstack/react-query-devtools'],
   charts: ['recharts'],
   forms: ['@hookform/resolvers', 'react-hook-form', 'zod'],
-  'three-vendor': ['three'],
   viewer: [
     '@photo-sphere-viewer/core',
     '@photo-sphere-viewer/gyroscope-plugin',

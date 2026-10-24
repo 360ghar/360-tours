@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/api/api_exception.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
@@ -53,7 +54,7 @@ class ShareScreen extends ConsumerWidget {
       appBar: AppBar(title: Text('Share “${asset.name}”')),
       body: link.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => Center(
+        error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
             child: Column(
@@ -68,10 +69,10 @@ class ShareScreen extends ConsumerWidget {
                       fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Check your connection and try again.',
+                Text(
+                  describeError(e),
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.inkFaint),
+                  style: const TextStyle(color: AppColors.inkFaint),
                 ),
                 const SizedBox(height: 18),
                 FilledButton.icon(

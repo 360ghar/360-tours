@@ -12,7 +12,6 @@ import '../features/capture/presentation/capture_screen.dart';
 import '../features/lidar/presentation/lidar_scan_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/share/presentation/share_screen.dart';
-import '../features/threed/presentation/generate_3d_screen.dart';
 import '../features/tours/presentation/floor_plan_screen.dart';
 import '../features/tours/presentation/hotspot_editor_screen.dart';
 import '../features/tours/presentation/room_list_screen.dart';
@@ -106,7 +105,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'view',
             builder: (_, state) => ViewerScreen(
               assetId: state.pathParameters['id']!,
-              mode: state.uri.queryParameters['mode'] ?? 'pano',
             ),
           ),
           GoRoute(
@@ -120,16 +118,12 @@ final routerProvider = Provider<GoRouter>((ref) {
                 RoomListScreen(assetId: state.pathParameters['id']!),
           ),
           GoRoute(
-            path: 'rooms/:roomId/hotspots',
+            // The path carries the backend scene id (the main scene's too).
+            path: 'scenes/:sceneId/hotspots',
             builder: (_, state) => HotspotEditorScreen(
               assetId: state.pathParameters['id']!,
-              roomId: state.pathParameters['roomId']!,
+              sceneId: state.pathParameters['sceneId']!,
             ),
-          ),
-          GoRoute(
-            path: 'generate3d',
-            builder: (_, state) =>
-                Generate3dScreen(assetId: state.pathParameters['id']!),
           ),
           GoRoute(
             path: 'floorplan',

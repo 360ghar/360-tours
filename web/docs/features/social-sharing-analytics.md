@@ -11,7 +11,7 @@ Related docs:
 - Provide a share link for published public/unlisted tours.
 - Copy link, native share sheet, and social platform sharing.
 - QR code generation and download.
-- Record a `tour_share` analytics event.
+- Record a `share` analytics event.
 
 ## Share link requirements
 
@@ -50,7 +50,7 @@ The ShareModal component provides multiple sharing methods:
 
 When the user triggers a share action, emit:
 
-- `event_type`: `tour_share`
+- `event_type`: `share`
 - `event_data.platform`: `copy_link | native_share | whatsapp | facebook | twitter | linkedin | email | other`
 
 ## Post-MVP scope

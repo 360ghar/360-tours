@@ -1,11 +1,23 @@
+/**
+ * Readers for hotspot `content`. The backend stores one shape per hotspot type
+ * and returns exactly those keys (no aliases):
+ *
+ * - navigation: `{}` (the label is the hotspot `title`)
+ * - info: `text`, `html`, `image_url`
+ * - audio: `audio_url`, `autoplay`, `loop`
+ * - video: one of `youtube_id`, `vimeo_id`, `video_url`; `poster_url`, `autoplay`, `muted`, `loop`
+ * - link: `url`, `target`, `label`
+ * - custom: `html`, `component_key`, `props`
+ *
+ * Each reader takes `unknown` and keeps the keys it recognizes, so a stored
+ * row that does not fit its type reads as null instead of breaking the viewer.
+ */
 import type {
   AudioHotspotContent,
   CustomHotspotContent,
-  Hotspot,
   InfoHotspotContent,
   LinkHotspotContent,
   LinkHotspotTarget,
-  NavigationHotspotContent,
   VideoHotspotContent,
 } from './index';
 
@@ -34,26 +46,7 @@ function hasParsedFields(value: UnknownObject): boolean {
   return Object.keys(value).length > 0;
 }
 
-export function parseNavigationHotspotContent(
-  content: Hotspot<'navigation'>['content'] | unknown
-): NavigationHotspotContent | null {
-  if (!isObject(content)) return null;
-
-  const parsed: NavigationHotspotContent = {};
-  const label = readString(content, 'label');
-  const sceneId = readString(content, 'scene_id');
-  const targetSceneId = readString(content, 'target_scene_id');
-
-  if (label !== undefined) parsed.label = label;
-  if (sceneId !== undefined) parsed.scene_id = sceneId;
-  if (targetSceneId !== undefined) parsed.target_scene_id = targetSceneId;
-
-  return hasParsedFields(parsed) ? parsed : null;
-}
-
-export function parseInfoHotspotContent(
-  content: Hotspot<'info'>['content'] | unknown
-): InfoHotspotContent | null {
+export function parseInfoHotspotContent(content: unknown): InfoHotspotContent | null {
   if (!isObject(content)) return null;
 
   const parsed: InfoHotspotContent = {};
@@ -68,78 +61,86 @@ export function parseInfoHotspotContent(
   return hasParsedFields(parsed) ? parsed : null;
 }
 
-export function parseAudioHotspotContent(
-  content: Hotspot<'audio'>['content'] | unknown
-): AudioHotspotContent | null {
+export function parseAudioHotspotContent(content: unknown): AudioHotspotContent | null {
   if (!isObject(content)) return null;
 
-  const parsed: AudioHotspotContent = {};
   const audioUrl = readString(content, 'audio_url');
+  if (audioUrl === undefined) return null;
+
+  const parsed: AudioHotspotContent = { audio_url: audioUrl };
   const autoplay = readBoolean(content, 'autoplay');
+  const loop = readBoolean(content, 'loop');
 
-  if (audioUrl !== undefined) parsed.audio_url = audioUrl;
   if (autoplay !== undefined) parsed.autoplay = autoplay;
+  if (loop !== undefined) parsed.loop = loop;
 
-  return hasParsedFields(parsed) ? parsed : null;
+  return parsed;
 }
 
-export function parseVideoHotspotContent(
-  content: Hotspot<'video'>['content'] | unknown
-): VideoHotspotContent | null {
+/**
+ * Every readable video field, with no rule on the source count. For carrying
+ * stored settings (poster, autoplay) into a new payload; display uses
+ * {@link parseVideoHotspotContent}.
+ */
+export function parseVideoHotspotFields(content: unknown): VideoHotspotContent | null {
   if (!isObject(content)) return null;
 
   const parsed: VideoHotspotContent = {};
   const videoUrl = readString(content, 'video_url');
   const youtubeId = readString(content, 'youtube_id');
   const vimeoId = readString(content, 'vimeo_id');
-  const autoplay = readBoolean(content, 'autoplay');
-  const poster = readString(content, 'poster');
   const posterUrl = readString(content, 'poster_url');
+  const autoplay = readBoolean(content, 'autoplay');
+  const muted = readBoolean(content, 'muted');
+  const loop = readBoolean(content, 'loop');
 
   if (videoUrl !== undefined) parsed.video_url = videoUrl;
   if (youtubeId !== undefined) parsed.youtube_id = youtubeId;
   if (vimeoId !== undefined) parsed.vimeo_id = vimeoId;
-  if (autoplay !== undefined) parsed.autoplay = autoplay;
-  if (poster !== undefined) parsed.poster = poster;
   if (posterUrl !== undefined) parsed.poster_url = posterUrl;
+  if (autoplay !== undefined) parsed.autoplay = autoplay;
+  if (muted !== undefined) parsed.muted = muted;
+  if (loop !== undefined) parsed.loop = loop;
 
   return hasParsedFields(parsed) ? parsed : null;
 }
 
-export function parseLinkHotspotContent(
-  content: Hotspot<'link'>['content'] | unknown
-): LinkHotspotContent | null {
+/** Video content as the viewer shows it: the contract needs exactly one source. */
+export function parseVideoHotspotContent(content: unknown): VideoHotspotContent | null {
+  const parsed = parseVideoHotspotFields(content);
+  if (!parsed) return null;
+  const sourceCount = [parsed.video_url, parsed.youtube_id, parsed.vimeo_id].filter(
+    v => v !== undefined
+  ).length;
+  return sourceCount === 1 ? parsed : null;
+}
+
+export function parseLinkHotspotContent(content: unknown): LinkHotspotContent | null {
   if (!isObject(content)) return null;
 
-  const parsed: LinkHotspotContent = {};
   const url = readString(content, 'url');
-  const linkUrl = readString(content, 'link_url');
+  if (url === undefined) return null;
+
+  const parsed: LinkHotspotContent = { url };
   const target = readLinkTarget(content);
-  const linkNewTab = readBoolean(content, 'link_new_tab');
   const label = readString(content, 'label');
 
-  if (url !== undefined) parsed.url = url;
-  if (linkUrl !== undefined) parsed.link_url = linkUrl;
   if (target !== undefined) parsed.target = target;
-  if (linkNewTab !== undefined) parsed.link_new_tab = linkNewTab;
   if (label !== undefined) parsed.label = label;
 
-  return hasParsedFields(parsed) ? parsed : null;
+  return parsed;
 }
 
-export function parseCustomHotspotContent(
-  content: Hotspot<'custom'>['content'] | unknown
-): CustomHotspotContent | null {
+export function parseCustomHotspotContent(content: unknown): CustomHotspotContent | null {
   if (!isObject(content)) return null;
 
   const parsed: CustomHotspotContent = {};
   const html = readString(content, 'html');
-  const customHtml = readString(content, 'custom_html');
-  const component = readString(content, 'component');
+  const componentKey = readString(content, 'component_key');
 
   if (html !== undefined) parsed.html = html;
-  if (customHtml !== undefined) parsed.custom_html = customHtml;
-  if (component !== undefined) parsed.component = component;
+  if (componentKey !== undefined) parsed.component_key = componentKey;
+  if (isObject(content.props)) parsed.props = content.props;
 
   return hasParsedFields(parsed) ? parsed : null;
 }
