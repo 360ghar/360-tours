@@ -20,6 +20,7 @@ import { formatRelativeTime } from '@/utils/format';
 import type { MediaFile } from '@/types';
 import { cn } from '@/utils';
 import { useToast } from '@/hooks/useToast';
+import { useDebounce } from '@/hooks';
 import { confirm } from '@/stores';
 
 type ViewMode = 'grid' | 'list';
@@ -29,6 +30,9 @@ export function MediaLibraryPage() {
   const { toast } = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState('');
+  // Debounce so typing a search term issues one request, not one per keystroke
+  // (same pattern as ToursPage).
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [mimeFilter, setMimeFilter] = useState<string>('all');
   const [cursor, setCursor] = useState<string | null>(null);
   // Stack of cursors used for previous pages, enabling a "Prev" navigation.
@@ -59,13 +63,13 @@ export function MediaLibraryPage() {
   };
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: [QUERY_KEYS.MEDIA_FILES, { cursor, search: searchQuery, mime: mimeFilter }],
+    queryKey: [QUERY_KEYS.MEDIA_FILES, { cursor, search: debouncedSearch, mime: mimeFilter }],
     queryFn: () =>
       uploadApi.getMediaFiles({
         cursor,
         limit: 24,
         mime_type: mimeFilter !== 'all' ? mimeFilter : undefined,
-        search: searchQuery || undefined,
+        search: debouncedSearch || undefined,
       }),
   });
 

@@ -30,13 +30,14 @@ Use AI to reduce manual tour-authoring work while keeping human review in contro
 
 AI job progress is tracked via WebSocket:
 
-- **Endpoint**: `ws(s)://<host>/ws/jobs/{job_id}?token=<access_token>`
+- **Endpoint**: `ws(s)://<host>/ws/jobs/{job_id}`. The token is not in the URL: the first frame the client sends is `{"type":"auth","token":"<access_token>"}`.
 - **Hook**: `useAIJobWebSocket(jobId, options)` in `src/hooks/useAIJobWebSocket.ts`
-- **Messages**: `job_update` (status + progress), `connected`, `heartbeat`, `error`
-- **Features**: Auto-reconnect on disconnect (3-second delay), keep-alive ping every 25 seconds
+- **Messages**: `job_update` (`{job_id, data: {status, progress, error_message, result}}`), `connected`, `heartbeat`. Frame types are in `src/types/realtime.ts`.
+- **Statuses**: `pending`, `processing`, `completed`, `failed`, `cancelled`. The last three are final.
+- **Features**: Auto-reconnect on disconnect (3-second delay), except after close code 4001 (bad token) or 4004 (unknown job). Keep-alive ping every 25 seconds
 - **Callbacks**: `onUpdate`, `onComplete`, `onError`
 
-A separate `useUserNotifications` hook connects to `ws(s)://<host>/ws/user?token=...` for user-level notifications.
+A separate `useUserNotifications` hook connects to `ws(s)://<host>/ws/user` (same first-frame auth) for user-level notifications: `{type: "notification", data: {id, type, title, message, created_at}}`.
 
 ## Guardrails
 

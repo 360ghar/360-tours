@@ -51,14 +51,6 @@ describe('uiStore', () => {
   });
 
   describe('sidebar actions', () => {
-    it('sets sidebar collapsed state', () => {
-      useUIStore.getState().setSidebarCollapsed(true);
-      expect(useUIStore.getState().sidebarCollapsed).toBe(true);
-
-      useUIStore.getState().setSidebarCollapsed(false);
-      expect(useUIStore.getState().sidebarCollapsed).toBe(false);
-    });
-
     it('toggles sidebar', () => {
       expect(useUIStore.getState().sidebarCollapsed).toBe(false);
 

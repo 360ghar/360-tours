@@ -15,12 +15,10 @@ import {
   Crosshair,
   Palette,
   Map,
+  Route,
   Sparkles,
   Wand2,
   Lightbulb,
-  Film,
-  Users,
-  Activity,
   X,
 } from 'lucide-react';
 import {
@@ -44,49 +42,38 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetDescription,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Avatar,
-  AvatarImage,
-  AvatarFallback,
-  Separator,
 } from '@/components/ui';
 import { toursApi } from '@/api';
+import { errorText } from '@/api/errors';
 import { QUERY_KEYS, ROUTES } from '@/constants';
-import { useTourEditorStore, useCollaborationStore, confirm } from '@/stores';
+import { useTourEditorStore } from '@/stores';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { ScenePanel } from '@/components/features/ScenePanel';
 import { HotspotPanel } from '@/components/features/HotspotPanel';
 import { HotspotEditorModal } from '@/components/features/HotspotEditorModal';
-import { TourSettingsPanel } from '@/components/features/TourSettingsPanel';
+import { TourSettingsPanel, type TourSettingsSave } from '@/components/features/TourSettingsPanel';
 import { BulkUploader } from '@/components/features/BulkUploader';
 import { BrandingPanel } from '@/components/features/BrandingPanel';
 import { FloorPlanEditor } from '@/components/features/FloorPlanEditor';
+import { ShareModal } from '@/components/features/ShareModal';
 import {
   SceneAnalysis,
   DescriptionGenerator,
   HotspotSuggestions,
-  ReelGeneratorModal,
+  ConnectRoomsDialog,
 } from '@/components/features/ai';
-import { ActivityFeed } from '@/components/features';
 import { cn } from '@/utils';
 import { useEffect, useState, useCallback } from 'react';
 import { useToast } from '@/hooks/useToast';
 import { useIsMobile } from '@/hooks';
-import { DEFAULT_TOUR_SETTINGS } from '@/constants';
-import type { BrandingSettings, FloorPlan, HotspotCreateInput, Tour } from '@/types';
+import { syncFloorPlans, type FloorPlanDraft } from '@/lib/floorPlanSync';
+import { API_LIMITS } from '@/lib/api/limits.gen';
+import type { BrandingSettings, Hotspot, HotspotCreateInput, TourUpdateInput } from '@/types';
 import type { HotspotSuggestion } from '@/api';
 
 export function TourEditPage() {
@@ -106,28 +93,18 @@ export function TourEditPage() {
   const [showSceneAnalysis, setShowSceneAnalysis] = useState(false);
   const [showDescriptions, setShowDescriptions] = useState(false);
   const [showHotspotSuggestions, setShowHotspotSuggestions] = useState(false);
-  const [showReelGenerator, setShowReelGenerator] = useState(false);
+  const [showConnectRooms, setShowConnectRooms] = useState(false);
   const [isPlacingHotspot, setIsPlacingHotspot] = useState(false);
   const [placementPosition, setPlacementPosition] = useState<{ yaw: number; pitch: number } | null>(
     null
   );
   const [showHotspotEditor, setShowHotspotEditor] = useState(false);
-  const [showActivityFeed, setShowActivityFeed] = useState(false);
-  const [showCollaborators, setShowCollaborators] = useState(false);
+  const [editingHotspot, setEditingHotspot] = useState<Hotspot | null>(null);
+  const [showShare, setShowShare] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'scenes' | 'hotspots' | null>(null);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'editor' | 'viewer'>('viewer');
-  const [isInviting, setIsInviting] = useState(false);
-
-  const {
-    collaborators,
-    isLoadingCollaborators,
-    collaboratorsError,
-    fetchActivities,
-    fetchCollaborators,
-    inviteCollaborator,
-    removeCollaborator,
-  } = useCollaborationStore();
+  // True while any settings-style save (settings dialog, branding, floor
+  // plans) is in flight; surfaces a saving state on the panel's Save button.
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const {
     currentTour,
@@ -138,16 +115,13 @@ export function TourEditPage() {
     setCurrentTour,
     setCurrentScene,
     selectHotspot,
+    toggleHotspotPanel,
     updateTourDraft,
     markAsSaved,
-    undo,
-    redo,
     reset,
   } = useTourEditorStore();
   const currentScene = currentTour?.scenes?.find(s => s.id === currentSceneId);
   const sceneCount = currentTour?.scenes?.length ?? 0;
-  const inviteEmailTrimmed = inviteEmail.trim();
-  const isInviteEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmailTrimmed);
 
   // Block navigation if there are unsaved changes
   const blocker = useBlocker(
@@ -174,10 +148,17 @@ export function TourEditPage() {
     enabled: !!id,
   });
 
-  // Fetch scenes
+  // Fetch scenes (every page of the cursor list)
   const { data: scenes } = useQuery({
     queryKey: [QUERY_KEYS.SCENES, id],
     queryFn: () => toursApi.getScenes(id!),
+    enabled: !!id,
+  });
+
+  // Floor plans come from the floor_plans table only (every page of the cursor list)
+  const { data: floorPlans } = useQuery({
+    queryKey: [QUERY_KEYS.FLOOR_PLANS, id],
+    queryFn: () => toursApi.getFloorPlans(id!),
     enabled: !!id,
   });
 
@@ -185,10 +166,11 @@ export function TourEditPage() {
   const updateMutation = useMutation({
     mutationFn: () => {
       if (!currentTour) throw new Error('No tour to update');
+      // `status` is not a writable field: publish and unpublish change it.
+      // A cleared description goes as an explicit null (an omitted key keeps the old text).
       return toursApi.updateTour(currentTour.id, {
         title: currentTour.title,
-        description: currentTour.description ?? undefined,
-        status: currentTour.status,
+        description: currentTour.description ?? null,
         visibility: currentTour.visibility,
         settings: currentTour.settings ?? undefined,
       });
@@ -198,15 +180,17 @@ export function TourEditPage() {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
       toast('success', 'Your changes have been saved successfully.', { title: 'Tour saved' });
     },
-    onError: () => {
-      toast('error', 'Something went wrong. Please try again.', { title: 'Failed to save' });
+    onError: error => {
+      toast('error', errorText(error, 'Something went wrong. Please try again.'), {
+        title: 'Failed to save',
+      });
     },
   });
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Save and undo/redo should work even inside input fields.
+      // Save should work even inside input fields.
       // Ctrl/Cmd + S to save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
@@ -214,19 +198,6 @@ export function TourEditPage() {
           updateMutation.mutate();
         }
         return;
-      }
-      // Undo / redo (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z)
-      if (e.ctrlKey || e.metaKey) {
-        const k = e.key.toLowerCase();
-        if (k === 'z' && !e.shiftKey) {
-          e.preventDefault();
-          undo();
-          return;
-        } else if (k === 'y' || (k === 'z' && e.shiftKey)) {
-          e.preventDefault();
-          redo();
-          return;
-        }
       }
 
       // Ignore remaining shortcuts if user is typing in an input field
@@ -253,25 +224,29 @@ export function TourEditPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    currentSceneId,
-    hasUnsavedChanges,
-    isPlacingHotspot,
-    setCurrentScene,
-    updateMutation,
-    undo,
-    redo,
-  ]);
+  }, [currentSceneId, hasUnsavedChanges, isPlacingHotspot, setCurrentScene, updateMutation]);
 
   // Publish tour mutation
   const publishMutation = useMutation({
     mutationFn: () => toursApi.publishTour(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+      // Sync the toolbar immediately instead of waiting for the refetch:
+      // publish only succeeds from a clean state (blocked while unsaved
+      // changes exist), so patch the store's status without dirtying the
+      // draft, then mark as saved so the badge stays accurate.
+      const editorState = useTourEditorStore.getState();
+      if (editorState.currentTour?.id === id && !editorState.hasUnsavedChanges) {
+        editorState.updateTourDraft({ status: 'published' });
+        editorState.markAsSaved();
+      }
       toast('success', 'Your tour is now live and can be shared.', { title: 'Tour published' });
+      setShowShare(true);
     },
-    onError: () => {
-      toast('error', 'Something went wrong. Please try again.', { title: 'Failed to publish' });
+    onError: error => {
+      toast('error', errorText(error, 'Something went wrong. Please try again.'), {
+        title: 'Failed to publish',
+      });
     },
   });
 
@@ -280,7 +255,19 @@ export function TourEditPage() {
     mutationFn: () => toursApi.unpublishTour(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+      // Same immediate toolbar sync as publish; skipped when the user has
+      // local draft edits so the save flow stays authoritative.
+      const editorState = useTourEditorStore.getState();
+      if (editorState.currentTour?.id === id && !editorState.hasUnsavedChanges) {
+        editorState.updateTourDraft({ status: 'draft' });
+        editorState.markAsSaved();
+      }
       toast('success', 'Your tour has been set to draft.', { title: 'Tour unpublished' });
+    },
+    onError: error => {
+      toast('error', errorText(error, 'Something went wrong. Please try again.'), {
+        title: 'Failed to unpublish',
+      });
     },
   });
 
@@ -292,6 +279,11 @@ export function TourEditPage() {
       toast('success', 'A copy of your tour has been created.', { title: 'Tour duplicated' });
       navigate(`${ROUTES.TOURS}/${duplicatedTour.id}/edit`);
     },
+    onError: error => {
+      toast('error', errorText(error, 'Could not duplicate the tour. Please try again.'), {
+        title: 'Duplicate failed',
+      });
+    },
   });
 
   // Delete tour mutation
@@ -302,53 +294,71 @@ export function TourEditPage() {
       toast('success', 'Your tour has been permanently deleted.', { title: 'Tour deleted' });
       navigate(ROUTES.TOURS);
     },
-    onError: () => {
-      toast('error', 'Could not delete the tour. Please try again.', { title: 'Delete failed' });
+    onError: error => {
+      toast('error', errorText(error, 'Could not delete the tour. Please try again.'), {
+        title: 'Delete failed',
+      });
     },
   });
 
-  // Handle settings save
-  const handleSettingsSave = useCallback(
-    (updates: Partial<Tour>) => {
+  // Persist tour fields (PATCH) and mirror the server's answer into the editor
+  // store. The server deep-merges `settings` (an omitted key keeps its stored
+  // value, a null key is removed), so its response is the truth for the store.
+  // Throws on failure and leaves the store untouched: the caller keeps its
+  // dialog open so the user can retry.
+  const persistTourFields = useCallback(
+    async (patch: TourUpdateInput) => {
       if (!currentTour) return;
-
-      // Track the draft as an unsaved change so the editor's unsaved-changes
-      // guard (navigation blocker + beforeunload) stays accurate.
-      updateTourDraft(updates);
-
-      // Save to server - handle null values for description
-      const updatePayload = {
-        ...updates,
-        description: updates.description ?? undefined,
-      };
-
-      toursApi
-        .updateTour(currentTour.id, updatePayload as Parameters<typeof toursApi.updateTour>[1])
-        .then(() => {
-          markAsSaved();
-          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
-          toast('success', 'Tour settings have been updated.', { title: 'Settings saved' });
-          setShowSettings(false);
-        })
-        .catch(() => {
-          // Leave hasUnsavedChanges true so the user can retry.
-          toast('error', 'Something went wrong. Please try again.', {
-            title: 'Failed to save settings',
-          });
+      setIsSavingSettings(true);
+      try {
+        const saved = await toursApi.updateTour(currentTour.id, patch);
+        updateTourDraft({
+          title: saved.title,
+          description: saved.description,
+          visibility: saved.visibility,
+          settings: saved.settings,
         });
+        markAsSaved();
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+      } finally {
+        setIsSavingSettings(false);
+      }
     },
-    [currentTour, id, queryClient, updateTourDraft, markAsSaved, toast]
+    [currentTour, id, queryClient, updateTourDraft, markAsSaved]
   );
 
-  // Handle preview
+  // Handle settings save
+  const handleSettingsSave = useCallback(
+    async (save: TourSettingsSave) => {
+      try {
+        await persistTourFields(save);
+        toast('success', 'Tour settings have been updated.', { title: 'Settings saved' });
+        setShowSettings(false);
+      } catch (error) {
+        toast(
+          'error',
+          error instanceof Error ? error.message : 'Something went wrong. Please try again.',
+          {
+            title: 'Failed to save settings',
+          }
+        );
+      }
+    },
+    [persistTourFields, toast]
+  );
+
+  // Owner preview uses the authenticated tour view so drafts still play.
+  // `/view/:id` is public-only and rejects unpublished tours.
   const handlePreview = useCallback(() => {
-    window.open(`/view/${id}`, '_blank');
+    if (!id) return;
+    window.open(`/tours/${id}`, '_blank');
   }, [id]);
 
   // Handle position click for hotspot placement
   const handlePositionClick = useCallback(
     (position: { yaw: number; pitch: number }) => {
       if (isPlacingHotspot && currentSceneId) {
+        setEditingHotspot(null);
         setPlacementPosition(position);
         setShowHotspotEditor(true);
         setIsPlacingHotspot(false);
@@ -357,11 +367,25 @@ export function TourEditPage() {
     [isPlacingHotspot, currentSceneId]
   );
 
+  const handleEditorHotspotClick = useCallback(
+    (hotspot: Hotspot) => {
+      selectHotspot(hotspot.id);
+      if (!useTourEditorStore.getState().showHotspotPanel) {
+        useTourEditorStore.getState().toggleHotspotPanel();
+      }
+      setPlacementPosition(null);
+      setEditingHotspot(hotspot);
+      setShowHotspotEditor(true);
+    },
+    [selectHotspot]
+  );
+
   // Handle hotspot editor close
   const handleHotspotEditorClose = useCallback((open: boolean) => {
     setShowHotspotEditor(open);
     if (!open) {
       setPlacementPosition(null);
+      setEditingHotspot(null);
     }
   }, []);
 
@@ -373,163 +397,231 @@ export function TourEditPage() {
         // Refresh scenes to update hotspot position in UI
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
         toast('success', 'Position updated successfully.', { title: 'Hotspot moved' });
-      } catch {
-        toast('error', 'Could not update hotspot position.', { title: 'Failed to move hotspot' });
+      } catch (error) {
+        toast('error', errorText(error, 'Could not update hotspot position.'), {
+          title: 'Failed to move hotspot',
+        });
       }
     },
     [id, queryClient, toast]
-  );
-
-  const saveTourSettings = useCallback(
-    async (settings: Tour['settings'], successTitle: string, successMessage: string) => {
-      if (!currentTour || !settings) return;
-
-      updateTourDraft({ settings });
-
-      await toursApi.updateTour(currentTour.id, { settings });
-      markAsSaved();
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
-      toast('success', successMessage, { title: successTitle });
-    },
-    [currentTour, id, queryClient, updateTourDraft, markAsSaved, toast]
   );
 
   const handleBrandingSave = useCallback(
     (branding: BrandingSettings) => {
-      const settings = {
-        ...DEFAULT_TOUR_SETTINGS,
-        ...(currentTour?.settings ?? {}),
-        branding: {
-          ...DEFAULT_TOUR_SETTINGS.branding,
-          ...branding,
-        },
-      };
-
-      saveTourSettings(settings, 'Branding saved', 'Branding has been applied to this tour.').catch(
-        () => {
-          toast('error', 'Could not save branding. Please try again.', {
-            title: 'Failed to save branding',
-          });
-        }
-      );
+      persistTourFields({ settings: { branding } })
+        .then(() => {
+          toast('success', 'Branding has been applied to this tour.', { title: 'Branding saved' });
+        })
+        .catch(error => {
+          toast(
+            'error',
+            error instanceof Error ? error.message : 'Could not save branding. Please try again.',
+            { title: 'Failed to save branding' }
+          );
+        });
     },
-    [currentTour?.settings, saveTourSettings, toast]
+    [persistTourFields, toast]
   );
 
+  // Floor plans are rows of the floor_plans table: write them through the
+  // floor-plan routes, never through `settings`.
   const handleFloorPlansSave = useCallback(
-    async (floorPlans: FloorPlan[]) => {
-      const settings = {
-        ...DEFAULT_TOUR_SETTINGS,
-        ...(currentTour?.settings ?? {}),
-        floor_plans: floorPlans,
-      };
-
+    async (drafts: FloorPlanDraft[]) => {
+      if (!id) return;
+      setIsSavingSettings(true);
       try {
-        await saveTourSettings(
-          settings,
-          'Floor plans saved',
-          'Floor plan navigation has been updated.'
-        );
+        await syncFloorPlans(id, floorPlans ?? [], drafts);
+        toast('success', 'Floor plan navigation has been updated.', { title: 'Floor plans saved' });
       } catch (error) {
-        toast('error', 'Could not save floor plans. Please try again.', {
-          title: 'Failed to save floor plans',
-        });
+        toast(
+          'error',
+          error instanceof Error ? error.message : 'Could not save floor plans. Please try again.',
+          { title: 'Failed to save floor plans' }
+        );
         throw error;
+      } finally {
+        setIsSavingSettings(false);
+        // Show what the server stored, including any partial result.
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.FLOOR_PLANS, id] });
+        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
       }
     },
-    [currentTour?.settings, saveTourSettings, toast]
+    [id, floorPlans, queryClient, toast]
   );
 
   const handleApplySceneAnalysis = useCallback(
-    (updates: Array<{ scene_id: string; title?: string; description?: string }>) => {
-      Promise.all(
+    async (updates: Array<{ scene_id: string; title?: string; description?: string }>) => {
+      if (updates.length === 0) return;
+
+      const results = await Promise.allSettled(
         updates.map(update =>
           toursApi.updateScene(update.scene_id, {
-            title: update.title,
-            description: update.description,
+            title: update.title?.slice(0, API_LIMITS.scene.titleMax),
+            description: update.description?.slice(0, API_LIMITS.scene.descriptionMax),
           })
         )
-      )
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-          toast('success', `${updates.length} scene${updates.length === 1 ? '' : 's'} updated.`, {
-            title: 'AI suggestions applied',
-          });
-        })
-        .catch(() => {
-          toast('error', 'Could not apply AI scene suggestions.', {
-            title: 'Failed to update scenes',
-          });
+      );
+
+      // Always refresh the scenes query so the successful updates are
+      // reflected in the UI even when some updates failed.
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+
+      if (failed === 0) {
+        toast('success', `${updates.length} scene${updates.length === 1 ? '' : 's'} updated.`, {
+          title: 'AI suggestions applied',
         });
+      } else if (succeeded === 0) {
+        toast('error', 'Could not apply AI scene suggestions.', {
+          title: 'Failed to update scenes',
+        });
+      } else {
+        toast('warning', `${succeeded} of ${updates.length} scenes updated, ${failed} failed.`, {
+          title: 'Partially applied',
+        });
+      }
     },
     [id, queryClient, toast]
   );
 
+  // Draws a plan from the tour's analyzed rooms and doorway links. The server
+  // owns the layout, so refetch rather than guessing at the new row.
+  const handleGenerateFloorPlan = useCallback(async () => {
+    if (!id) return;
+    try {
+      await toursApi.generateFloorPlan(id);
+      await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.FLOOR_PLANS, id] });
+      toast('success', 'An estimated floor plan was added. Move the markers to fine-tune it.', {
+        title: 'Floor plan generated',
+      });
+    } catch (error) {
+      toast('error', errorText(error, 'Could not generate a floor plan. Please try again.'), {
+        title: 'Generation failed',
+      });
+    }
+  }, [id, queryClient, toast]);
+  // AI doorway linking rewrites the tour's navigation hotspots, which the
+  // editor reads through the scenes query, so refresh that and the tour itself.
+  const handleRoomsConnected = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+    queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOUR, id] });
+  }, [id, queryClient]);
+
   const handleApplyDescriptions = useCallback(
-    (descriptions: Record<string, string>) => {
+    async (descriptions: Record<string, string>) => {
       const entries = Object.entries(descriptions);
-      Promise.all(
-        entries.map(([sceneId, description]) => toursApi.updateScene(sceneId, { description }))
-      )
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-          toast(
-            'success',
-            `${entries.length} description${entries.length === 1 ? '' : 's'} applied.`,
-            {
-              title: 'Descriptions updated',
-            }
-          );
-        })
-        .catch(() => {
-          toast('error', 'Could not apply AI descriptions.', {
-            title: 'Failed to update descriptions',
-          });
+      if (entries.length === 0) return;
+
+      const results = await Promise.allSettled(
+        entries.map(([sceneId, description]) =>
+          toursApi.updateScene(sceneId, {
+            description: description.slice(0, API_LIMITS.scene.descriptionMax),
+          })
+        )
+      );
+
+      // Always refresh the scenes query so successful descriptions persist in
+      // the UI even when some updates failed.
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+
+      if (failed === 0) {
+        toast(
+          'success',
+          `${entries.length} description${entries.length === 1 ? '' : 's'} applied.`,
+          {
+            title: 'Descriptions updated',
+          }
+        );
+      } else if (succeeded === 0) {
+        toast('error', 'Could not apply AI descriptions.', {
+          title: 'Failed to update descriptions',
         });
+      } else {
+        toast(
+          'warning',
+          `${succeeded} of ${entries.length} descriptions applied, ${failed} failed.`,
+          {
+            title: 'Partially applied',
+          }
+        );
+      }
     },
     [id, queryClient, toast]
   );
 
   const handleApplyHotspotSuggestions = useCallback(
-    (suggestions: HotspotSuggestion[]) => {
-      if (!currentScene) return;
+    async (sceneId: string, suggestions: HotspotSuggestion[]) => {
+      if (!sceneId) return;
+      if (suggestions.length === 0) return;
 
-      Promise.all(
-        suggestions.map(suggestion => {
+      // The server only returns valid suggestions; this guard keeps one stale or
+      // malformed row (a target scene deleted since, a position out of range) from
+      // failing the whole apply.
+      const sceneIds = new Set((currentTour?.scenes ?? []).map(scene => scene.id));
+      const applicable = suggestions.filter(
+        suggestion =>
+          suggestion.type !== 'navigation' ||
+          (!!suggestion.target_scene_id &&
+            suggestion.target_scene_id !== sceneId &&
+            sceneIds.has(suggestion.target_scene_id))
+      );
+
+      const results = await Promise.allSettled(
+        applicable.map(suggestion => {
+          const title = suggestion.suggested_title?.slice(0, API_LIMITS.hotspot.titleMax);
+          const text = suggestion.reasoning.slice(0, API_LIMITS.hotspot.descriptionMax);
           const payload: HotspotCreateInput = {
             type: suggestion.type,
-            position: suggestion.position,
-            target_scene_id: suggestion.target_scene_id ?? null,
-            title: suggestion.suggested_title ?? null,
+            position: {
+              yaw: Math.max(-180, Math.min(180, suggestion.position.yaw)),
+              pitch: Math.max(-90, Math.min(90, suggestion.position.pitch)),
+            },
+            ...(suggestion.type === 'navigation' && suggestion.target_scene_id
+              ? { target_scene_id: suggestion.target_scene_id }
+              : {}),
+            ...(title ? { title } : {}),
             icon_name: suggestion.type === 'navigation' ? 'arrow-right' : 'info',
             icon_color: suggestion.type === 'navigation' ? '#FF5733' : '#10b981',
             icon_size: 32,
-            content:
-              suggestion.type === 'navigation'
-                ? { kind: 'navigation', label: suggestion.suggested_title }
-                : { kind: 'info', text: suggestion.reasoning },
+            // Navigation content is empty (its label is the title). Info content holds the text.
+            ...(suggestion.type === 'info' && text ? { content: { text } } : {}),
           };
 
-          return toursApi.createHotspot(currentScene.id, payload);
+          return toursApi.createHotspot(sceneId, payload);
         })
-      )
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
-          toast(
-            'success',
-            `${suggestions.length} hotspot${suggestions.length === 1 ? '' : 's'} added.`,
-            {
-              title: 'AI hotspots applied',
-            }
-          );
-        })
-        .catch(() => {
-          toast('error', 'Could not add AI hotspot suggestions.', {
-            title: 'Failed to add hotspots',
-          });
+      );
+
+      // Always refresh the scenes query so successfully added hotspots appear
+      // in the viewer and panels even when some suggestions failed.
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, id] });
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+
+      if (failed === 0) {
+        toast(
+          'success',
+          `${applicable.length} hotspot${applicable.length === 1 ? '' : 's'} added.`,
+          {
+            title: 'AI hotspots applied',
+          }
+        );
+      } else if (succeeded === 0) {
+        toast('error', 'Could not add AI hotspot suggestions.', {
+          title: 'Failed to add hotspots',
         });
+      } else {
+        toast('warning', `${succeeded} of ${applicable.length} hotspots added, ${failed} failed.`, {
+          title: 'Partially applied',
+        });
+      }
     },
-    [currentScene, id, queryClient, toast]
+    [id, currentTour?.scenes, queryClient, toast]
   );
 
   // Reset the editor only when leaving this editor instance or switching tour IDs.
@@ -547,6 +639,47 @@ export function TourEditPage() {
       }
     }
   }, [id, tour, scenes, setCurrentTour]);
+
+  // Keep the store's scenes array in sync with the [SCENES, tourId] query.
+  // Scene/hotspot mutations (create/update/delete/reorder, drag, AI applies)
+  // persist through toursApi and only invalidate this query, so without this
+  // merge the editor UI (viewer markers, ScenePanel, HotspotPanel, scene-delete
+  // recovery) would stay stale until a full reload. Scenes are a separate
+  // array from tour-level draft edits, so a plain replacement is safe even
+  // while unsaved tour changes exist.
+  useEffect(() => {
+    if (!scenes) return;
+    const editorState = useTourEditorStore.getState();
+    if (!editorState.currentTour || editorState.currentTour.id !== id) return;
+    editorState.mergeScenes(scenes);
+  }, [id, scenes]);
+
+  // Sync server-confirmed tour fields (publish/unpublish/settings saves) into
+  // the store once no draft edits are in flight, so the toolbar status badge
+  // and Publish/Unpublish button never go stale — including the edge case of
+  // unpublishing while dirty and saving afterwards. Draft edits and the scene
+  // selection are never clobbered (the guard above plus scene-scoped merges).
+  useEffect(() => {
+    if (!tour || hasUnsavedChanges) return;
+    const editorState = useTourEditorStore.getState();
+    const storeTour = editorState.currentTour;
+    if (!storeTour || storeTour.id !== tour.id) return;
+    const changed =
+      storeTour.status !== tour.status ||
+      storeTour.visibility !== tour.visibility ||
+      storeTour.title !== tour.title ||
+      storeTour.description !== tour.description ||
+      storeTour.settings !== tour.settings;
+    if (!changed) return;
+    editorState.updateTourDraft({
+      status: tour.status,
+      visibility: tour.visibility,
+      title: tour.title,
+      description: tour.description,
+      settings: tour.settings,
+    });
+    editorState.markAsSaved();
+  }, [tour, hasUnsavedChanges]);
 
   // Recover from a stale scene selection (e.g. the selected scene was deleted).
   // Initial auto-selection is handled by setCurrentTour in the store, and a null
@@ -624,183 +757,29 @@ export function TourEditPage() {
           <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setShowActivityFeed(true);
-                    fetchActivities(id!);
-                  }}
-                >
-                  <Activity className="h-4 w-4" />
-                  Activity
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>View activity feed</TooltipContent>
-            </Tooltip>
-
-            <Popover
-              open={showCollaborators}
-              onOpenChange={open => {
-                setShowCollaborators(open);
-                if (open) fetchCollaborators(id!);
-              }}
-            >
-              <PopoverTrigger asChild>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <Users className="h-4 w-4" />
-                      Collaborators
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Manage collaborators</TooltipContent>
-                </Tooltip>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-0" align="end">
-                <div className="p-4 space-y-3">
-                  <h4 className="font-semibold text-sm">Collaborators</h4>
-                  <div className="space-y-2">
-                    {isLoadingCollaborators ? (
-                      <p className="text-sm text-[var(--color-text-muted)]">
-                        Loading collaborators...
-                      </p>
-                    ) : collaboratorsError ? (
-                      <div className="space-y-2">
-                        <p role="alert" className="text-sm text-[var(--color-error-600)]">
-                          {collaboratorsError}
-                        </p>
-                        <Button variant="outline" size="sm" onClick={() => fetchCollaborators(id!)}>
-                          Retry
-                        </Button>
-                      </div>
-                    ) : collaborators.length === 0 ? (
-                      <p className="text-sm text-[var(--color-text-muted)]">No collaborators yet</p>
-                    ) : (
-                      collaborators.map(c => (
-                        <div key={c.id} className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Avatar className="h-7 w-7">
-                              <AvatarImage src={c.user?.profile_image_url || undefined} />
-                              <AvatarFallback className="text-xs">
-                                {c.user?.full_name
-                                  ?.split(' ')
-                                  .map(n => n[0])
-                                  .join('')
-                                  .toUpperCase()
-                                  .slice(0, 2) || '?'}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium truncate">
-                                {c.user?.full_name || c.user?.email || 'Unknown'}
-                              </p>
-                              <p className="text-xs text-[var(--color-text-muted)] capitalize">
-                                {c.role}
-                              </p>
-                            </div>
-                          </div>
-                          {c.role !== 'owner' && (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={`Remove ${c.user?.email || c.user?.full_name || 'collaborator'}`}
-                              onClick={async () => {
-                                if (
-                                  !(await confirm({
-                                    title: 'Remove collaborator',
-                                    message: `Remove ${c.user?.email || 'this collaborator'} from the tour?`,
-                                    confirmLabel: 'Remove',
-                                    destructive: true,
-                                  }))
-                                )
-                                  return;
-                                try {
-                                  await removeCollaborator(id!, c.user_id);
-                                  toast('success', 'Collaborator removed.', { title: 'Removed' });
-                                } catch {
-                                  toast('error', 'Could not remove collaborator.', {
-                                    title: 'Remove failed',
-                                  });
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-3 w-3 text-[var(--color-text-muted)]" />
-                            </Button>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <Separator />
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium">Invite collaborator</p>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Email address"
-                        type="email"
-                        value={inviteEmail}
-                        onChange={e => setInviteEmail(e.target.value)}
-                        className="h-8 text-sm"
-                        aria-invalid={inviteEmailTrimmed.length > 0 && !isInviteEmailValid}
-                      />
-                      <Select
-                        value={inviteRole}
-                        onValueChange={v => setInviteRole(v as 'editor' | 'viewer')}
-                      >
-                        <SelectTrigger className="w-24 h-8 text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="viewer">Viewer</SelectItem>
-                          <SelectItem value="editor">Editor</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      disabled={!isInviteEmailValid || isInviting}
-                      isLoading={isInviting}
-                      onClick={async () => {
-                        if (!isInviteEmailValid) return;
-                        setIsInviting(true);
-                        try {
-                          await inviteCollaborator(id!, inviteEmailTrimmed, inviteRole);
-                          toast('success', `Invited ${inviteEmailTrimmed}.`, {
-                            title: 'Invitation sent',
-                          });
-                          setInviteEmail('');
-                          setInviteRole('viewer');
-                        } catch {
-                          toast('error', 'Could not send invitation.', {
-                            title: 'Failed to invite',
-                          });
-                        } finally {
-                          setIsInviting(false);
-                        }
-                      }}
-                    >
-                      Send Invitation
-                    </Button>
-                    {inviteEmailTrimmed.length > 0 && !isInviteEmailValid && (
-                      <p className="text-xs text-[var(--color-error-600)]">
-                        Enter a valid email address.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" onClick={() => setShowBulkUploader(true)}>
                   <Upload className="h-4 w-4" />
                   Upload
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Bulk upload 360° images</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showHotspotPanel ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={toggleHotspotPanel}
+                  disabled={!currentScene}
+                  aria-pressed={showHotspotPanel}
+                  data-testid="hotspots-panel-toggle"
+                >
+                  <Crosshair className="h-4 w-4" />
+                  Hotspots
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Show or hide the hotspot list</TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -833,6 +812,18 @@ export function TourEditPage() {
               <Save className="h-4 w-4" />
               Save
             </Button>
+
+            {currentTour?.status === 'published' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowShare(true)}
+                data-testid="share-button"
+              >
+                <Share2 className="h-4 w-4" />
+                Share
+              </Button>
+            )}
 
             {currentTour?.status !== 'published' ? (
               <Tooltip>
@@ -908,9 +899,12 @@ export function TourEditPage() {
                   <Lightbulb className="h-4 w-4" />
                   AI Hotspots
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowReelGenerator(true)}>
-                  <Film className="h-4 w-4" />
-                  Create 360 Reel
+                <DropdownMenuItem
+                  onClick={() => setShowConnectRooms(true)}
+                  disabled={!currentTour || (currentTour.scenes?.length ?? 0) < 2}
+                >
+                  <Route className="h-4 w-4" />
+                  Connect Rooms with AI
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -960,6 +954,7 @@ export function TourEditPage() {
                   onPositionClick={handlePositionClick}
                   onHotspotDrag={handleHotspotDrag}
                   onHotspotSelect={selectHotspot}
+                  onHotspotClick={handleEditorHotspotClick}
                   onSceneChange={setCurrentScene}
                 />
                 {/* Hotspot Placement Mode Indicator & Toggle */}
@@ -981,6 +976,7 @@ export function TourEditPage() {
                         variant={isPlacingHotspot ? 'default' : 'secondary'}
                         size="sm"
                         onClick={() => setIsPlacingHotspot(!isPlacingHotspot)}
+                        data-testid="place-hotspot-button"
                         className={cn(
                           'shadow-lg',
                           isPlacingHotspot && 'bg-[var(--color-primary-500)] animate-pulse'
@@ -1018,6 +1014,12 @@ export function TourEditPage() {
                       ? 'Select a scene to view'
                       : 'No scenes yet. Upload 360° images to get started.'}
                   </p>
+                  {!currentTour?.scenes?.length && (
+                    <Button className="mt-4" onClick={() => setShowBulkUploader(true)}>
+                      <Upload className="h-4 w-4" />
+                      Upload panoramas
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -1123,6 +1125,7 @@ export function TourEditPage() {
             tour={currentTour}
             scenes={currentTour.scenes || []}
             onSave={handleSettingsSave}
+            isLoading={isSavingSettings}
           />
         )}
 
@@ -1132,16 +1135,19 @@ export function TourEditPage() {
         <BrandingPanel
           open={showBranding}
           onOpenChange={setShowBranding}
-          settings={currentTour?.settings?.branding ?? DEFAULT_TOUR_SETTINGS.branding ?? {}}
+          settings={currentTour?.settings?.branding}
           onSave={handleBrandingSave}
+          isLoading={isSavingSettings}
         />
 
         <FloorPlanEditor
           open={showFloorPlans}
           onOpenChange={setShowFloorPlans}
-          floorPlans={currentTour?.settings?.floor_plans ?? []}
+          floorPlans={floorPlans ?? []}
           scenes={currentTour?.scenes ?? []}
           onSave={handleFloorPlansSave}
+          onGenerate={handleGenerateFloorPlan}
+          isLoading={isSavingSettings}
         />
 
         {currentTour && (
@@ -1162,11 +1168,12 @@ export function TourEditPage() {
               onApply={handleApplyDescriptions}
             />
 
-            <ReelGeneratorModal
-              open={showReelGenerator}
-              onOpenChange={setShowReelGenerator}
+            <ConnectRoomsDialog
+              open={showConnectRooms}
+              onOpenChange={setShowConnectRooms}
               tourId={currentTour.id}
-              scenes={currentTour.scenes ?? []}
+              sceneCount={currentTour.scenes?.length ?? 0}
+              onApplied={handleRoomsConnected}
             />
           </>
         )}
@@ -1187,29 +1194,23 @@ export function TourEditPage() {
           <HotspotEditorModal
             open={showHotspotEditor}
             onOpenChange={handleHotspotEditorClose}
-            hotspot={null}
+            hotspot={editingHotspot}
             sceneId={currentScene.id}
             scenes={currentTour?.scenes || []}
-            mode="create"
-            initialPosition={placementPosition || { yaw: 0, pitch: 0 }}
+            mode={editingHotspot ? 'edit' : 'create'}
+            initialPosition={placementPosition || editingHotspot?.position || { yaw: 0, pitch: 0 }}
           />
         )}
 
-        {/* Activity Feed Sheet */}
-        <Sheet open={showActivityFeed} onOpenChange={setShowActivityFeed}>
-          <SheetContent side="right" className="w-96 p-0">
-            <SheetHeader className="sr-only">
-              <SheetTitle>Activity Feed</SheetTitle>
-              <SheetDescription>Recent activity for this tour</SheetDescription>
-            </SheetHeader>
-            <ActivityFeed
-              tourId={id!}
-              onRefresh={async () => {
-                await fetchActivities(id!);
-              }}
-            />
-          </SheetContent>
-        </Sheet>
+        {id && (
+          <ShareModal
+            open={showShare}
+            onOpenChange={setShowShare}
+            tourId={id}
+            tourTitle={currentTour?.title || tour.title}
+            tourDescription={currentTour?.description || undefined}
+          />
+        )}
 
         {/* Delete Confirmation Dialog */}
         <AlertDialog

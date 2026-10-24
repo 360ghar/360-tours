@@ -25,22 +25,27 @@
 
   var BASE_URL = getBaseUrl();
 
+  /**
+   * Origin of the viewer host. BASE_URL is a script-URL PREFIX (it keeps any
+   * path segments before /embed.js), so comparing it with `event.origin` never
+   * matched when the SDK was served from a sub-path. Normalize to a real origin.
+   */
+  function toOrigin(url) {
+    try {
+      return new URL(url, window.location.href).origin;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  var VIEWER_ORIGIN = toOrigin(BASE_URL);
+
   // Security contract: keep these literal values in sync with
   // src/utils/embedCode.ts (EMBED_IFRAME_*). This standalone SDK cannot import
   // the TypeScript module.
   var EMBED_IFRAME_ALLOW = 'fullscreen; xr-spatial-tracking; accelerometer; gyroscope';
   var EMBED_IFRAME_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-forms';
   var EMBED_IFRAME_REFERRER_POLICY = 'strict-origin-when-cross-origin';
-
-  var ALLOWED_ORIGINS = [BASE_URL];
-
-  function isAllowedOrigin(origin) {
-    if (!origin) return false;
-    for (var i = 0; i < ALLOWED_ORIGINS.length; i++) {
-      if (ALLOWED_ORIGINS[i] && origin === ALLOWED_ORIGINS[i]) return true;
-    }
-    return false;
-  }
 
   function buildEmbedUrl(tourId, options) {
     var url = BASE_URL + '/embed/' + encodeURIComponent(tourId);
@@ -62,11 +67,11 @@
     if (options.branding !== undefined)
       params.push('branding=' + (options.branding ? 'true' : 'false'));
 
+    // The embedding page's origin, so the viewer can verify who is driving it.
+    // Building a URL must have no side effects: the allowlist is per-instance
+    // and owned by create().
     if (typeof window !== 'undefined' && window.location && window.location.origin) {
       params.push('origin=' + encodeURIComponent(window.location.origin));
-      if (ALLOWED_ORIGINS.indexOf(window.location.origin) === -1) {
-        ALLOWED_ORIGINS.push(window.location.origin);
-      }
     }
 
     if (params.length > 0) url += '?' + params.join('&');
@@ -108,6 +113,18 @@
 
     var listeners = {};
 
+    // Per-instance allowlist: seeded with the viewer origin, extended only via
+    // addAllowedOrigin, and discarded by destroy() along with the instance.
+    var allowedOrigins = [VIEWER_ORIGIN];
+
+    function isAllowedOrigin(origin) {
+      if (!origin) return false;
+      for (var i = 0; i < allowedOrigins.length; i++) {
+        if (allowedOrigins[i] && origin === allowedOrigins[i]) return true;
+      }
+      return false;
+    }
+
     function onMessage(event) {
       if (!iframe.contentWindow || event.source !== iframe.contentWindow) return;
       if (!isAllowedOrigin(event.origin)) return;
@@ -131,8 +148,9 @@
       },
 
       addAllowedOrigin: function (origin) {
-        if (origin && ALLOWED_ORIGINS.indexOf(origin) === -1) {
-          ALLOWED_ORIGINS.push(origin);
+        var normalized = toOrigin(origin);
+        if (normalized && allowedOrigins.indexOf(normalized) === -1) {
+          allowedOrigins.push(normalized);
         }
         return this;
       },
@@ -141,6 +159,7 @@
         window.removeEventListener('message', onMessage);
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
         listeners = {};
+        allowedOrigins = [];
       },
     };
   }
