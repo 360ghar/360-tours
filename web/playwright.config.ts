@@ -4,6 +4,14 @@ import { defineConfig, devices } from '@playwright/test';
 const STORAGE_STATE_PATH = 'e2e/.auth/user.json';
 
 /**
+ * Dev-server port. Overridable so a local run still works when something else
+ * already owns :3000 — otherwise Playwright's `reuseExistingServer` silently
+ * points the whole suite at that foreign server.
+ */
+const PORT = Number(process.env.E2E_PORT ?? 3000);
+const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`;
+
+/**
  * Playwright configuration for E2E testing
  * @see https://playwright.dev/docs/test-configuration
  */
@@ -25,7 +33,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE_URL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -89,8 +97,10 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: process.env.CI ? 'npm run preview' : 'npm run dev',
-    url: 'http://localhost:3000',
+    command: process.env.CI
+      ? `npm run preview -- --port ${PORT} --strictPort`
+      : `npm run dev -- --port ${PORT} --strictPort`,
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },

@@ -4,7 +4,7 @@ import { HotspotContentModal } from '@/components/features/HotspotContentModal';
 import { sanitizeHotspotHtml } from '@/components/features/hotspotHtmlSanitizer';
 import type { Hotspot } from '@/types';
 
-function makeCustomHotspot(html: string): Hotspot<'custom'> {
+function makeCustomHotspot(html: string): Hotspot {
   return {
     id: 'hotspot-1',
     scene_id: 'scene-1',
@@ -16,7 +16,7 @@ function makeCustomHotspot(html: string): Hotspot<'custom'> {
     icon: null,
     icon_name: null,
     icon_color: null,
-    icon_size: null,
+    icon_size: 32,
     content: { html },
     custom_data: {},
     order_index: 0,

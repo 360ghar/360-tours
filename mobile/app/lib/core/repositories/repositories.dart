@@ -32,5 +32,5 @@ abstract class ShareRepository {
   /// Creates (or returns the existing) short link for an asset.
   Future<ShareLink> createLink(ScanAsset asset);
   Future<ShareLink?> getLink(String code);
-  Future<ViewAnalytics> getAnalytics(String assetId);
+  Future<ViewAnalytics> getAnalytics(String tourId);
 }

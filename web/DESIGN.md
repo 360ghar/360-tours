@@ -21,7 +21,7 @@
 | Variant system | `class-variance-authority` v0.7.1 |
 | Class merging | `clsx` + `tailwind-merge` via `cn()` utility |
 | Icons | `lucide-react` v0.562.0 |
-| Typography | Clash Display, Satoshi, JetBrains Mono (Fontshare CDN) |
+| Typography | Clash Display + Satoshi (Fontshare CDN); system mono for data |
 
 **Configuration pattern:** Tailwind v4 uses CSS-based configuration — no `tailwind.config.ts`. All design tokens are CSS custom properties defined in `:root` and overridden in `.dark` within `src/index.css`.
 
@@ -154,7 +154,6 @@ Used for secondary actions, highlights, and warm accents.
 | `--landing-gradient-ai` | `linear-gradient(135deg, #FF5733 0%, #FF8A5C 50%, #FFC857 100%)` |
 | `--landing-gradient-dark` | `linear-gradient(180deg, #0A0A0B 0%, #1A1A1F 100%)` |
 
----
 
 ## Typography
 
@@ -165,9 +164,15 @@ Used for secondary actions, highlights, and warm accents.
 | Display / Headings | `--font-display` | `'Clash Display', system-ui, sans-serif` |
 | Body | `--font-body` | `'Satoshi', system-ui, sans-serif` |
 | Sans (default) | `--font-sans` | `'Satoshi', system-ui, -apple-system, sans-serif` |
-| Monospace | `--font-mono` | `'JetBrains Mono', ui-monospace, monospace` |
+| Monospace | `--font-mono` | `ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace` |
 
 **Loaded weights (Fontshare CDN):**
+
+> **Open item — the signature face.** Clash Display is a free Fontshare default
+> and now reads as the generic startup display face. It carries the whole brand
+> identity here, so replacing it is a real type decision (a licensed or
+> self-hosted face chosen for this brief), not another swap off the same shelf.
+> Tracked here rather than silently substituted.
 
 - Clash Display: 400, 500, 600, 700
 - Satoshi: 400, 500, 700, 900
@@ -188,7 +193,7 @@ Used for secondary actions, highlights, and warm accents.
 | `.landing-headline` | `font-family: var(--font-display); font-weight: 700; line-height: 0.95; letter-spacing: -0.03em; color: var(--landing-text-hero)` |
 | `.landing-subhead` | `font-family: var(--font-body); font-weight: 500; line-height: 1.4; color: var(--landing-text-body)` |
 | `.landing-body` | `font-family: var(--font-body); font-weight: 400; line-height: 1.6; color: var(--landing-text-body)` |
-| `.landing-eyebrow` | `font-family: var(--font-body); font-weight: 600; font-size: 0.75rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--landing-accent)` |
+| `.landing-headline.text-white` | `color: #fff` — `.landing-headline` is unlayered, so it beats Tailwind's colour utilities; the dark sections need this to override it |
 
 ### Base Styles
 
@@ -319,19 +324,14 @@ padding: 1rem 2rem;
 background: var(--landing-accent); /* #FF5733 */
 color: white;
 font-family: var(--font-body); font-weight: 600; font-size: 1rem;
-border-radius: 9999px; border: none;
-/* Hover: background #E64A2E, translateY(-2px), box-shadow: 0 8px 30px rgba(255,87,51,0.3) */
+border-radius: 0.5rem; border: none;
+/* Hover: background #E64A2E only — no lift, no glow */
 ```
 
-**`.landing-btn-secondary`:**
-
-```css
-/* Same layout/font as primary */
-background: transparent;
-color: var(--landing-text-hero);
-border-radius: 9999px; border: 2px solid var(--landing-text-hero);
-/* Hover: background var(--landing-text-hero), color var(--landing-bg), translateY(-2px) */
-```
+There is deliberately **no** `.landing-btn-secondary`. A filled primary next to an
+outlined ghost is a template preset: sections pair one clear action with a quiet
+text link instead (see `HeroSection`). Buttons do not move on hover and never
+carry a glow.
 
 ### Badge
 
@@ -586,6 +586,7 @@ Same overlay/content pattern as Dialog. Confirm action uses `buttonVariants({ va
 
 ---
 
+
 ## Elevation
 
 ### Shadow Tokens
@@ -635,10 +636,8 @@ Same overlay/content pattern as Dialog. Confirm action uses `buttonVariants({ va
 | `fadeInUp` | `0.7s cubic-bezier(0.16, 1, 0.3, 1)` | `opacity: 0; translateY(40px)` | `opacity: 1; translateY(0)` |
 | `fadeInRight` | `0.7s cubic-bezier(0.16, 1, 0.3, 1)` | `opacity: 0; translateX(-40px)` | `opacity: 1; translateX(0)` |
 | `fadeInLeft` | `0.7s cubic-bezier(0.16, 1, 0.3, 1)` | `opacity: 0; translateX(40px)` | `opacity: 1; translateX(0)` |
-| `float` | `5s ease-in-out infinite` | `translateY(0) rotate(-3deg)` | `translateY(-12px) rotate(-3deg)` |
 | `drawPath` | `2s ease-out forwards` | `stroke-dashoffset: 1000` | `stroke-dashoffset: 0` |
 | `marquee` | `40s linear infinite` | `translateX(0)` | `translateX(-50%)` |
-| `pulseGlow` | `2.5s ease-in-out infinite` | `box-shadow: 0 0 0 0 rgba(255,87,51,0.4)` | `box-shadow: 0 0 0 16px rgba(255,87,51,0)` |
 
 ### Stagger Delays
 
@@ -827,7 +826,7 @@ var(--color-border-error)  /* #ef4444 */
 var(--font-display) /* 'Clash Display', system-ui, sans-serif */
 var(--font-body)     /* 'Satoshi', system-ui, sans-serif */
 var(--font-sans)     /* 'Satoshi', system-ui, -apple-system, sans-serif */
-var(--font-mono)     /* 'JetBrains Mono', ui-monospace, monospace */
+var(--font-mono)     /* ui-monospace, SFMono-Regular, Menlo, Consolas, monospace */
 ```
 
 ### Spacing

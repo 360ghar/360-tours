@@ -6,7 +6,6 @@ import {
   FolderOpen,
   BarChart3,
   Settings,
-  Box,
   X,
   ChevronsLeft,
   ChevronsRight,
@@ -27,13 +26,24 @@ const navItems = [
   { label: 'Tours', path: ROUTES.TOURS, icon: Images },
   { label: 'Media', path: ROUTES.MEDIA, icon: FolderOpen },
   { label: 'Analytics', path: ROUTES.ANALYTICS, icon: BarChart3 },
-  { label: 'Splat Lab', path: ROUTES.LAB, icon: Box },
   { label: 'Settings', path: ROUTES.SETTINGS, icon: Settings },
 ];
 
+// No hosted help/FAQ URL exists in config or the landing footer yet, so both
+// items route to the company support inbox (domain from RegisterPage policy
+// links, https://360ghar.com).
+const SUPPORT_EMAIL = 'support@360ghar.com';
 const bottomNavItems = [
-  { label: 'Help & Support', icon: HelpCircle },
-  { label: 'Feedback', icon: MessageSquare },
+  {
+    label: 'Help & Support',
+    icon: HelpCircle,
+    href: `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Help & Support request')}`,
+  },
+  {
+    label: 'Feedback',
+    icon: MessageSquare,
+    href: `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Feedback on 360 Viewer')}`,
+  },
 ];
 
 export function Sidebar({ className }: SidebarProps) {
@@ -88,13 +98,13 @@ export function Sidebar({ className }: SidebarProps) {
         <div className="flex h-16 items-center justify-between border-b border-[var(--color-border)] px-4">
           <div className={cn('flex items-center gap-3', sidebarCollapsed && 'lg:hidden')}>
             <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
-              <span className="text-lg font-bold text-white">3</span>
+              <img src="/logo-mark-white.png" alt="" className="h-5 w-5" draggable={false} />
             </div>
             <span className="text-lg font-semibold">360 Viewer</span>
           </div>
           {sidebarCollapsed && (
             <div className="hidden h-9 w-9 items-center justify-center rounded-lg gradient-primary lg:flex">
-              <span className="text-lg font-bold text-white">3</span>
+              <img src="/logo-mark-white.png" alt="" className="h-5 w-5" draggable={false} />
             </div>
           )}
           <Button
@@ -137,19 +147,18 @@ export function Sidebar({ className }: SidebarProps) {
           {/* Bottom Nav Items */}
           <div className="mb-3 space-y-1">
             {bottomNavItems.map(item => (
-              <button
+              <a
                 key={item.label}
-                type="button"
-                disabled
+                href={item.href}
                 title={sidebarCollapsed ? item.label : undefined}
                 className={cn(
-                  'flex w-full cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-[var(--color-text-muted)] opacity-60',
+                  'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-primary)]',
                   sidebarCollapsed && 'lg:justify-center lg:px-0'
                 )}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
                 <span className={cn(sidebarCollapsed && 'lg:hidden')}>{item.label}</span>
-              </button>
+              </a>
             ))}
           </div>
 
