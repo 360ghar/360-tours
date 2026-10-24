@@ -1,11 +1,11 @@
+import '../../../core/api/api_exception.dart';
 import '../../../core/api/backend_api.dart';
-import '../../../core/env.dart';
 import '../../../core/models/models.dart';
 import '../../../core/repositories/repositories.dart';
 
 /// User-facing failure when publishing a tour (minting its share link) fails.
-/// Raw Dio/network errors are caught and rethrown as this so the UI can show a
-/// friendly message instead of leaking transport details.
+/// The server's message (from the error envelope) is shown; raw Dio/network
+/// text never is.
 class SharePublishException implements Exception {
   SharePublishException(this.message, [this.cause]);
 
@@ -34,31 +34,30 @@ class ApiShareRepository implements ShareRepository {
       throw StateError('Asset is not uploaded yet');
     }
     var code = asset.shareCode;
-    String? overrideUrl;
     if (code == null) {
-      final Map<String, dynamic> tour;
       try {
-        tour = await _api.publishTour(tourId);
+        code = (await _api.publishTour(tourId)).shortCode;
       } catch (e) {
         throw SharePublishException(
-          'Could not publish the tour. Check your connection and try again.',
+          e is ApiException && !e.isNetwork
+              ? 'Could not publish the tour: ${e.userMessage}'
+              : 'Could not publish the tour. Check your connection and try '
+                  'again.',
           e,
         );
       }
-      code = tour['short_code'] as String?;
-      if (code != null) {
-        await _saveAsset(asset.copyWith(shareCode: code));
-      } else {
-        // Older backend without short links: open the viewer directly.
-        overrideUrl = '${Env.viewerBase}/view/$tourId';
-        code = '';
+      // Publish always mints a short code. Without one there is no link to
+      // give: an error, not an empty link.
+      if (code == null) {
+        throw SharePublishException(
+            'The server published the tour but sent no share link. Try again.');
       }
+      await _saveAsset(asset.copyWith(shareCode: code));
     }
     return ShareLink(
       code: code,
       assetId: asset.id,
       createdAt: DateTime.now(),
-      overrideUrl: overrideUrl,
     );
   }
 
@@ -67,26 +66,13 @@ class ApiShareRepository implements ShareRepository {
       null; // ponytail: reverse lookup unused in-app; links open in browser
 
   @override
-  Future<ViewAnalytics> getAnalytics(String assetId) async {
-    // assetId here must be the remote tour id (callers pass it through).
-    final data = await _api.getAnalytics(assetId);
-    final views = (data['total_views'] as num?)?.toInt() ?? 0;
-    final durations = (data['session_durations'] as List?) ?? const [];
-    var totalSeconds = 0.0;
-    for (final d in durations) {
-      if (d is num) totalSeconds += d.toDouble();
-    }
-    final clicks = (data['hotspot_clicks'] as Map?) ?? const {};
-    var showingRequests = 0;
-    for (final v in clicks.values) {
-      if (v is num) showingRequests += v.toInt();
-    }
-
+  Future<ViewAnalytics> getAnalytics(String tourId) async {
+    final data = await _api.getAnalytics(tourId);
     return ViewAnalytics(
-      assetId: assetId,
-      views: views,
-      totalSeconds: totalSeconds.round(),
-      showingRequests: showingRequests,
+      tourId: tourId,
+      views: data.totalViews,
+      totalSeconds: data.sessionDurations.fold<double>(0, (a, b) => a + b).round(),
+      hotspotClicks: data.hotspotClicks.values.fold<int>(0, (a, b) => a + b),
     );
   }
 }

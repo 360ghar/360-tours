@@ -60,8 +60,8 @@ export function AnalyticsPage() {
     refetch: refetchTours,
     isFetching: isFetchingTours,
   } = useQuery({
-    queryKey: [QUERY_KEYS.TOURS, 'analytics', { limit: 50, status: 'published' }],
-    queryFn: () => toursApi.getTours({ limit: 50, status: 'published' }),
+    queryKey: [QUERY_KEYS.TOURS, 'analytics', { status: 'published' }],
+    queryFn: () => toursApi.getAllTours({ status: 'published' }),
   });
 
   // Fetch dashboard stats for overview
@@ -76,7 +76,7 @@ export function AnalyticsPage() {
     queryFn: () => toursApi.getDashboardStats(),
   });
 
-  const tours = useMemo(() => toursData?.items || [], [toursData]);
+  const tours = useMemo(() => toursData ?? [], [toursData]);
 
   // Fetch analytics for the selected tour
   const {
@@ -346,8 +346,13 @@ function TourAnalyticsDetail({ analytics, tour }: { analytics: TourAnalytics; to
       ].filter(d => d.value > 0)
     : [];
 
-  // Build a map of scene IDs to titles for the scene views chart
-  const sceneTitles = new Map((tour.scenes || []).map(s => [s.id, s.title || 'Untitled']));
+  // Build a map of scene IDs to titles for the scene views chart. A tour row has no
+  // scenes: read them from the scenes route.
+  const { data: scenes } = useQuery({
+    queryKey: [QUERY_KEYS.SCENES, tour.id],
+    queryFn: () => toursApi.getScenes(tour.id),
+  });
+  const sceneTitles = new Map((scenes ?? []).map(s => [s.id, s.title || 'Untitled']));
   const hasChartData =
     (analytics.daily_views?.length ?? 0) > 0 ||
     deviceData.length > 0 ||

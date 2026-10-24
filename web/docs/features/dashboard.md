@@ -48,11 +48,7 @@ The dashboard shows a vertical list of recent tours with:
 
 ## Activity feed
 
-An activity feed component is scaffolded (via `collaborationStore`) but not fully connected. Future implementation will show:
-
-- Tour creation/publication events
-- AI job completions
-- Collaboration activity (when multi-user editing is added)
+The dashboard has no activity feed: the backend has no tour activity route, and tour collaboration does not exist. The header bell lists the notifications that arrive on the `/ws/user` socket (for example a finished AI job).
 
 **Document Links**:
 - [Profile Management](profile-management.md) ← Previous

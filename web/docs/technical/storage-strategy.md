@@ -63,16 +63,6 @@ Typical stages:
 - Generate web-optimized derivatives (e.g., WebP)
 - (Optional) generate higher quality/VR derivatives
 
-### Reel videos
-
-AI-generated 360 reels (see `../features/reel-generation.md`) are stored in Cloudinary with `resource_type=video`:
-
-- Folder pattern: `tours/{tour_id}/reels/{job_id}.mp4`
-- Thumbnail: a derived `.jpg` at the same path (Cloudinary video-to-image derivative).
-- Format: H.264 MP4, 1080×1920 @ 30fps (vertical 9:16).
-- Typical size: ~10–30 MB per reel.
-- Reels are generated server-side via `ffmpeg`; clients never upload reel video bytes.
-
 ## Access control and URLs
 
 The platform supports `visibility=private|unlisted|public` (see `../00-conventions.md`).

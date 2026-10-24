@@ -14,6 +14,8 @@ import {
 } from '@/components/ui';
 import { usersApi } from '@/api';
 import { useAuthStore } from '@/stores';
+import { E164_PHONE, isBlankPhone, buildProfileUpdate } from '@/utils/profileUpdate';
+import type { UserUpdate } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { QUERY_KEYS } from '@/constants';
 import { useRef, useState } from 'react';
@@ -42,7 +44,7 @@ export function ProfilePage() {
 
   // Update profile mutation
   const updateMutation = useMutation({
-    mutationFn: (data: { full_name?: string; phone?: string }) => usersApi.updateProfile(data),
+    mutationFn: (data: UserUpdate) => usersApi.updateProfile(data),
     onSuccess: updatedUser => {
       setUser(updatedUser);
       reset({
@@ -90,7 +92,16 @@ export function ProfilePage() {
   };
 
   const onSubmit = async (data: { full_name: string; phone: string }) => {
-    await updateMutation.mutateAsync(data);
+    const patch = buildProfileUpdate(
+      { full_name: user?.full_name ?? null, phone: user?.phone ?? null },
+      data
+    );
+    if (Object.keys(patch).length === 0) {
+      // Nothing the server would accept changed: restore the stored values.
+      reset({ full_name: user?.full_name || '', phone: user?.phone || '' });
+      return;
+    }
+    await updateMutation.mutateAsync(patch);
   };
 
   return (
@@ -160,6 +171,11 @@ export function ProfilePage() {
                   value: 100,
                   message: 'Full name must be 100 characters or fewer.',
                 },
+                // An untouched empty name is fine; a name that was typed must not be blank.
+                validate: value =>
+                  value.trim() !== '' ||
+                  (user?.full_name ?? '') === '' ||
+                  'Enter your name.',
               })}
               error={errors.full_name?.message}
             />
@@ -179,6 +195,13 @@ export function ProfilePage() {
               <Controller
                 name="phone"
                 control={control}
+                rules={{
+                  validate: value => {
+                    const phone = value.trim();
+                    if (phone === (user?.phone ?? '') || isBlankPhone(phone)) return true;
+                    return E164_PHONE.test(phone) || 'Enter a valid phone number.';
+                  },
+                }}
                 render={({ field }) => (
                   <PhoneInput
                     id="profile-phone"

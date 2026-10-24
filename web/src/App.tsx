@@ -11,6 +11,7 @@ import { useUIStore } from '@/stores';
 import { applyTheme } from '@/stores/uiStore';
 import { onAuthExpired } from '@/api';
 import { ROUTES } from '@/constants';
+import { isSameOriginPath } from '@/utils/url';
 
 const AUTH_REDIRECT_BLOCKLIST: readonly string[] = [
   ROUTES.LOGIN,
@@ -29,7 +30,7 @@ function ThemeInitializer() {
 }
 
 function AuthInitializer() {
-  const { checkAuth, isLoading } = useAuthStore();
+  const checkAuth = useAuthStore(s => s.checkAuth);
 
   useEffect(() => {
     checkAuth();
@@ -45,8 +46,7 @@ function AuthInitializer() {
       const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       const loginUrl = new URL(ROUTES.LOGIN, window.location.origin);
       if (
-        returnPath.startsWith('/') &&
-        !returnPath.startsWith('//') &&
+        isSameOriginPath(returnPath) &&
         !AUTH_REDIRECT_BLOCKLIST.includes(window.location.pathname)
       ) {
         loginUrl.searchParams.set('next', returnPath);
@@ -57,17 +57,12 @@ function AuthInitializer() {
     return unsubscribe;
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--color-background)]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--color-primary-200)] border-t-[var(--color-primary-600)]" />
-          <p className="text-[var(--color-text-muted)]">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // The router mounts immediately, even while checkAuth is still in flight.
+  // Public routes (/view/:id, /embed/:id, the landing page) have
+  // no dependency on the session and must never wait on it — a slow or failing
+  // /users/me used to blank the embedded viewer for the whole retry window.
+  // Routes that DO depend on auth gate themselves: ProtectedRoute renders a
+  // PageLoader while `isLoading`, and RootRedirect does the same for `/`.
   return <RouterProvider router={router} />;
 }
 

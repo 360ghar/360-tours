@@ -38,7 +38,7 @@ The panel includes a live desktop/mobile preview showing how the branding looks 
 
 ## Uploading a logo (MVP)
 
-1. Upload logo: `POST /api/v1/upload` (multipart form with `file`, `folder: branding`, `visibility: public`).
+1. Upload logo: `POST /api/v1/upload` (multipart form with `file`, `folder_type: generic`, `visibility: public`).
 2. Receive `public_url` from upload response.
 3. Update tour: `PATCH /api/v1/tours/{tour_id}` with `settings.branding.logo_url`.
 
