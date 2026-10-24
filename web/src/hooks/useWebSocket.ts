@@ -125,7 +125,7 @@ export function useWebSocket(
     }
 
     void (async () => {
-      let accessToken: string | null = null;
+      let accessToken: string | null;
       try {
         accessToken = await supabaseAuth.getAccessToken();
       } catch {

@@ -22,8 +22,10 @@ type ResetStep = 'request' | 'verify' | 'reset' | 'success';
 export function ForgotPasswordPage() {
   const location = useLocation();
   const [step, setStep] = useState<ResetStep>('request');
-  const [channel, setChannel] = useState<'phone' | 'email'>('phone');
-  const [identifier, setIdentifier] = useState('');
+  // Pre-fill identifier and channel from route state (e.g. passed from LoginPage).
+  const routeState = location.state as { identifier?: string; channel?: 'phone' | 'email' } | null;
+  const [channel, setChannel] = useState<'phone' | 'email'>(() => routeState?.channel ?? 'phone');
+  const [identifier, setIdentifier] = useState(() => routeState?.identifier ?? '');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Neutral, non-error status line (enumeration-safe reset confirmation). */
@@ -31,21 +33,9 @@ export function ForgotPasswordPage() {
 
   const requestForm = useForm<{ identifier: string }>({
     resolver: zodResolver(channel === 'email' ? emailIdentifierSchema : phoneIdentifierSchema),
-    defaultValues: { identifier: '' },
+    defaultValues: { identifier: routeState?.identifier ?? '' },
   });
 
-  // Pre-fill identifier and channel from route state (e.g. passed from LoginPage).
-  useEffect(() => {
-    const state = location.state as { identifier?: string; channel?: 'phone' | 'email' } | null;
-    if (state?.channel) {
-      setChannel(state.channel);
-    }
-    if (state?.identifier) {
-      setIdentifier(state.identifier);
-      requestForm.setValue('identifier', state.identifier);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const otpForm = useForm<OTPFormData>({
     resolver: zodResolver(otpSchema),
