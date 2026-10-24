@@ -49,7 +49,7 @@ Related docs:
 
 Upload uses a **2-step presigned flow**:
 
-1. **Upload**: `POST /api/v1/upload` with multipart form data (`file`, `folder: scenes`, `visibility: public`) → returns `public_url`.
+1. **Upload**: `POST /api/v1/upload` with multipart form data (`file`, `folder_type: tour_original`, `tour_id`, `visibility: public`) → returns `public_url` (201). A panorama is `tour_original` with the tour id: the `scene` folder needs a scene id that this route does not take.
 
 After upload, create the scene:
 
@@ -66,7 +66,7 @@ The editor supports bulk panorama upload via the BulkUploader component:
 
 ## Scene ordering (MVP)
 
-- Scenes have an `order_index`.
+- Scenes have an `order_index`, owned by the server: a new scene goes last, and `scene_metadata` is the metadata key.
 - The editor MUST support drag-and-drop ordering (implemented with `@dnd-kit`).
 - Backend MUST support a reorder endpoint: `POST /api/v1/tours/{tour_id}/scenes/reorder`.
 
@@ -114,8 +114,8 @@ Users can duplicate an existing tour:
 ## Analytics (MVP)
 
 Viewer emits:
-- `tour_view`
-- `scene_view`
+- `scene_view` (with numeric `event_data.yaw` and `pitch`), `session_start`, `session_duration`
+- A page view is not an event: the server counts it when the public tour is fetched.
 
 **Document Links**:
 - [Features Index](README.md) ← Back

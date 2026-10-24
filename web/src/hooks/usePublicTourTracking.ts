@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toursApi } from '@/api';
 import { API_BASE_URL } from '@/constants';
-import { supabaseAuth } from '@/lib/supabaseAuth';
+import type { TourEventPayload, ViewerEventType } from '@/types';
+import type { ViewDirection } from '@/utils/publicViewer';
 
 // Generate a session ID for analytics tracking
 function getSessionId(): string {
@@ -26,6 +27,12 @@ interface UsePublicTourTrackingOptions {
   /** Pass a truthy value once the tour data has loaded to trigger initial tracking */
   tourLoaded: boolean;
   currentSceneId: string | undefined;
+  /**
+   * Where the viewer looks when the current scene opens (the scene's initial
+   * view). A `scene_view` event must carry numeric yaw and pitch; the server
+   * builds the heatmap from them. Defaults to 0, 0.
+   */
+  currentSceneView?: ViewDirection;
 }
 
 /**
@@ -33,9 +40,11 @@ interface UsePublicTourTrackingOptions {
  *
  * Handles:
  * - Session ID generation
- * - tour_view tracking (once per mount)
- * - session_start / session_duration (with sendBeacon on unmount)
- * - scene_view tracking on scene change
+ * - session_start / session_duration (with a keepalive request on unmount)
+ * - scene_view tracking on scene change, with numeric yaw and pitch
+ *
+ * A page view is not an event: the server counts it when the tour is fetched
+ * (`GET /public/tours/{id}`, once per viewer per 30 minutes).
  *
  * Returns a `trackEvent` function for ad-hoc events (hotspot_click, fullscreen, etc.)
  * and the current `sessionId`.
@@ -44,28 +53,31 @@ export function usePublicTourTracking({
   tourId,
   tourLoaded,
   currentSceneId,
+  currentSceneView,
 }: UsePublicTourTrackingOptions) {
   const [sessionId] = useState(getSessionId);
   const sessionIdRef = useRef<string>(sessionId);
   const sessionStartedAtRef = useRef<number | null>(null);
-  const hasTrackedViewRef = useRef(false);
+  const sceneYaw = currentSceneView?.yaw ?? 0;
+  const scenePitch = currentSceneView?.pitch ?? 0;
 
   const trackEvent = useCallback(
     async (
-      eventType: string,
+      eventType: ViewerEventType,
       sceneId?: string,
       hotspotId?: string,
       eventData?: Record<string, unknown>
     ) => {
       if (!tourId) return;
+      const event: TourEventPayload = {
+        event_type: eventType,
+        session_id: sessionIdRef.current,
+        ...(sceneId ? { scene_id: sceneId } : {}),
+        ...(hotspotId ? { hotspot_id: hotspotId } : {}),
+        ...(eventData ? { event_data: eventData } : {}),
+      };
       try {
-        await toursApi.trackEvent(tourId, {
-          event_type: eventType,
-          scene_id: sceneId,
-          hotspot_id: hotspotId,
-          session_id: sessionIdRef.current,
-          event_data: eventData,
-        });
+        await toursApi.trackEvent(tourId, event);
       } catch (error) {
         // Silently fail analytics tracking
         console.debug('Analytics tracking failed:', error);
@@ -73,13 +85,6 @@ export function usePublicTourTracking({
     },
     [tourId]
   );
-
-  // Track tour_view once
-  useEffect(() => {
-    if (!tourLoaded || !tourId || hasTrackedViewRef.current) return;
-    hasTrackedViewRef.current = true;
-    trackEvent('tour_view');
-  }, [tourId, tourLoaded, trackEvent]);
 
   // Session start + duration (sendBeacon on unmount)
   useEffect(() => {
@@ -96,18 +101,18 @@ export function usePublicTourTracking({
       const durationSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
       const url = `${API_BASE_URL}/public/tours/${tourId}/events`;
 
-      const payload = {
+      const payload: TourEventPayload = {
         event_type: 'session_duration',
         session_id: sessionId,
         event_data: { duration_seconds: durationSeconds },
       };
 
-      // sendBeacon cannot set custom headers; prefer fetch with keepalive
-      // (the modern equivalent that supports Authorization) and fall back to
-      // sendBeacon only when keepalive is unsupported.
-      const accessToken = supabaseAuth.getSession()?.access_token ?? null;
+      // `/public/*` is anonymous by contract — api/client.ts strips the Bearer
+      // token from these requests for exactly this reason (a stale session on a
+      // public tour must not be able to trigger the 401 sign-out cascade). The
+      // unload beacon has to honour the same contract, so it sends no token.
+      // fetch+keepalive is preferred only because sendBeacon has no error path.
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
       try {
         if (typeof Request !== 'undefined' && 'keepalive' in Request.prototype) {
@@ -120,7 +125,6 @@ export function usePublicTourTracking({
             // Ignore analytics failures during unload.
           });
         } else if (navigator.sendBeacon) {
-          // Legacy fallback: no Authorization header possible.
           const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
           navigator.sendBeacon(url, blob);
         }
@@ -130,12 +134,12 @@ export function usePublicTourTracking({
     };
   }, [tourId, tourLoaded, trackEvent]);
 
-  // Track scene views
+  // Track scene views. The server requires numeric yaw and pitch on a scene_view.
   useEffect(() => {
     if (tourLoaded && tourId && currentSceneId) {
-      trackEvent('scene_view', currentSceneId);
+      trackEvent('scene_view', currentSceneId, undefined, { yaw: sceneYaw, pitch: scenePitch });
     }
-  }, [currentSceneId, tourId, tourLoaded, trackEvent]);
+  }, [currentSceneId, sceneYaw, scenePitch, tourId, tourLoaded, trackEvent]);
 
   return {
     trackEvent,

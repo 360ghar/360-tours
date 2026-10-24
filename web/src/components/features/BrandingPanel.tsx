@@ -33,20 +33,20 @@ import {
 } from '@/components/ui';
 import { uploadApi } from '@/api';
 import { cn } from '@/utils';
-import { DEFAULT_TOUR_SETTINGS } from '@/constants';
-import type { BrandingSettings } from '@/types';
+import { resolveBranding } from '@/utils/tourSettings';
+import { API_LIMITS } from '@/lib/api/limits.gen';
+import type { BrandingSettings, ResolvedBranding } from '@/types';
 
 interface BrandingPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  settings: Partial<BrandingSettings>;
+  /** Stored branding: every key can be missing or null. Defaults fill the gaps. */
+  settings: BrandingSettings | null | undefined;
   onSave: (settings: BrandingSettings) => void;
   isLoading?: boolean;
 }
 
-const DEFAULT_SETTINGS: BrandingSettings = {
-  ...DEFAULT_TOUR_SETTINGS.branding,
-} as BrandingSettings;
+const DEFAULT_SETTINGS: ResolvedBranding = resolveBranding(null);
 
 const FONT_OPTIONS = [
   { value: 'Satoshi', label: 'Satoshi' },
@@ -110,10 +110,9 @@ export function BrandingPanel({
   onSave,
   isLoading = false,
 }: BrandingPanelProps) {
-  const [settings, setSettings] = useState<BrandingSettings>({
-    ...DEFAULT_SETTINGS,
-    ...initialSettings,
-  });
+  const [settings, setSettings] = useState<ResolvedBranding>(() =>
+    resolveBranding(initialSettings)
+  );
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -138,13 +137,10 @@ export function BrandingPanel({
 
   useEffect(() => {
     if (!open) return;
-    setSettings({
-      ...DEFAULT_SETTINGS,
-      ...initialSettings,
-    });
+    setSettings(resolveBranding(initialSettings));
   }, [initialSettings, open]);
 
-  const updateSetting = <K extends keyof BrandingSettings>(key: K, value: BrandingSettings[K]) => {
+  const updateSetting = <K extends keyof ResolvedBranding>(key: K, value: ResolvedBranding[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
@@ -169,7 +165,7 @@ export function BrandingPanel({
 
     try {
       const uploadResult = await uploadApi.uploadFile(file, {
-        folder: 'branding',
+        folderType: 'generic',
         visibility: 'public',
       });
       // Upload succeeded — clear any pending preview-only blob URL and commit
@@ -181,6 +177,10 @@ export function BrandingPanel({
       setPreviewLogoUrl(null);
       setLogoUploadFailed(false);
       setLogoError(null);
+      if (uploadResult.public_url.length > API_LIMITS.branding.logoUrlMax) {
+        // The server rejects a logo_url longer than the limit with a 422.
+        throw new Error(`The logo URL is longer than ${API_LIMITS.branding.logoUrlMax} characters.`);
+      }
       updateSetting('logo_url', uploadResult.public_url);
     } catch (error) {
       console.error('Failed to upload logo:', error);
@@ -238,9 +238,13 @@ export function BrandingPanel({
     // Hard guarantee: never persist a local blob URL — it would not render
     // outside this browser session. Drop it (or revert to no logo) if a stale
     // blob: URL ever reaches settings.logo_url.
+    // The settings are deep-merged on the server and an omitted key keeps its stored
+    // value, so a removed logo or custom CSS is sent as an explicit null.
+    const logoUrl = settings.logo_url?.startsWith('blob:') ? undefined : settings.logo_url;
     const settingsToSave: BrandingSettings = {
       ...settings,
-      logo_url: settings.logo_url?.startsWith('blob:') ? undefined : settings.logo_url,
+      logo_url: logoUrl ?? null,
+      custom_css: settings.custom_css ?? null,
     };
     onSave(settingsToSave);
     onOpenChange(false);
@@ -338,6 +342,7 @@ export function BrandingPanel({
                           <Input
                             value={settings.primary_color}
                             onChange={e => updateSetting('primary_color', e.target.value)}
+                            maxLength={API_LIMITS.branding.colorMax}
                             className="flex-1 font-mono text-sm"
                           />
                         </div>
@@ -358,6 +363,7 @@ export function BrandingPanel({
                           <Input
                             value={settings.secondary_color}
                             onChange={e => updateSetting('secondary_color', e.target.value)}
+                            maxLength={API_LIMITS.branding.colorMax}
                             className="flex-1 font-mono text-sm"
                           />
                         </div>
@@ -378,6 +384,7 @@ export function BrandingPanel({
                           <Input
                             value={settings.accent_color}
                             onChange={e => updateSetting('accent_color', e.target.value)}
+                            maxLength={API_LIMITS.branding.colorMax}
                             className="flex-1 font-mono text-sm"
                           />
                         </div>
@@ -398,6 +405,7 @@ export function BrandingPanel({
                           <Input
                             value={settings.text_color}
                             onChange={e => updateSetting('text_color', e.target.value)}
+                            maxLength={API_LIMITS.branding.colorMax}
                             className="flex-1 font-mono text-sm"
                           />
                         </div>
@@ -545,7 +553,7 @@ export function BrandingPanel({
                           onValueChange={value =>
                             updateSetting(
                               'watermark_position',
-                              value as BrandingSettings['watermark_position']
+                              value as ResolvedBranding['watermark_position']
                             )
                           }
                         >

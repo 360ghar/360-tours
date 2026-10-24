@@ -9,6 +9,7 @@ import {
   Smartphone,
   Upload,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import {
   Button,
@@ -22,8 +23,20 @@ import {
 } from '@/components/ui';
 import { captureApi, toursApi, uploadApi } from '@/api';
 import { ROUTES, DEFAULT_TOUR_SETTINGS } from '@/constants';
-import type { CaptureSession } from '@/types/capture';
+import type {
+  CaptureFrame,
+  CapturePlan,
+  CaptureSession,
+  CaptureSessionStatus,
+} from '@/types/capture';
+import { confirm, useAuthStore } from '@/stores';
 import { cn } from '@/utils';
+import {
+  readAccountItem,
+  removeAccountItem,
+  writeAccountItem,
+} from '@/lib/accountStorage';
+import { API_LIMITS } from '@/lib/api/limits.gen';
 
 /** Discrete yaw targets for multi-yaw capture at one standing position. */
 const YAW_TARGETS_DEG = [0, 45, 90, 135, 180, 225, 270, 315] as const;
@@ -32,7 +45,8 @@ type Phase = 'setup' | 'camera' | 'review' | 'uploading' | 'done';
 
 interface LocalFrame {
   id: string;
-  blob: Blob;
+  /** Encoded image data; absent only for server-restored frames (already uploaded). */
+  blob?: Blob;
   previewUrl: string;
   roomId: string;
   roomLabel: string;
@@ -47,6 +61,95 @@ interface LocalFrame {
   uploadStatus: 'pending' | 'uploading' | 'done' | 'error';
   uploadError?: string;
   publicUrl?: string;
+  /** Id of the capture session this frame is registered in. A new session needs a new registration. */
+  registeredIn?: string;
+}
+
+/**
+ * Captured frames are persisted to sessionStorage so a reload mid-capture —
+ * mobile Safari tab restore, accidental refresh — recovers the photos instead
+ * of losing them. The key carries the account id and a schema version, and
+ * sign-out removes it (see `lib/accountStorage`). The backend only learns about
+ * frames at upload time, so the session detail cannot list mid-capture frames.
+ */
+
+/** `ready`, `failed` and `cancelled`: nothing leaves these states, the session cannot be reused. */
+const TERMINAL_STATUSES: ReadonlySet<CaptureSessionStatus> = new Set<CaptureSessionStatus>([
+  'ready',
+  'failed',
+  'cancelled',
+]);
+
+function isTerminal(session: CaptureSession | null): boolean {
+  return session !== null && TERMINAL_STATUSES.has(session.status);
+}
+
+interface PersistedFrame {
+  id: string;
+  yawDeg: number;
+  pitchDeg: number | null;
+  roomId: string;
+  roomLabel: string;
+  waypointId: string;
+  waypointIndex: number;
+  frameIndex: number;
+  width: number;
+  height: number;
+  capturedAt: string;
+  dataUrl: string;
+  uploadStatus: LocalFrame['uploadStatus'];
+  uploadError?: string;
+  publicUrl?: string;
+  registeredIn?: string;
+}
+
+/** Fields of a registered frame's `metadata` that the page reads back. */
+interface FrameMetaView {
+  yawDeg?: number;
+  pitchDeg?: number;
+  resolution?: [number, number];
+}
+
+function readFrameMetadata(metadata: unknown): FrameMetaView {
+  if (typeof metadata !== 'object' || metadata === null) return {};
+  const view: FrameMetaView = {};
+  const pose = 'pose' in metadata ? metadata.pose : undefined;
+  if (typeof pose === 'object' && pose !== null) {
+    if ('yaw_deg' in pose && typeof pose.yaw_deg === 'number') view.yawDeg = pose.yaw_deg;
+    if ('pitch_deg' in pose && typeof pose.pitch_deg === 'number') view.pitchDeg = pose.pitch_deg;
+  }
+  const camera = 'camera' in metadata ? metadata.camera : undefined;
+  if (typeof camera === 'object' && camera !== null && 'resolution' in camera) {
+    const resolution = camera.resolution;
+    if (
+      Array.isArray(resolution) &&
+      typeof resolution[0] === 'number' &&
+      typeof resolution[1] === 'number'
+    ) {
+      view.resolution = [resolution[0], resolution[1]];
+    }
+  }
+  return view;
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read captured frame'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [meta, base64] = dataUrl.split(',');
+  const mime = meta.match(/^data:([^;]+);/)?.[1] ?? 'image/jpeg';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
 }
 
 function makeId() {
@@ -68,9 +171,9 @@ async function requestOrientationPermission(): Promise<void> {
   }
 }
 
-function defaultPlan(roomLabel: string) {
+function defaultPlan(roomLabel: string): CapturePlan {
   return {
-    template: 'custom' as const,
+    template: 'custom',
     rooms: [
       {
         id: 'room-1',
@@ -90,9 +193,13 @@ function defaultPlan(roomLabel: string) {
   };
 }
 
+/** Device info sent with a session and with each frame. `web` is a valid platform. */
+const WEB_DEVICE = { platform: 'web', app_version: 'web-capture-0.1' } as const;
+
 export function GuidedCapturePage() {
   const navigate = useNavigate();
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
+  const userId = useAuthStore(s => s.user?.id);
 
   const [phase, setPhase] = useState<Phase>('setup');
   const [title, setTitle] = useState('Property walkthrough');
@@ -114,10 +221,36 @@ export function GuidedCapturePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // A session this page created itself. Opening its route must not reload it: the
+  // resume effect would replace the frames held in memory with the (empty) stored ones.
+  const createdHereRef = useRef<string | null>(null);
 
   const targetYaw = YAW_TARGETS_DEG[yawIndex] ?? 0;
   const capturedYaws = new Set(frames.map(f => f.yawDeg));
   const allYawsDone = YAW_TARGETS_DEG.every(y => capturedYaws.has(y));
+
+  /** Move the session along the state machine and mirror the server row. */
+  const moveSession = useCallback(
+    async (id: string, status: CaptureSessionStatus): Promise<CaptureSession> => {
+      const updated = await captureApi.moveSession(id, status);
+      setSession(updated);
+      return updated;
+    },
+    []
+  );
+
+  /**
+   * Record a failure on the server (`failed` with the reason). Best effort: the
+   * user-facing error is already on screen, and a session already in a terminal
+   * state cannot change.
+   */
+  const failSession = useCallback(async (id: string, message: string) => {
+    try {
+      setSession(await captureApi.failSession(id, message));
+    } catch {
+      // The session may already be terminal or unreachable; nothing more to do.
+    }
+  }, []);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -181,17 +314,147 @@ export function GuidedCapturePage() {
     return () => stopCamera();
   }, [phase, startCamera, stopCamera]);
 
-  // Resume existing session from route
+  // Resume existing session from route: restore session metadata, then rebuild
+  // the frames list from the sessionStorage fallback (mid-capture frames are
+  // only local until upload) and from any server-registered frames (partial
+  // upload retries), yaw-sorted so the capture UI picks up where it left off.
   useEffect(() => {
-    if (!routeSessionId) return;
+    if (!routeSessionId || routeSessionId === createdHereRef.current) return;
     let cancelled = false;
+
+    const restoreFromSessionStorage = async (): Promise<LocalFrame[]> => {
+      const stored = readAccountItem('captureFrames', userId, routeSessionId);
+      if (!stored) return [];
+      try {
+        const persisted = JSON.parse(stored) as PersistedFrame[];
+        return await Promise.all(
+          persisted.map(async p => {
+            const blob = dataUrlToBlob(p.dataUrl);
+            const previewUrl = URL.createObjectURL(blob);
+            return {
+              id: p.id,
+              blob,
+              previewUrl,
+              roomId: p.roomId,
+              roomLabel: p.roomLabel,
+              waypointId: p.waypointId,
+              waypointIndex: p.waypointIndex,
+              frameIndex: p.frameIndex,
+              yawDeg: p.yawDeg,
+              pitchDeg: p.pitchDeg,
+              width: p.width,
+              height: p.height,
+              capturedAt: p.capturedAt,
+              uploadStatus: p.uploadStatus,
+              uploadError: p.uploadError,
+              publicUrl: p.publicUrl,
+              registeredIn: p.registeredIn,
+            } satisfies LocalFrame;
+          })
+        );
+      } catch {
+        // Corrupt payload — fall through to a session with no restored frames.
+        return [];
+      }
+    };
+
+    const mergeServerFrames = (
+      local: LocalFrame[],
+      serverFrames: CaptureFrame[],
+      sessionIdForFrames: string
+    ): LocalFrame[] => {
+      const serverByYaw = new Map<number, { frame: CaptureFrame; meta: FrameMetaView }>();
+      serverFrames.forEach(f => {
+        const meta = readFrameMetadata(f.metadata);
+        if (typeof meta.yawDeg === 'number' && f.image_url) {
+          serverByYaw.set(meta.yawDeg, { frame: f, meta });
+        }
+      });
+      if (serverByYaw.size === 0) return local;
+
+      const next = local.map(lf => {
+        const server = serverByYaw.get(lf.yawDeg);
+        if (!server || !server.frame.image_url) return lf;
+        // A frame retaken locally and not uploaded yet must keep its own pixels:
+        // the server frame at this yaw is the OLD capture.
+        if (lf.blob && lf.uploadStatus !== 'done') return lf;
+        // Already registered server-side — skip re-upload on the next run.
+        return {
+          ...lf,
+          uploadStatus: 'done' as const,
+          publicUrl: server.frame.image_url,
+          registeredIn: sessionIdForFrames,
+        };
+      });
+
+      const localYaws = new Set(next.map(lf => lf.yawDeg));
+      serverByYaw.forEach(({ frame, meta }, yaw) => {
+        if (localYaws.has(yaw) || !frame.image_url) return;
+        next.push({
+          id: `server-${frame.id}`,
+          blob: undefined,
+          previewUrl: frame.image_url,
+          roomId: frame.room_id,
+          roomLabel: frame.room_label ?? 'Room 1',
+          waypointId: frame.waypoint_id,
+          waypointIndex: frame.waypoint_index,
+          frameIndex: frame.frame_index,
+          yawDeg: yaw,
+          pitchDeg: meta.pitchDeg ?? null,
+          width: meta.resolution?.[0] ?? 0,
+          height: meta.resolution?.[1] ?? 0,
+          capturedAt: frame.created_at,
+          uploadStatus: 'done' as const,
+          publicUrl: frame.image_url,
+          registeredIn: sessionIdForFrames,
+        });
+      });
+      return next.sort((a, b) => a.yawDeg - b.yawDeg);
+    };
+
     (async () => {
       try {
         const s = await captureApi.getSession(routeSessionId);
         if (cancelled) return;
         setSession(s);
         setTitle(s.title);
-        setPhase('camera');
+
+        const restored = await restoreFromSessionStorage();
+        if (cancelled) {
+          restored.forEach(f => URL.revokeObjectURL(f.previewUrl));
+          return;
+        }
+
+        const merged = mergeServerFrames(restored, s.frames ?? [], s.id);
+        setFrames(merged);
+
+        // Point the camera UI at the first still-missing yaw.
+        const capturedYaws = new Set(merged.map(f => f.yawDeg));
+        const firstMissing = YAW_TARGETS_DEG.findIndex(y => !capturedYaws.has(y));
+        setYawIndex(firstMissing >= 0 ? firstMissing : 0);
+
+        if (TERMINAL_STATUSES.has(s.status)) {
+          // A session that ended cannot be reused. Frames still on this device are
+          // kept for review: uploading them opens a new session.
+          if (merged.length > 0) {
+            setPhase('review');
+            setError(`This capture session is ${s.status}. Uploading starts a new session.`);
+          } else {
+            setError(`This capture session is ${s.status}. Start a new capture.`);
+          }
+        } else if (s.status === 'processing') {
+          // The server is building the tour: the session takes no more frames, and
+          // `processing -> uploading` is not a valid transition. Do not open the
+          // camera; the status page reports when it is ready.
+          setError('This capture session is processing. Check back when it is ready.');
+        } else if (s.status === 'review' || s.status === 'uploading') {
+          setPhase('review');
+          if (s.status === 'uploading') await moveSession(s.id, 'review');
+        } else {
+          // draft or capturing
+          if (s.status === 'draft') await moveSession(s.id, 'capturing');
+          setPhase('camera');
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load session');
@@ -201,7 +464,7 @@ export function GuidedCapturePage() {
     return () => {
       cancelled = true;
     };
-  }, [routeSessionId]);
+  }, [routeSessionId, userId, moveSession]);
 
   // Keep a ref in sync so the unmount cleanup below revokes the CURRENT
   // frames, not whatever `frames` was when this effect first ran.
@@ -210,12 +473,93 @@ export function GuidedCapturePage() {
     framesRef.current = frames;
   }, [frames]);
 
+  // Persist captured frames to sessionStorage (keyed by session id) whenever
+  // they change, so a reload mid-capture restores them. Best-effort: quota
+  // exhaustion or a failed encode just means frames stay in memory only.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const persisted: PersistedFrame[] = [];
+        for (const f of framesRef.current) {
+          if (!f.blob) continue;
+          persisted.push({
+            id: f.id,
+            yawDeg: f.yawDeg,
+            pitchDeg: f.pitchDeg,
+            roomId: f.roomId,
+            roomLabel: f.roomLabel,
+            waypointId: f.waypointId,
+            waypointIndex: f.waypointIndex,
+            frameIndex: f.frameIndex,
+            width: f.width,
+            height: f.height,
+            capturedAt: f.capturedAt,
+            dataUrl: await blobToDataUrl(f.blob),
+            uploadStatus: f.uploadStatus,
+            uploadError: f.uploadError,
+            publicUrl: f.publicUrl,
+            registeredIn: f.registeredIn,
+          });
+        }
+        if (cancelled) return;
+        writeAccountItem('captureFrames', userId, JSON.stringify(persisted), session.id);
+      } catch {
+        // Quota / encode failure — nothing to do; in-memory frames still work.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, frames, userId]);
+
+  // Warn before leaving the tab while mid-capture with unsaved frames.
+  useEffect(() => {
+    if (phase !== 'camera' || frames.length === 0) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers render their own generic copy; legacy engines use this.
+      e.returnValue = 'You have unsaved captured frames';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [phase, frames.length]);
+
   // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
       framesRef.current.forEach(f => URL.revokeObjectURL(f.previewUrl));
     };
   }, []);
+
+  /**
+   * Create a capture session and walk it to `capturing` (draft -> capturing).
+   * Used by the start button, and by an upload after the previous session ended.
+   */
+  const openSession = useCallback(
+    async (sessionTitle: string, firstRoom: string): Promise<CaptureSession> => {
+      const created = await captureApi.createSession({
+        title: sessionTitle.trim().slice(0, API_LIMITS.capture.titleMax) || 'Property walkthrough',
+        plan: defaultPlan(firstRoom.trim() || 'Room 1'),
+        device_info: {
+          ...WEB_DEVICE,
+          model: navigator.userAgent.slice(0, 120),
+        },
+      });
+      setSession(created);
+      createdHereRef.current = created.id;
+      navigate(ROUTES.TOUR_CAPTURE_SESSION.replace(':sessionId', created.id), { replace: true });
+      try {
+        return await moveSession(created.id, 'capturing');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Could not start the capture session';
+        await failSession(created.id, message);
+        throw err;
+      }
+    },
+    [navigate, moveSession, failSession]
+  );
 
   const handleStart = async () => {
     setIsStarting(true);
@@ -224,23 +568,35 @@ export function GuidedCapturePage() {
     // requestPermission() calls made outside a direct click/tap.
     void requestOrientationPermission();
     try {
-      const plan = defaultPlan(roomLabel.trim() || 'Room 1');
-      const s = await captureApi.createSession({
-        title: title.trim() || 'Property walkthrough',
-        plan,
-        device_info: {
-          platform: 'web',
-          app_version: 'web-capture-0.1',
-          model: navigator.userAgent.slice(0, 120),
-        },
-      });
-      setSession(s);
+      await openSession(title, roomLabel);
       setPhase('camera');
-      navigate(ROUTES.TOUR_CAPTURE_SESSION.replace(':sessionId', s.id), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create capture session');
     } finally {
       setIsStarting(false);
+    }
+  };
+
+  /** capturing -> review. The review screen is only shown once the server agrees. */
+  const goToReview = async () => {
+    if (frames.length === 0) return;
+    setError(null);
+    try {
+      if (session && !isTerminal(session)) await moveSession(session.id, 'review');
+      setPhase('review');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not move to review');
+    }
+  };
+
+  /** review -> capturing, to retake frames. */
+  const backToCamera = async () => {
+    setError(null);
+    try {
+      if (session && !isTerminal(session)) await moveSession(session.id, 'capturing');
+      setPhase('camera');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not return to the camera');
     }
   };
 
@@ -320,19 +676,31 @@ export function GuidedCapturePage() {
   };
 
   const runUploadPipeline = async () => {
-    if (!session || frames.length === 0) return;
+    if (frames.length === 0) return;
     setPhase('uploading');
     setError(null);
     setUploadProgress(0);
 
-    // On retry after a partial failure, don't re-upload/re-register frames
-    // that already succeeded — just pick up where we left off.
-    const alreadyUploaded = frames.filter(f => f.uploadStatus === 'done' && f.publicUrl);
-    const pending = frames.filter(f => !(f.uploadStatus === 'done' && f.publicUrl));
-    let doneCount = 0;
+    // `live` is the session this run registers frames in. A session that ended
+    // (failed on a previous attempt, or restored as terminal) cannot be reused.
+    let live: CaptureSession | null = session;
 
     try {
-      await captureApi.updateSession(session.id, { status: 'uploading', progress: 5 });
+      if (!live || isTerminal(live)) {
+        live = await openSession(title, frames[0]?.roomLabel ?? roomLabel);
+        live = await moveSession(live.id, 'review');
+      }
+      const sessionId = live.id;
+
+      // draft/capturing -> review is done by goToReview; review -> uploading starts the run.
+      live = await moveSession(sessionId, 'uploading');
+
+      // On retry after a partial failure, don't re-upload/re-register frames
+      // that already succeeded in this session — just pick up where we left off.
+      const alreadyUploaded = frames.filter(f => f.publicUrl && f.registeredIn === sessionId);
+      const pending = frames.filter(f => !(f.publicUrl && f.registeredIn === sessionId));
+      let doneCount = 0;
+      setUploadProgress(5);
 
       for (let i = 0; i < pending.length; i++) {
         const frame = pending[i];
@@ -341,33 +709,42 @@ export function GuidedCapturePage() {
         );
 
         try {
-          const file = new File([frame.blob], `capture-${frame.yawDeg}deg.jpg`, {
-            type: 'image/jpeg',
-          });
-          const uploadResult = await uploadApi.uploadFile(file, {
-            folder: 'scenes',
-            visibility: 'public',
-            onProgress: p => {
-              const base = (i / pending.length) * 70;
-              const slice = (p / 100) * (70 / pending.length);
-              setUploadProgress(Math.round(base + slice));
-            },
-          });
+          let publicUrl = frame.publicUrl;
+          if (!publicUrl) {
+            const blob = frame.blob;
+            if (!blob) {
+              throw new Error(`Frame data missing for ${frame.yawDeg}° — recapture it first.`);
+            }
+            const file = new File([blob], `capture-${frame.yawDeg}deg.jpg`, {
+              type: 'image/jpeg',
+            });
+            // The tour does not exist yet, so the frame is a generic upload.
+            const uploadResult = await uploadApi.uploadFile(file, {
+              folderType: 'generic',
+              visibility: 'public',
+              onProgress: p => {
+                const base = (i / pending.length) * 70;
+                const slice = (p / 100) * (70 / pending.length);
+                setUploadProgress(Math.round(base + slice));
+              },
+            });
+            publicUrl = uploadResult.public_url;
+          }
 
-          await captureApi.registerFrame(session.id, {
+          await captureApi.registerFrame(sessionId, {
             room_id: frame.roomId,
             room_label: frame.roomLabel,
             waypoint_id: frame.waypointId,
             waypoint_index: frame.waypointIndex,
             frame_index: frame.frameIndex,
-            image_url: uploadResult.public_url,
+            image_url: publicUrl,
             metadata: {
               capture_mode: 'multi_yaw',
               timestamp_iso: frame.capturedAt,
-              device: { platform: 'web', app_version: 'web-capture-0.1' },
+              device: WEB_DEVICE,
               pose: {
                 yaw_deg: frame.yawDeg,
-                pitch_deg: frame.pitchDeg ?? undefined,
+                ...(frame.pitchDeg !== null ? { pitch_deg: frame.pitchDeg } : {}),
                 tracking_backend: 'none',
                 tracking_quality: 'limited',
               },
@@ -380,11 +757,11 @@ export function GuidedCapturePage() {
           setFrames(prev =>
             prev.map(f =>
               f.id === frame.id
-                ? { ...f, uploadStatus: 'done', publicUrl: uploadResult.public_url }
+                ? { ...f, uploadStatus: 'done', publicUrl, registeredIn: sessionId }
                 : f
             )
           );
-          pending[i] = { ...frame, publicUrl: uploadResult.public_url, uploadStatus: 'done' };
+          pending[i] = { ...frame, publicUrl, registeredIn: sessionId, uploadStatus: 'done' };
         } catch (err) {
           setFrames(prev =>
             prev.map(f =>
@@ -405,14 +782,16 @@ export function GuidedCapturePage() {
       }
 
       setUploadProgress(75);
-      await captureApi.completeSession(session.id);
+      // uploading -> processing -> ready. `ready` is final.
+      live = await captureApi.completeSession(sessionId);
+      setSession(live);
 
       // Bridge to existing tour pipeline: create tour + scenes from captures
       setUploadProgress(85);
+      // A new tour is a draft: `status` is not a writable field.
       const tour = await toursApi.createTour({
-        title: session.title || title,
-        description: `Guided capture session ${session.id}`,
-        status: 'draft',
+        title: (session?.title || title).slice(0, API_LIMITS.tour.titleMax),
+        description: `Guided capture session ${sessionId}`,
         visibility: 'private',
         settings: DEFAULT_TOUR_SETTINGS,
       });
@@ -420,35 +799,64 @@ export function GuidedCapturePage() {
       const uploaded = [...alreadyUploaded, ...pending.filter(f => f.publicUrl)].sort(
         (a, b) => a.yawDeg - b.yawDeg
       );
+      // The server appends each scene, so creating them in order keeps the order.
       for (let i = 0; i < uploaded.length; i++) {
         const f = uploaded[i];
         await toursApi.createScene(tour.id, {
           image_url: f.publicUrl!,
-          title: `${f.roomLabel} · ${f.yawDeg}°`,
-          order_index: i,
+          title: `${f.roomLabel} · ${f.yawDeg}°`.slice(0, API_LIMITS.scene.titleMax),
         });
       }
 
       setCreatedTourId(tour.id);
       setUploadProgress(100);
       setPhase('done');
+      // Frames are safely registered on the capture session + draft tour now.
+      removeAccountItem('captureFrames', userId, sessionId);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Upload pipeline failed';
       setError(message);
-      try {
-        await captureApi.updateSession(session.id, {
-          status: 'failed',
-          error_message: message,
-        });
-      } catch {
-        // Best-effort — the user-facing error above already reflects the failure.
-      }
+      // Record the failure on the session. A session that is already terminal
+      // (ready, failed, cancelled) cannot change, so it is left as is.
+      if (live && !isTerminal(live)) await failSession(live.id, message);
       setPhase('review');
     }
   };
 
   const levelOk =
     pitchDeg === null || (Math.abs(pitchDeg) < 20 /* soft threshold when sensors exist */);
+
+  // Abandon the session explicitly: cancel it server-side (best-effort) and
+  // drop the locally persisted frames.
+  const discardSession = async () => {
+    if (!session) return;
+    if (
+      !(await confirm({
+        title: 'Discard capture session',
+        message:
+          'Discard this capture session and its captured frames? The frames will be deleted and cannot be recovered.',
+        confirmLabel: 'Discard session',
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
+    try {
+      // Cancelling a session that already ended is a 400; the local frames go either way.
+      if (!isTerminal(session)) await captureApi.cancelSession(session.id);
+    } catch {
+      // Best-effort — the session may already be cancelled server-side; the
+      // local frames are discarded either way.
+    }
+    removeAccountItem('captureFrames', userId, session.id);
+    framesRef.current.forEach(f => URL.revokeObjectURL(f.previewUrl));
+    setFrames([]);
+    setSession(null);
+    setYawIndex(0);
+    setPhase('setup');
+    setError(null);
+    navigate(ROUTES.TOUR_CAPTURE, { replace: true });
+  };
 
   return (
     <div className="animate-fade-in mx-auto max-w-3xl space-y-6">
@@ -502,6 +910,7 @@ export function GuidedCapturePage() {
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="e.g. 2BHK walkthrough"
+              maxLength={API_LIMITS.capture.titleMax}
             />
             <Input
               label="First room name"
@@ -611,7 +1020,7 @@ export function GuidedCapturePage() {
               <Button
                 variant="outline"
                 disabled={frames.length === 0}
-                onClick={() => setPhase('review')}
+                onClick={() => void goToReview()}
               >
                 Review ({frames.length})
               </Button>
@@ -629,7 +1038,7 @@ export function GuidedCapturePage() {
           {allYawsDone && (
             <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
               <span>All directions captured for this standing position.</span>
-              <Button size="sm" onClick={() => setPhase('review')}>
+              <Button size="sm" onClick={() => void goToReview()}>
                 Continue to review
               </Button>
             </div>
@@ -676,8 +1085,12 @@ export function GuidedCapturePage() {
                 ))}
               </div>
             )}
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setPhase('camera')}>
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button variant="ghost" onClick={() => void discardSession()}>
+                <Trash2 className="h-4 w-4 text-[var(--color-error-600)]" />
+                Discard session
+              </Button>
+              <Button variant="outline" onClick={() => void backToCamera()}>
                 Back to camera
               </Button>
               <Button disabled={frames.length === 0} onClick={() => void runUploadPipeline()}>
@@ -755,6 +1168,9 @@ export function GuidedCapturePage() {
             <Button
               variant="ghost"
               onClick={() => {
+                if (session) {
+                  removeAccountItem('captureFrames', userId, session.id);
+                }
                 setFrames([]);
                 setSession(null);
                 setCreatedTourId(null);

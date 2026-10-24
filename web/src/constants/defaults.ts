@@ -1,4 +1,4 @@
-import type { TourSettings } from '@/types';
+import type { ResolvedTourSettings } from '@/types';
 
 // Tour Status Options
 export const TOUR_STATUS_OPTIONS = [
@@ -18,7 +18,7 @@ export const HOTSPOT_TYPES = [
 ] as const;
 
 // Default Tour Settings
-export const DEFAULT_TOUR_SETTINGS: TourSettings = {
+export const DEFAULT_TOUR_SETTINGS: ResolvedTourSettings = {
   auto_rotate: false,
   auto_rotate_speed: 1,
   show_navbar: true,
@@ -39,12 +39,13 @@ export const DEFAULT_TOUR_SETTINGS: TourSettings = {
   },
 };
 
-// Default Scene Metadata
+// Default Scene Metadata. The backend default zoom is 50 on the Photo Sphere Viewer
+// zoomLevel scale (0 widest, 100 closest); the editor and the viewer use the same value.
 export const DEFAULT_SCENE_METADATA = {
   initial_view: {
     yaw: 0,
     pitch: 0,
-    zoom: 0,
+    zoom: 50,
   },
   camera: {
     fov: 70,
@@ -57,7 +58,7 @@ export const DEFAULT_SCENE_METADATA = {
 export const VIEWER_DEFAULTS = {
   defaultPitch: 0,
   defaultYaw: 0,
-  defaultZoom: 0,
+  defaultZoom: 50,
   minFov: 30,
   maxFov: 90,
   moveSpeed: 1,

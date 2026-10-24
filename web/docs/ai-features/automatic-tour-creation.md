@@ -38,10 +38,16 @@ The generated draft should include:
 ### Safety
 - Generated links/content should be treated as untrusted input.
 - Users must explicitly review before publishing.
+- Linking quality is reported, not assumed: the job result carries `spatial_summary`
+  (scene/link counts plus a warning per room with no doorway, one-way link, unreachable scene,
+  doorway with no matching room, or doorway whose room was left unlinked) and the wizard review
+  step shows it before the user completes.
 
 ## API Touchpoints
 
 - `POST /ai/tours/generate`
+- `POST /ai/tours/{tour_id}/connect-spatial` (re-run doorway linking on an existing tour)
+- `POST /tours/{tour_id}/floor-plans/generate` (schematic plan from the tour's rooms + links)
 - `GET /ai/jobs/{job_id}`
 - `POST /ai/jobs/{job_id}/cancel`
 

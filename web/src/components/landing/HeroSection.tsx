@@ -25,7 +25,7 @@ export function HeroSection() {
       </div>
 
       <div className="relative w-full max-w-[1400px] mx-auto px-6 md:px-12 lg:px-16 py-8 md:py-12 lg:py-0">
-        <div className="grid lg:grid-cols-[1.1fr,1fr] gap-12 lg:gap-16 items-center">
+        <div className="grid lg:grid-cols-[1.1fr_1fr] gap-12 lg:gap-16 items-center">
           {/* Left column - Content */}
           <div className="relative z-10">
             {/* Badge */}
@@ -78,7 +78,10 @@ export function HeroSection() {
                 Start Free
                 <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
               </Link>
-              <a href="#pricing" className="landing-btn-secondary">
+              <a
+                href="#pricing"
+                className="self-center text-base font-medium text-[var(--landing-text-hero)]/70 transition-colors hover:text-[var(--landing-text-hero)]"
+              >
                 View Pricing
               </a>
             </div>
