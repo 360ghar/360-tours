@@ -1,0 +1,1692 @@
+{
+  "HotspotCreate": {
+    "$defs": {
+      "AudioContent": {
+        "additionalProperties": false,
+        "properties": {
+          "audio_url": {
+            "maxLength": 2048,
+            "title": "Audio Url",
+            "type": "string"
+          },
+          "autoplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Autoplay"
+          },
+          "loop": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Loop"
+          }
+        },
+        "required": [
+          "audio_url"
+        ],
+        "title": "AudioContent",
+        "type": "object"
+      },
+      "CustomContent": {
+        "additionalProperties": false,
+        "properties": {
+          "component_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Component Key"
+          },
+          "html": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Html"
+          },
+          "props": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Props"
+          }
+        },
+        "title": "CustomContent",
+        "type": "object"
+      },
+      "HotspotPosition": {
+        "additionalProperties": false,
+        "description": "Position of a hotspot on the panorama.",
+        "properties": {
+          "pitch": {
+            "description": "Vertical angle in degrees",
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Pitch",
+            "type": "number"
+          },
+          "radius": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional radius for interaction area",
+            "title": "Radius"
+          },
+          "yaw": {
+            "description": "Horizontal angle in degrees",
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Yaw",
+            "type": "number"
+          }
+        },
+        "required": [
+          "yaw",
+          "pitch"
+        ],
+        "title": "HotspotPosition",
+        "type": "object"
+      },
+      "HotspotType": {
+        "enum": [
+          "navigation",
+          "info",
+          "audio",
+          "video",
+          "link",
+          "custom"
+        ],
+        "title": "HotspotType",
+        "type": "string"
+      },
+      "InfoContent": {
+        "additionalProperties": false,
+        "properties": {
+          "html": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Html"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Image Url"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Text"
+          }
+        },
+        "title": "InfoContent",
+        "type": "object"
+      },
+      "LinkContent": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "target": {
+            "default": "_blank",
+            "enum": [
+              "_blank",
+              "_self"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 2048,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "LinkContent",
+        "type": "object"
+      },
+      "NavigationContent": {
+        "additionalProperties": false,
+        "description": "Navigation hotspots store no content. The target is target_scene_id.",
+        "properties": {},
+        "title": "NavigationContent",
+        "type": "object"
+      },
+      "VideoContent": {
+        "additionalProperties": false,
+        "description": "Exactly one of youtube_id, vimeo_id or video_url. A YouTube or Vimeo video_url is normalized to its id.",
+        "properties": {
+          "autoplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Autoplay"
+          },
+          "loop": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Loop"
+          },
+          "muted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Muted"
+          },
+          "poster_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Poster Url"
+          },
+          "video_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Video Url"
+          },
+          "vimeo_id": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Vimeo Id"
+          },
+          "youtube_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Youtube Id"
+          }
+        },
+        "title": "VideoContent",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Schema for creating a hotspot. content is validated against type.",
+    "properties": {
+      "content": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/NavigationContent"
+          },
+          {
+            "$ref": "#/$defs/LinkContent"
+          },
+          {
+            "$ref": "#/$defs/AudioContent"
+          },
+          {
+            "$ref": "#/$defs/VideoContent"
+          },
+          {
+            "$ref": "#/$defs/InfoContent"
+          },
+          {
+            "$ref": "#/$defs/CustomContent"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Content"
+      },
+      "custom_data": {
+        "additionalProperties": true,
+        "title": "Custom Data",
+        "type": "object"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "icon": {
+        "anyOf": [
+          {
+            "maxLength": 50,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Icon"
+      },
+      "icon_color": {
+        "anyOf": [
+          {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Icon Color"
+      },
+      "icon_name": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Icon Name"
+      },
+      "icon_size": {
+        "default": 32,
+        "maximum": 100,
+        "minimum": 16,
+        "title": "Icon Size",
+        "type": "integer"
+      },
+      "position": {
+        "$ref": "#/$defs/HotspotPosition"
+      },
+      "target_scene_id": {
+        "anyOf": [
+          {
+            "maxLength": 36,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Scene Id"
+      },
+      "title": {
+        "anyOf": [
+          {
+            "maxLength": 255,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Title"
+      },
+      "type": {
+        "$ref": "#/$defs/HotspotType",
+        "default": "info"
+      }
+    },
+    "required": [
+      "position"
+    ],
+    "title": "HotspotCreate",
+    "type": "object"
+  },
+  "HotspotUpdate": {
+    "$defs": {
+      "HotspotPosition": {
+        "additionalProperties": false,
+        "description": "Position of a hotspot on the panorama.",
+        "properties": {
+          "pitch": {
+            "description": "Vertical angle in degrees",
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Pitch",
+            "type": "number"
+          },
+          "radius": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional radius for interaction area",
+            "title": "Radius"
+          },
+          "yaw": {
+            "description": "Horizontal angle in degrees",
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Yaw",
+            "type": "number"
+          }
+        },
+        "required": [
+          "yaw",
+          "pitch"
+        ],
+        "title": "HotspotPosition",
+        "type": "object"
+      },
+      "HotspotType": {
+        "enum": [
+          "navigation",
+          "info",
+          "audio",
+          "video",
+          "link",
+          "custom"
+        ],
+        "title": "HotspotType",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Schema for updating a hotspot. content is validated against the effective type in the service.",
+    "properties": {
+      "content": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Content"
+      },
+      "custom_data": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Custom Data"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "icon": {
+        "anyOf": [
+          {
+            "maxLength": 50,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Icon"
+      },
+      "icon_color": {
+        "anyOf": [
+          {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Icon Color"
+      },
+      "icon_name": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Icon Name"
+      },
+      "icon_size": {
+        "anyOf": [
+          {
+            "maximum": 100,
+            "minimum": 16,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Icon Size"
+      },
+      "is_active": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Is Active"
+      },
+      "position": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/HotspotPosition"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "target_scene_id": {
+        "anyOf": [
+          {
+            "maxLength": 36,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Scene Id"
+      },
+      "title": {
+        "anyOf": [
+          {
+            "maxLength": 255,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Title"
+      },
+      "type": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/HotspotType"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "title": "HotspotUpdate",
+    "type": "object"
+  },
+  "PresignedUploadItem": {
+    "$defs": {
+      "StorageFolderType": {
+        "description": "Client folder type for every upload endpoint. Unknown values are a 422.\n\nMaps to the internal StorageFolder in app/services/storage_paths.py.",
+        "enum": [
+          "avatar",
+          "property_image",
+          "property_video",
+          "property_document",
+          "tour_thumbnail",
+          "tour_original",
+          "scene",
+          "document_lease",
+          "document_maintenance",
+          "document_general",
+          "generic"
+        ],
+        "title": "StorageFolderType",
+        "type": "string"
+      },
+      "TourVisibility": {
+        "description": "Tour visibility controls access permissions.\n\n- private: Only the owner can view the tour (requires authentication)\n- unlisted: Anyone with the link can view, but not indexed in public listings\n- public: Visible in public listings and searchable",
+        "enum": [
+          "private",
+          "unlisted",
+          "public"
+        ],
+        "title": "TourVisibility",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "One file to presign. file_size is required and is checked again on confirm.",
+    "properties": {
+      "content_type": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "MIME type of the file",
+        "examples": [
+          "image/jpeg"
+        ],
+        "title": "Content Type"
+      },
+      "file_size": {
+        "description": "File size in bytes",
+        "examples": [
+          102400
+        ],
+        "minimum": 0,
+        "title": "File Size",
+        "type": "integer"
+      },
+      "filename": {
+        "description": "Original filename including extension",
+        "examples": [
+          "living-room.jpg"
+        ],
+        "maxLength": 255,
+        "minLength": 1,
+        "title": "Filename",
+        "type": "string"
+      },
+      "folder_type": {
+        "$ref": "#/$defs/StorageFolderType",
+        "default": "generic",
+        "description": "Storage folder determining the path structure",
+        "examples": [
+          "property_image"
+        ]
+      },
+      "property_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Required for property_* folder types",
+        "examples": [
+          1
+        ],
+        "title": "Property Id"
+      },
+      "scene_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Required for the scene folder type",
+        "examples": [
+          "scene_xyz789"
+        ],
+        "title": "Scene Id"
+      },
+      "tour_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Required for tour_* and scene folder types",
+        "examples": [
+          "tour_abc123"
+        ],
+        "title": "Tour Id"
+      },
+      "visibility": {
+        "$ref": "#/$defs/TourVisibility",
+        "default": "private",
+        "description": "Media library visibility",
+        "examples": [
+          "private"
+        ]
+      }
+    },
+    "required": [
+      "filename",
+      "file_size"
+    ],
+    "title": "PresignedUploadItem",
+    "type": "object"
+  },
+  "PresignedUploadRequest": {
+    "$defs": {
+      "PresignedUploadItem": {
+        "additionalProperties": false,
+        "description": "One file to presign. file_size is required and is checked again on confirm.",
+        "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "MIME type of the file",
+            "examples": [
+              "image/jpeg"
+            ],
+            "title": "Content Type"
+          },
+          "file_size": {
+            "description": "File size in bytes",
+            "examples": [
+              102400
+            ],
+            "minimum": 0,
+            "title": "File Size",
+            "type": "integer"
+          },
+          "filename": {
+            "description": "Original filename including extension",
+            "examples": [
+              "living-room.jpg"
+            ],
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "folder_type": {
+            "$ref": "#/$defs/StorageFolderType",
+            "default": "generic",
+            "description": "Storage folder determining the path structure",
+            "examples": [
+              "property_image"
+            ]
+          },
+          "property_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Required for property_* folder types",
+            "examples": [
+              1
+            ],
+            "title": "Property Id"
+          },
+          "scene_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Required for the scene folder type",
+            "examples": [
+              "scene_xyz789"
+            ],
+            "title": "Scene Id"
+          },
+          "tour_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Required for tour_* and scene folder types",
+            "examples": [
+              "tour_abc123"
+            ],
+            "title": "Tour Id"
+          },
+          "visibility": {
+            "$ref": "#/$defs/TourVisibility",
+            "default": "private",
+            "description": "Media library visibility",
+            "examples": [
+              "private"
+            ]
+          }
+        },
+        "required": [
+          "filename",
+          "file_size"
+        ],
+        "title": "PresignedUploadItem",
+        "type": "object"
+      },
+      "StorageFolderType": {
+        "description": "Client folder type for every upload endpoint. Unknown values are a 422.\n\nMaps to the internal StorageFolder in app/services/storage_paths.py.",
+        "enum": [
+          "avatar",
+          "property_image",
+          "property_video",
+          "property_document",
+          "tour_thumbnail",
+          "tour_original",
+          "scene",
+          "document_lease",
+          "document_maintenance",
+          "document_general",
+          "generic"
+        ],
+        "title": "StorageFolderType",
+        "type": "string"
+      },
+      "TourVisibility": {
+        "description": "Tour visibility controls access permissions.\n\n- private: Only the owner can view the tour (requires authentication)\n- unlisted: Anyone with the link can view, but not indexed in public listings\n- public: Visible in public listings and searchable",
+        "enum": [
+          "private",
+          "unlisted",
+          "public"
+        ],
+        "title": "TourVisibility",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "files": {
+        "items": {
+          "$ref": "#/$defs/PresignedUploadItem"
+        },
+        "maxItems": 20,
+        "minItems": 1,
+        "title": "Files",
+        "type": "array"
+      }
+    },
+    "required": [
+      "files"
+    ],
+    "title": "PresignedUploadRequest",
+    "type": "object"
+  },
+  "SceneCreate": {
+    "$defs": {
+      "SceneCameraSettings": {
+        "additionalProperties": false,
+        "description": "Camera settings for a scene.",
+        "properties": {
+          "fov": {
+            "anyOf": [
+              {
+                "maximum": 150,
+                "minimum": 10,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 70,
+            "title": "Fov"
+          },
+          "max_fov": {
+            "anyOf": [
+              {
+                "maximum": 150,
+                "minimum": 10,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 90,
+            "title": "Max Fov"
+          },
+          "min_fov": {
+            "anyOf": [
+              {
+                "maximum": 150,
+                "minimum": 10,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 30,
+            "title": "Min Fov"
+          }
+        },
+        "title": "SceneCameraSettings",
+        "type": "object"
+      },
+      "SceneDimensions": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "minimum": 0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "minimum": 0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "title": "SceneDimensions",
+        "type": "object"
+      },
+      "SceneGps": {
+        "additionalProperties": false,
+        "properties": {
+          "latitude": {
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Longitude",
+            "type": "number"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "title": "SceneGps",
+        "type": "object"
+      },
+      "SceneInitialView": {
+        "additionalProperties": false,
+        "description": "Initial camera view for a scene.",
+        "properties": {
+          "pitch": {
+            "default": 0.0,
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Pitch",
+            "type": "number"
+          },
+          "yaw": {
+            "default": 0.0,
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Yaw",
+            "type": "number"
+          },
+          "zoom": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 50,
+            "description": "Zoom level from 0 (widest) to 100 (closest), the Photo Sphere Viewer zoomLevel scale.",
+            "title": "Zoom"
+          }
+        },
+        "title": "SceneInitialView",
+        "type": "object"
+      },
+      "SceneMetadata": {
+        "additionalProperties": false,
+        "description": "Metadata for a scene. The image pipeline and the AI services write the server-owned keys.",
+        "properties": {
+          "camera": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SceneCameraSettings"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Caption"
+          },
+          "dimensions": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SceneDimensions"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "exif": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exif"
+          },
+          "gps": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SceneGps"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "initial_view": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SceneInitialView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "is_panorama": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Panorama"
+          },
+          "narration_script": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Narration Script"
+          },
+          "room_type": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Room Type"
+          }
+        },
+        "title": "SceneMetadata",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Schema for creating a scene. order_index is server-owned: the new scene goes last.",
+    "properties": {
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "image_url": {
+        "maxLength": 500,
+        "title": "Image Url",
+        "type": "string"
+      },
+      "scene_metadata": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/SceneMetadata"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "thumbnail_url": {
+        "anyOf": [
+          {
+            "maxLength": 500,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Thumbnail Url"
+      },
+      "title": {
+        "anyOf": [
+          {
+            "maxLength": 255,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Title"
+      }
+    },
+    "required": [
+      "image_url"
+    ],
+    "title": "SceneCreate",
+    "type": "object"
+  },
+  "SceneStitchRequest": {
+    "additionalProperties": false,
+    "description": "Request payload for cloud panorama stitching of captured frames.",
+    "properties": {
+      "frame_urls": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 32,
+        "minItems": 2,
+        "title": "Frame Urls",
+        "type": "array"
+      }
+    },
+    "required": [
+      "frame_urls"
+    ],
+    "title": "SceneStitchRequest",
+    "type": "object"
+  },
+  "TourCreate": {
+    "$defs": {
+      "TourBrandingSettings": {
+        "additionalProperties": false,
+        "description": "Branding settings for a tour. Stored only in tours.settings.branding.",
+        "properties": {
+          "accent_color": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Accent Color"
+          },
+          "background_color": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Background Color"
+          },
+          "button_style": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rounded",
+                  "square",
+                  "pill"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Button Style"
+          },
+          "custom_css": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Custom Css"
+          },
+          "font_family": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Font Family"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Logo Url"
+          },
+          "primary_color": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Primary Color"
+          },
+          "secondary_color": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Secondary Color"
+          },
+          "show_watermark": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": true,
+            "title": "Show Watermark"
+          },
+          "text_color": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Text Color"
+          },
+          "watermark_position": {
+            "anyOf": [
+              {
+                "enum": [
+                  "bottom-left",
+                  "bottom-right",
+                  "top-left",
+                  "top-right"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Watermark Position"
+          }
+        },
+        "title": "TourBrandingSettings",
+        "type": "object"
+      },
+      "TourInitialView": {
+        "additionalProperties": false,
+        "properties": {
+          "pitch": {
+            "default": 0.0,
+            "maximum": 90,
+            "minimum": -90,
+            "title": "Pitch",
+            "type": "number"
+          },
+          "yaw": {
+            "default": 0.0,
+            "maximum": 180,
+            "minimum": -180,
+            "title": "Yaw",
+            "type": "number"
+          }
+        },
+        "title": "TourInitialView",
+        "type": "object"
+      },
+      "TourSettings": {
+        "additionalProperties": false,
+        "description": "Tour configuration (tours.settings). Floor plans live in the floor_plans table only.",
+        "properties": {
+          "auto_rotate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": false,
+            "title": "Auto Rotate"
+          },
+          "auto_rotate_speed": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.1,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 1.0,
+            "title": "Auto Rotate Speed"
+          },
+          "branding": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TourBrandingSettings"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "enable_fullscreen": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": true,
+            "title": "Enable Fullscreen"
+          },
+          "enable_gyroscope": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": true,
+            "title": "Enable Gyroscope"
+          },
+          "enable_vr": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": true,
+            "title": "Enable Vr"
+          },
+          "gyroscope_auto_start": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": false,
+            "title": "Gyroscope Auto Start"
+          },
+          "initial_scene_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Initial Scene Id"
+          },
+          "initial_view": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TourInitialView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "show_navbar": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": true,
+            "title": "Show Navbar"
+          }
+        },
+        "title": "TourSettings",
+        "type": "object"
+      },
+      "TourVisibility": {
+        "description": "Tour visibility controls access permissions.\n\n- private: Only the owner can view the tour (requires authentication)\n- unlisted: Anyone with the link can view, but not indexed in public listings\n- public: Visible in public listings and searchable",
+        "enum": [
+          "private",
+          "unlisted",
+          "public"
+        ],
+        "title": "TourVisibility",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Schema for creating a tour. New tours are drafts. status changes only through publish.",
+    "properties": {
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 5000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "is_public": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": false,
+        "title": "Is Public"
+      },
+      "settings": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TourSettings"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "title": {
+        "maxLength": 255,
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+      },
+      "visibility": {
+        "$ref": "#/$defs/TourVisibility",
+        "default": "private"
+      }
+    },
+    "required": [
+      "title"
+    ],
+    "title": "TourCreate",
+    "type": "object"
+  }
+}

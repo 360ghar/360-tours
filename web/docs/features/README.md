@@ -22,7 +22,6 @@ This section tracks functional behavior for the web app.
 11. `analytics.md` — Event tracking, per-tour analytics dashboard
 12. `floor-plan-integration.md` — Multi-floor plans, scene markers
 13. `branding-whitelabel.md` — Colors, logo, fonts, watermark, presets
-14. `reel-generation.md` — Animated tiny-planet reel videos from tour panoramas
 
 ## Secondary features (implemented, de-prioritized for polish)
 

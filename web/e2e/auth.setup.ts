@@ -15,7 +15,16 @@ if (!fs.existsSync(authDir)) {
 }
 
 setup('authenticate', async ({ page }) => {
+  // Explicit skip: a real login needs E2E_TEST_USER_PHONE / E2E_TEST_USER_PASSWORD
+  // plus a reachable backend + Supabase — none of which exist in CI. An EMPTY
+  // storage state is written so the `chromium-authenticated` project still
+  // starts, but NO spec may depend on it silently: every spec defaults to
+  // unauthenticated-but-meaningful assertions (redirect-to-login) or to the
+  // hermetic mocked-auth pattern from e2e/fixtures/mockAuth.ts.
   if (!TEST_USER.phone || !TEST_USER.password) {
+    console.warn(
+      '[auth.setup] Skipping real login: E2E_TEST_USER_PHONE / E2E_TEST_USER_PASSWORD not set. Writing empty storage state.'
+    );
     await page.context().storageState({ path: STORAGE_STATE_PATH });
     return;
   }

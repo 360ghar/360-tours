@@ -7,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/models/api_dtos.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/repositories/repositories.dart';
+import '../../../core/storage/local_store.dart';
 import '../../../core/upload/upload_queue.dart';
 import '../../settings/domain/processing_preference.dart';
 import '../domain/capture_targets.dart';
@@ -17,6 +19,128 @@ import '../domain/orientation_engine.dart';
 import '../domain/stitcher_service.dart';
 
 enum CapturePhase { initializing, aiming, shooting, review, error }
+
+/// Re-runs the stitch ladder for a failed asset that still has raw frames but
+/// no panorama (focus-path (a) in docs/VERIFICATION_LOG.md) and enqueues the
+/// upload once a panorama exists. Keeps the layers clean: UI calls this one
+/// function; no Dio or queue internals reach widgets.
+///
+/// Returns `null` on success, or a user-facing error message on failure
+/// ("Stitching failed: `reason` — try re-capturing").
+Future<String?> retryStitch({
+  required ScanAsset asset,
+  required AssetRepository assets,
+  required UploadQueue queue,
+  String? outDir,
+  bool preferDevice = true,
+  StitcherService stitcher = const StitcherService(),
+}) async {
+  if (asset.framePaths.isEmpty) {
+    return 'No captured frames to stitch — delete this scan and re-capture';
+  }
+  try {
+    final dir = outDir ??
+        '${(await getApplicationDocumentsDirectory()).path}/'
+            'stitch_retry/${DateTime.now().millisecondsSinceEpoch}';
+    await Directory(dir).create(recursive: true);
+    final result = await stitcher.stitch(
+      framePaths: asset.framePaths,
+      orientations: asset.frameOrientations,
+      outDir: dir,
+      preferDevice: preferDevice,
+    );
+    final stitched = asset.copyWith(
+      status: result.naive
+          ? AssetStatus.pendingCloudStitch
+          : AssetStatus.stitching,
+      panoramaPath: result.panoramaPath,
+      thumbnailPath: result.thumbnailPath,
+    );
+    await assets.saveAsset(stitched);
+    await assets.enqueueUpload(stitched);
+    return null;
+  } catch (e) {
+    await assets.saveAsset(asset.copyWith(status: AssetStatus.failed));
+    return 'Stitching failed: $e — try re-capturing';
+  }
+}
+
+/// Deletes capture session directories whose session was never saved (no
+/// asset or room references any file inside them, so cloud re-stitch would
+/// never need them) and that are older than [maxAge], so in-flight sessions
+/// are never swept. Call once at startup after the store is available —
+/// main.dart wires it (see the W3e fix report).
+Future<void> sweepOrphanedCaptures({
+  required LocalStore store,
+  Directory? docsDir,
+  Duration maxAge = const Duration(hours: 24),
+}) async {
+  final root = docsDir ?? await getApplicationDocumentsDirectory();
+  final captures = Directory('${root.path}/captures');
+  if (!await captures.exists()) return;
+  // A collection file set aside as corrupt may still hold records that name
+  // these folders, and nothing can read it yet: delete nothing until it is
+  // restored or removed.
+  await for (final e in root.list()) {
+    final name = e.uri.pathSegments.where((s) => s.isNotEmpty).lastOrNull ?? '';
+    if (e is File &&
+        (name.startsWith('assets.json.corrupt-') ||
+            name.startsWith('rooms.json.corrupt-'))) {
+      return;
+    }
+  }
+  // Records the app set aside (unreadable now, restorable later) still own
+  // their files, like live ones.
+  Iterable<Map<String, dynamic>> held(List<Map<String, dynamic>> entries) => [
+        for (final entry in entries)
+          if (entry['record'] is Map)
+            Map<String, dynamic>.from(entry['record'] as Map),
+      ];
+  final assetRecords = [
+    ...await store.readAll('assets'),
+    ...held(await store.readAll('assets_quarantine')),
+  ];
+  final roomRecords = [
+    ...await store.readAll('rooms'),
+    ...held(await store.readAll('rooms_quarantine')),
+  ];
+  final referenced = <String>{
+    for (final a in assetRecords) ...[
+      if (a['panoramaPath'] is String) a['panoramaPath'] as String,
+      if (a['thumbnailPath'] is String) a['thumbnailPath'] as String,
+      // Read defensively: a quarantined record may hold anything, and one bad
+      // record must not stop the cleanup.
+      if (a['framePaths'] case final List frames)
+        for (final f in frames)
+          if (f is String) f,
+    ],
+    for (final r in roomRecords)
+      if (r['panoramaPath'] is String) r['panoramaPath'] as String,
+  };
+  final now = DateTime.now();
+  await for (final entry in captures.list()) {
+    if (entry is! Directory) continue;
+    try {
+      // Session dirs are named with their creation epoch-ms, which is more
+      // reliable than mtime (writing frames bumps the dir mtime). Fall back
+      // to mtime for dirs with non-timestamp names.
+      final name = entry.uri.pathSegments
+          .where((s) => s.isNotEmpty)
+          .lastOrNull;
+      final nameTs = name != null ? int.tryParse(name) : null;
+      final created = nameTs != null
+          ? DateTime.fromMillisecondsSinceEpoch(nameTs)
+          : entry.statSync().modified;
+      if (now.difference(created) < maxAge) continue;
+      final dirPath = '${entry.path}/';
+      if (referenced.any((p) => p.startsWith(dirPath))) continue;
+      await entry.delete(recursive: true);
+      debugPrint('sweepOrphanedCaptures: deleted $dirPath');
+    } catch (e) {
+      debugPrint('sweepOrphanedCaptures: skipped ${entry.path}: $e');
+    }
+  }
+}
 
 class CaptureState {
   final CapturePhase phase;
@@ -83,6 +207,13 @@ class CaptureController extends Notifier<CaptureState> {
   bool _capturing = false;
   bool _cameraPaused = false;
   bool _initializing = false;
+
+  /// Consecutive `captureFrame` failures. Auto-capture re-fires every ~400ms
+  /// while the device holds alignment, so a persistent failure (disk full,
+  /// session directory swept, camera invalidated by another app) used to loop
+  /// forever with the error swallowed and nothing shown to the user.
+  int _captureFailures = 0;
+  static const _maxCaptureFailures = 3;
 
   bool get isCameraPaused => _cameraPaused;
 
@@ -155,6 +286,8 @@ class CaptureController extends Notifier<CaptureState> {
       _cameraPaused = false;
       if (state.phase == CapturePhase.initializing ||
           state.phase == CapturePhase.error) {
+        // A fresh camera session gets a fresh failure budget.
+        _captureFailures = 0;
         state = state.copyWith(phase: CapturePhase.aiming);
       }
     } on CameraException catch (e) {
@@ -231,6 +364,7 @@ class CaptureController extends Notifier<CaptureState> {
       await File(shot.path).copy(path);
       if (!ref.mounted) return;
 
+      _captureFailures = 0;
       final frames = [...state.framePaths, path];
       final orientations = [...state.frameOrientations, orientation];
       final nextIndex = state.targetIndex + 1;
@@ -259,8 +393,21 @@ class CaptureController extends Notifier<CaptureState> {
         );
       }
     } catch (e) {
+      debugPrint('captureFrame failed: $e');
       if (!ref.mounted) return;
-      state = state.copyWith(phase: CapturePhase.aiming);
+      _captureFailures++;
+      // One bad shot is retried by the next dwell; a persistent failure must
+      // stop and say why instead of spinning the reticle forever.
+      if (_captureFailures >= _maxCaptureFailures) {
+        state = state.copyWith(
+          phase: CapturePhase.error,
+          errorMessage: e is CameraException
+              ? (e.description ?? 'Camera capture failed')
+              : 'Could not save the photo: $e',
+        );
+      } else {
+        state = state.copyWith(phase: CapturePhase.aiming);
+      }
     } finally {
       _capturing = false;
     }
@@ -297,7 +444,10 @@ class CaptureController extends Notifier<CaptureState> {
     final queue = ref.read(uploadQueueProvider);
     final preferDevice = ref.read(processingPreferenceProvider).value !=
         ProcessingPreference.cloudFirst;
-    final cleanName = name.trim().isEmpty ? 'Untitled room' : name.trim();
+    // Cut to the backend's 255-character limit here, so a pasted long name
+    // never reaches a create call that answers 422.
+    final cleanName =
+        name.trim().isEmpty ? 'Untitled room' : clampName(name.trim());
 
     if (intoAssetId != null) {
       final framePaths = state.framePaths;
@@ -367,6 +517,9 @@ class CaptureController extends Notifier<CaptureState> {
     String outDir, {
     bool preferDevice = true,
   }) async {
+    // Reflect the pipeline state immediately so the room list never shows a
+    // not-started room as "Uploading…" with no progress (focus g).
+    await assets.saveRoom(room.copyWith(status: 'uploading'));
     try {
       final result = await const StitcherService().stitch(
         framePaths: framePaths,
@@ -374,12 +527,22 @@ class CaptureController extends Notifier<CaptureState> {
         outDir: outDir,
         preferDevice: preferDevice,
       );
-      final stitched = room.copyWith(panoramaPath: result.panoramaPath);
+      final stitched = room.copyWith(
+        panoramaPath: result.panoramaPath,
+        // Not ready until the queue has uploaded it and created the scene.
+        status: 'uploading',
+      );
       await assets.saveRoom(stitched);
       final asset = await assets.getAsset(assetId);
       if (asset != null) await queue.enqueueRoom(asset, stitched);
-    } catch (_) {
-      // Room stays without a panorama; user can delete and recapture.
+    } catch (e) {
+      // Terminal stitch failure: surface it on the room instead of leaving
+      // it stuck at "Uploading…" forever (focus g). Upload failures after
+      // enqueue are marked by the queue's onGiveUp.
+      await assets.saveRoom(room.copyWith(
+        status: 'failed',
+        lastError: 'Stitching failed: $e — try re-capturing',
+      ));
     }
   }
 

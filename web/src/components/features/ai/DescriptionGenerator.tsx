@@ -31,8 +31,9 @@ import type { Scene } from '@/types';
 import type { DescriptionOptions } from '@/api';
 import { AIJobStatus } from './AIJobStatus';
 import { AiRetryError } from './AiRetryError';
-import { aiApi } from '@/api';
+import { aiApi, readDescriptions } from '@/api';
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import { API_LIMITS } from '@/lib/api/limits.gen';
 
 interface DescriptionGeneratorProps {
   open: boolean;
@@ -81,14 +82,8 @@ export function DescriptionGenerator({
   const handleJobComplete = (job: unknown, result: unknown) => {
     setIsGenerating(false);
     setJobId(null);
-    if (
-      result &&
-      typeof result === 'object' &&
-      'descriptions' in result &&
-      typeof (result as { descriptions: unknown }).descriptions === 'object' &&
-      (result as { descriptions: unknown }).descriptions !== null
-    ) {
-      const descs = (result as { descriptions: Record<string, string> }).descriptions;
+    const descs = readDescriptions(result);
+    if (descs) {
       setDescriptions(descs);
       setEditedDescriptions(descs);
       setError(null);
@@ -166,7 +161,7 @@ export function DescriptionGenerator({
                 <div className="space-y-2">
                   <Label>Tone</Label>
                   <Select
-                    value={options.tone}
+                    value={options.tone ?? undefined}
                     onValueChange={(value) =>
                       setOptions((prev) => ({
                         ...prev,
@@ -189,7 +184,7 @@ export function DescriptionGenerator({
                 <div className="space-y-2">
                   <Label>Length</Label>
                   <Select
-                    value={options.length}
+                    value={options.length ?? undefined}
                     onValueChange={(value) =>
                       setOptions((prev) => ({
                         ...prev,
@@ -221,6 +216,7 @@ export function DescriptionGenerator({
                     }))
                   }
                   placeholder="e.g., Young professionals, families with children, luxury buyers..."
+                  maxLength={API_LIMITS.descriptionOptions.targetAudienceMax}
                   rows={2}
                 />
               </div>

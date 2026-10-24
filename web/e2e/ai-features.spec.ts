@@ -1,249 +1,124 @@
 /**
- * E2E tests for AI-powered features.
+ * E2E tests for AI features.
  *
- * Tests AI wizard, scene analysis, and description generation.
+ * Runs hermetically in the `chromium` project with mocked auth + API:
+ * - the AI wizard opens from the tour-create chooser;
+ * - closing the wizard while a job is processing asks for confirmation and
+ *   persists the job id, so reopening resumes monitoring it (real behavior of
+ *   the close guard added for orphaned-job protection).
+ * The unauthenticated tests assert the real redirect behavior.
  */
 import { test, expect } from '@playwright/test';
+import { installMockAuth, TINY_PNG } from './fixtures/mockAuth';
 
-test.describe('AI Features', () => {
-  const testTourId = 'test-tour-id';
+/** `AIJobBase` as `GET /ai/jobs/{id}` returns it. */
+const RUNNING_JOB = {
+  id: 'job-1',
+  job_type: 'generate_tour',
+  status: 'processing',
+  progress: 42,
+  tour_id: null,
+  scene_id: null,
+  error_message: null,
+  started_at: '2025-01-01T00:00:00Z',
+  completed_at: null,
+  created_at: '2025-01-01T00:00:00Z',
+  updated_at: '2025-01-01T00:00:00Z',
+  actual_duration: null,
+};
 
-  test.describe('AI Tour Wizard', () => {
-    test('should access AI wizard from tour creation', async ({ page }) => {
-      await page.goto('/tours/create');
-
-      if (!page.url().includes('/login')) {
-        // Look for AI wizard button or tab
-        const aiWizardButton = page.locator(
-          'button:has-text("AI"), [data-testid="ai-wizard"], button:has-text("Smart Setup")'
-        );
-
-        if ((await aiWizardButton.count()) > 0) {
-          await expect(aiWizardButton.first()).toBeVisible();
-        }
-      }
-    });
-
-    test('should display AI wizard interface', async ({ page }) => {
-      await page.goto('/tours/create');
-
-      if (!page.url().includes('/login')) {
-        const aiWizardButton = page.locator(
-          'button:has-text("AI"), [data-testid="ai-wizard"]'
-        ).first();
-
-        if (await aiWizardButton.isVisible()) {
-          await aiWizardButton.click();
-
-          // AI wizard should open
-          const wizardModal = page.locator(
-            '[data-testid="ai-wizard-modal"], [role="dialog"]:has-text("AI")'
-          );
-
-          await expect(wizardModal.or(page.locator('body')).first()).toBeVisible();
-        }
-      }
-    });
-
-    test('should support image upload for AI analysis', async ({ page }) => {
-      await page.goto('/tours/create');
-
-      if (!page.url().includes('/login')) {
-        // Look for AI-powered upload zone
-        const uploadZone = page.locator(
-          '[data-testid="ai-upload"], .ai-upload-zone'
-        );
-
-        if (await uploadZone.isVisible()) {
-          const fileInput = uploadZone.locator('input[type="file"]');
-          await expect(fileInput).toBeAttached();
-        }
-      }
-    });
+test.describe('AI Features — unauthenticated', () => {
+  test('redirects unauthenticated visitors from /tours/create to /login', async ({ page }) => {
+    await page.goto('/tours/create');
+    await expect(page).toHaveURL(/\/login$/);
   });
 
-  test.describe('Scene Analysis', () => {
-    test('should access scene analysis in editor', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
+  test('redirects unauthenticated visitors from /tours/:id/edit to /login', async ({ page }) => {
+    await page.goto('/tours/test-tour-id/edit');
+    await expect(page).toHaveURL(/\/login$/);
+  });
+});
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for analyze button
-        const analyzeButton = page.locator(
-          'button:has-text("Analyze"), [data-testid="analyze-scene"], button:has-text("AI Analysis")'
-        );
-
-        if ((await analyzeButton.count()) > 0) {
-          await expect(analyzeButton.first()).toBeVisible();
-        }
-      }
-    });
-
-    test('should display analysis results', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const analyzeButton = page.locator(
-          'button:has-text("Analyze"), [data-testid="analyze-scene"]'
-        ).first();
-
-        if (await analyzeButton.isVisible()) {
-          await analyzeButton.click();
-
-          // Wait for analysis (or loading state)
-          const loadingIndicator = page.locator(
-            '[data-testid="loading"], .loading, .spinner'
-          );
-          const resultsPanel = page.locator(
-            '[data-testid="analysis-results"], .analysis-results'
-          );
-
-          // Either loading or results should appear
-          await expect(loadingIndicator.or(resultsPanel).or(page.locator('body')).first()).toBeVisible();
-        }
-      }
-    });
-
-    test('should show detected room type', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for room type display
-        const roomTypeLabel = page.locator(
-          '[data-testid="room-type"], .room-type, :has-text("Room Type")'
-        );
-
-        // Room type may be shown after analysis
-        await expect(roomTypeLabel.or(page.locator('body')).first()).toBeVisible();
-      }
-    });
-
-    test('should suggest hotspot positions', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for hotspot suggestions
-        const suggestionsPanel = page.locator(
-          '[data-testid="hotspot-suggestions"], .hotspot-suggestions'
-        );
-
-        if (await suggestionsPanel.isVisible()) {
-          const suggestions = suggestionsPanel.locator('.suggestion, .suggested-hotspot');
-          const count = await suggestions.count();
-          expect(count).toBeGreaterThanOrEqual(0);
-        }
-      }
-    });
+test.describe('AI Tour Wizard — hermetic (mocked auth + API)', () => {
+  test.beforeEach(async ({ page }) => {
+    await installMockAuth(page);
   });
 
-  test.describe('Description Generation', () => {
-    test('should have generate description button', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
+  test('opens the AI wizard from the create page and renders step 1', async ({ page }) => {
+    await page.goto('/tours/create');
+    await page.getByRole('button', { name: 'AI generate' }).click();
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for generate button
-        const generateButton = page.locator(
-          'button:has-text("Generate"), [data-testid="generate-description"], button:has-text("AI Description")'
-        );
-
-        if ((await generateButton.count()) > 0) {
-          await expect(generateButton.first()).toBeVisible();
-        }
-      }
-    });
-
-    test('should generate tour description', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        const generateButton = page.locator(
-          'button:has-text("Generate Description"), [data-testid="generate-description"]'
-        ).first();
-
-        if (await generateButton.isVisible()) {
-          await generateButton.click();
-
-          // Should show loading then generated text
-          const descriptionArea = page.locator('textarea[name="description"]');
-          await expect(descriptionArea.or(page.locator('body')).first()).toBeVisible();
-        }
-      }
-    });
-
-    test('should generate scene titles', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for scene title generation
-        const generateTitleButton = page.locator(
-          'button:has-text("Generate Title"), [data-testid="generate-scene-title"]'
-        );
-
-        if (await generateTitleButton.isVisible()) {
-          await generateTitleButton.click();
-
-          const titleInput = page.locator('input[name="title"], [data-testid="scene-title"]');
-          await expect(titleInput.or(page.locator('body')).first()).toBeVisible();
-        }
-      }
-    });
-
-    test('should allow regenerating descriptions', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
-
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for regenerate button
-        const regenerateButton = page.locator(
-          'button:has-text("Regenerate"), [data-testid="regenerate"]'
-        );
-
-        if (await regenerateButton.isVisible()) {
-          await expect(regenerateButton).toBeEnabled();
-        }
-      }
-    });
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 15000 });
+    await expect(dialog.getByText('AI Tour Generation')).toBeVisible();
+    await expect(dialog.getByText('Drag & drop 360° images')).toBeVisible();
   });
 
-  test.describe('AI Job Status', () => {
-    test('should show AI processing status', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
+  test('closing while a job runs confirms, persists the job, and reopening resumes it', async ({
+    page,
+  }) => {
+    await page.route('**/api/v1/ai/tours/generate', route =>
+      route.fulfill({
+        json: { job: RUNNING_JOB, tour_id: 'tour-1', scene_ids: [] },
+        status: 201,
+      })
+    );
+    await page.route('**/api/v1/ai/jobs/job-1', route =>
+      route.fulfill({ json: { job: RUNNING_JOB, result: null }, status: 200 })
+    );
+    await page.route('**/api/v1/ai/jobs/job-1/cancel', route =>
+      route.fulfill({
+        json: { job: { ...RUNNING_JOB, status: 'cancelled' }, result: null },
+        status: 200,
+      })
+    );
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for AI status indicator
-        const statusIndicator = page.locator(
-          '[data-testid="ai-status"], .ai-status, .processing-status'
-        );
+    await page.goto('/tours/create');
+    await page.getByRole('button', { name: 'AI generate' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 15000 });
 
-        // Status may or may not be visible based on active jobs
-        await expect(statusIndicator.or(page.locator('body')).first()).toBeVisible();
-      }
-    });
+    // Step 1 → details → options → generate (job start is mocked).
+    await dialog
+      .locator('input[type="file"]')
+      .setInputFiles({ name: 'room.png', mimeType: 'image/png', buffer: TINY_PNG });
+    await dialog.getByRole('button', { name: 'Next' }).click();
+    await dialog.getByRole('button', { name: 'Next' }).click();
+    await dialog.getByRole('button', { name: 'Generate Tour' }).click();
 
-    test('should display progress for long-running AI tasks', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
+    // Processing step shows the mocked job's status.
+    await expect(dialog.getByText('Tour Generation', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(dialog.getByText('Processing...')).toBeVisible();
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for progress bar
-        const progressBar = page.locator(
-          '[role="progressbar"], .progress-bar, [data-testid="ai-progress"]'
-        );
+    // Closing while a job runs must ask first.
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    const confirmDialog = page.getByRole('alertdialog');
+    await expect(confirmDialog).toBeVisible();
+    await expect(
+      confirmDialog.getByText(
+        'The AI job keeps running in the background. You can close this and check later.'
+      )
+    ).toBeVisible();
 
-        // Progress may be visible during AI processing
-        await expect(progressBar.or(page.locator('body')).first()).toBeVisible();
-      }
-    });
+    // "Keep waiting" keeps the wizard open on the processing step.
+    await confirmDialog.getByRole('button', { name: 'Keep waiting' }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Tour Generation', { exact: true })).toBeVisible();
 
-    test('should handle AI errors gracefully', async ({ page }) => {
-      await page.goto(`/tours/${testTourId}/edit`);
+    // "Close anyway" closes the wizard (the job id is persisted).
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await expect(confirmDialog).toBeVisible();
+    await confirmDialog.getByRole('button', { name: 'Close anyway' }).click();
+    await expect(dialog).toBeHidden();
 
-      if (!page.url().includes('/login') && !page.url().includes('/404')) {
-        // Look for error handling UI
-        const errorMessage = page.locator(
-          '[role="alert"], .error-message, [data-testid="ai-error"]'
-        );
+    // Reopening the wizard resumes monitoring of the persisted job.
+    await page.getByRole('button', { name: 'AI generate' }).click();
+    const reopened = page.getByRole('dialog');
+    await expect(reopened).toBeVisible({ timeout: 15000 });
+    await expect(reopened.getByText('Tour Generation', { exact: true })).toBeVisible({ timeout: 15000 });
 
-        // Error handling should be in place
-        await expect(errorMessage.or(page.locator('body')).first()).toBeVisible();
-      }
-    });
+    // Cancel clears the persisted job and returns to the options step.
+    await reopened.getByRole('button', { name: 'Cancel Processing' }).click();
+    await expect(reopened.getByText('Summary')).toBeVisible();
   });
 });

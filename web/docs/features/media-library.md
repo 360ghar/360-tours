@@ -16,9 +16,9 @@ Related docs:
 
 ### List media files
 
-`GET /api/v1/upload/media?page=1&page_size=20&folder=...&mime_type=...`
+`GET /api/v1/upload/media?cursor=...&limit=24&mime_type=...&visibility=...&search=...`
 
-Supports filtering by folder and MIME type. Returns paginated `MediaFile` objects.
+Supports filtering by `tour_id`, MIME type, `visibility`, `upload_status`, `is_processed` and a filename `search` (1 to 100 characters). There is no `folder` filter. Returns a `CursorPage` of `MediaFile`; pass `next_cursor` back as `cursor` with the same filters. Bulk delete uses `POST /api/v1/upload/media/batch-delete` (at most 50 ids per call).
 
 ### Get a media file
 

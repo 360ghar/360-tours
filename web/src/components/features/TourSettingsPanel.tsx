@@ -35,6 +35,8 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from '@/components/ui';
+import { resolveTourSettings } from '@/utils/tourSettings';
+import { API_LIMITS } from '@/lib/api/limits.gen';
 import type { Tour, TourSettings, Scene, TourVisibility } from '@/types';
 import {
   generateIframeCode,
@@ -44,24 +46,54 @@ import {
   type EmbedOptions,
 } from '@/utils/embedCode';
 
+/**
+ * What the panel saves: the basics plus only the viewer keys it edits. The
+ * server deep-merges `settings` (a key left out keeps its stored value, a key
+ * sent as null is removed), so branding is never touched from here.
+ */
+export interface TourSettingsSave {
+  title: string;
+  /** null clears the description. */
+  description: string | null;
+  visibility: TourVisibility;
+  settings: TourSettings;
+}
+
 interface TourSettingsPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  tour: Tour;
+  tour: Pick<Tour, 'id' | 'title' | 'description' | 'visibility' | 'settings'>;
   scenes: Scene[];
-  onSave: (settings: Partial<Tour>) => void;
+  onSave: (save: TourSettingsSave) => void;
   isLoading?: boolean;
 }
 
-const DEFAULT_TOUR_SETTINGS: TourSettings = {
-  auto_rotate: false,
-  auto_rotate_speed: 1,
-  show_navbar: true,
-  enable_fullscreen: true,
-  enable_vr: true,
-  enable_gyroscope: true,
-  gyroscope_auto_start: false,
-};
+/** The viewer keys this panel edits, with every default applied. */
+type PanelSettings = Pick<
+  ReturnType<typeof resolveTourSettings>,
+  | 'auto_rotate'
+  | 'auto_rotate_speed'
+  | 'show_navbar'
+  | 'enable_fullscreen'
+  | 'enable_vr'
+  | 'enable_gyroscope'
+  | 'gyroscope_auto_start'
+  | 'initial_scene_id'
+>;
+
+function toPanelSettings(stored: TourSettings | null | undefined): PanelSettings {
+  const resolved = resolveTourSettings(stored);
+  return {
+    auto_rotate: resolved.auto_rotate,
+    auto_rotate_speed: resolved.auto_rotate_speed,
+    show_navbar: resolved.show_navbar,
+    enable_fullscreen: resolved.enable_fullscreen,
+    enable_vr: resolved.enable_vr,
+    enable_gyroscope: resolved.enable_gyroscope,
+    gyroscope_auto_start: resolved.gyroscope_auto_start,
+    initial_scene_id: resolved.initial_scene_id,
+  };
+}
 
 const FIRST_SCENE_VALUE = '__first_scene__';
 
@@ -76,7 +108,7 @@ export function TourSettingsPanel({
   const [title, setTitle] = useState(tour.title);
   const [description, setDescription] = useState(tour.description || '');
   const [visibility, setVisibility] = useState<TourVisibility>(tour.visibility || 'private');
-  const [settings, setSettings] = useState<TourSettings>(tour.settings || DEFAULT_TOUR_SETTINGS);
+  const [settings, setSettings] = useState<PanelSettings>(() => toPanelSettings(tour.settings));
 
   const [embedOptions, setEmbedOptions] = useState<EmbedOptions>({
     width: '100%',
@@ -95,12 +127,19 @@ export function TourSettingsPanel({
   const [copiedEmbed, setCopiedEmbed] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Re-sync local form state whenever the dialog opens (so Cancel truly
+  // discards edits — reopening shows the persisted values) and whenever a
+  // persisted field actually changes. Deps are the field values themselves,
+  // not the `tour` object reference: the editor store re-creates the tour
+  // object on every scenes refetch, and object-identity deps would clobber
+  // in-progress edits mid-typing.
   useEffect(() => {
+    if (!open) return;
     setTitle(tour.title);
     setDescription(tour.description || '');
     setVisibility(tour.visibility || 'private');
-    setSettings(tour.settings || DEFAULT_TOUR_SETTINGS);
-  }, [tour]);
+    setSettings(toPanelSettings(tour.settings));
+  }, [open, tour.title, tour.description, tour.visibility, tour.settings]);
 
   useEffect(() => {
     setEmbedOptions(prev => ({
@@ -127,9 +166,10 @@ export function TourSettingsPanel({
 
     onSave({
       title: title.trim(),
-      description: description.trim() || undefined,
+      description: description.trim() || null,
       visibility,
-      settings,
+      // A cleared starting scene goes as null: an omitted key would keep the stored one.
+      settings: { ...settings, initial_scene_id: settings.initial_scene_id ?? null },
     });
   };
 
@@ -153,7 +193,7 @@ export function TourSettingsPanel({
     }
   };
 
-  const updateSettings = (updates: Partial<TourSettings>) => {
+  const updateSettings = (updates: Partial<PanelSettings>) => {
     setSettings(prev => ({ ...prev, ...updates }));
   };
 
@@ -200,6 +240,7 @@ export function TourSettingsPanel({
                   value={title}
                   onChange={e => setTitle(e.target.value)}
                   placeholder="Enter tour title"
+                  maxLength={API_LIMITS.tour.titleMax}
                 />
                 {!title.trim() && (
                   <p className="text-sm text-[var(--color-error-600)]">
@@ -217,6 +258,7 @@ export function TourSettingsPanel({
                   onChange={e => setDescription(e.target.value)}
                   placeholder="Enter tour description"
                   rows={3}
+                  maxLength={API_LIMITS.tour.descriptionMax}
                 />
               </div>
 

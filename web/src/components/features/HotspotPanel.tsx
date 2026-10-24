@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, ArrowRight, Info, Volume2, Play, Link, Code, X, Pencil } from 'lucide-react';
 import { Button, Badge } from '@/components/ui';
 import { toursApi } from '@/api';
+import { errorText } from '@/api/errors';
 import { QUERY_KEYS } from '@/constants';
 import { useTourEditorStore, confirm } from '@/stores';
 import { cn } from '@/utils';
@@ -48,8 +49,8 @@ export function HotspotPanel({ sceneId, hotspots, scenes, className, onClose }: 
       selectHotspot(null);
       toast('success', 'The hotspot has been removed.', { title: 'Hotspot deleted' });
     },
-    onError: () => {
-      toast('error', 'Something went wrong. Please try again.', {
+    onError: error => {
+      toast('error', errorText(error, 'Something went wrong. Please try again.'), {
         title: 'Failed to delete hotspot',
       });
     },
@@ -224,9 +225,10 @@ export function HotspotPanel({ sceneId, hotspots, scenes, className, onClose }: 
                 <span className="font-medium">Type:</span> {selectedHotspot.type}
               </p>
               <p>
-                <span className="font-medium">Position:</span> Yaw:{' '}
-                {selectedHotspot.position.yaw.toFixed(1)}°, Pitch:{' '}
-                {selectedHotspot.position.pitch.toFixed(1)}°
+                <span className="font-medium">Position:</span>{' '}
+                {selectedHotspot.position
+                  ? `Yaw: ${selectedHotspot.position.yaw.toFixed(1)}°, Pitch: ${selectedHotspot.position.pitch.toFixed(1)}°`
+                  : 'Not set'}
               </p>
               {selectedHotspot.target_scene_id && (
                 <p>

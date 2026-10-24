@@ -14,6 +14,7 @@ vi.mock('@/api', () => ({
 }));
 
 import { BulkUploader } from '@/components/features/BulkUploader';
+import { toursApi, uploadApi } from '@/api';
 
 const createImageFile = (name: string) =>
   new File(['fake-image-bytes'], name, { type: 'image/jpeg' });
@@ -88,5 +89,21 @@ describe('BulkUploader preview URL cleanup', () => {
 
     expect(screen.getByText(/File size exceeds/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /retry failed/i })).not.toBeInTheDocument();
+  });
+
+  it('does not create scenes for invalid files', async () => {
+    render(<BulkUploader tourId="tour-1" open onOpenChange={vi.fn()} />);
+
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    fireEvent.change(fileInput!, {
+      target: { files: [new File(['x'], 'notes.txt', { type: 'text/plain' })] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Invalid file type/i)).toBeInTheDocument();
+    });
+
+    expect(toursApi.createScene).not.toHaveBeenCalled();
+    expect(uploadApi.uploadFile).not.toHaveBeenCalled();
   });
 });
