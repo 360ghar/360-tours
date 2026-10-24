@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { toursApi } from '@/api';
+import { errorText } from '@/api/errors';
 import { QUERY_KEYS } from '@/constants';
 import { cn } from '@/utils';
 import { useToast } from '@/hooks/useToast';
@@ -193,8 +194,8 @@ export function ScenePanel({
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, tourId] });
       toast('success', 'The scene has been removed from the tour.', { title: 'Scene deleted' });
     },
-    onError: () => {
-      toast('error', 'Something went wrong. Please try again.', {
+    onError: error => {
+      toast('error', errorText(error, 'Something went wrong. Please try again.'), {
         title: 'Failed to delete scene',
       });
     },
@@ -206,8 +207,8 @@ export function ScenePanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SCENES, tourId] });
     },
-    onError: () => {
-      toast('error', 'Something went wrong. Please try again.', {
+    onError: error => {
+      toast('error', errorText(error, 'Something went wrong. Please try again.'), {
         title: 'Failed to reorder scenes',
       });
       // Refetch to restore correct order

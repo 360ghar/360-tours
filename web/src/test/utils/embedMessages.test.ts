@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseEmbedInboundCommand } from '@/types/embedMessages';
+import { parseEmbedInboundCommand, parseEmbedOriginParam } from '@/types/embedMessages';
 import type { EmbedOutboundMessage, EmbedPanoramaClickData } from '@/types/embedMessages';
 
 describe('EmbedOutboundMessage', () => {
@@ -58,5 +58,30 @@ describe('parseEmbedInboundCommand', () => {
     expect(parseEmbedInboundCommand(null)).toBeNull();
     expect(parseEmbedInboundCommand([])).toBeNull();
     expect(parseEmbedInboundCommand({ type: 'deleteTour' })).toBeNull();
+  });
+});
+
+describe('parseEmbedOriginParam', () => {
+  it('parses a valid https origin appended by embed.js', () => {
+    expect(parseEmbedOriginParam('?tour=abc&origin=https%3A%2F%2Fagent.example.com')).toBe(
+      'https://agent.example.com'
+    );
+    expect(parseEmbedOriginParam('?origin=http://localhost:3000')).toBe('http://localhost:3000');
+  });
+
+  it('rejects missing, malformed, or non-http(s) origins', () => {
+    expect(parseEmbedOriginParam('')).toBeNull();
+    expect(parseEmbedOriginParam('?scene=s1')).toBeNull();
+    expect(parseEmbedOriginParam('?origin=not-a-url')).toBeNull();
+    expect(parseEmbedOriginParam('?origin=javascript%3Aalert(1)')).toBeNull();
+    expect(parseEmbedOriginParam('?origin=file%3A%2F%2Fetc%2Fpasswd')).toBeNull();
+    expect(parseEmbedOriginParam('?origin=https%3A%2F%2Fevil.example.com%2Fpath%2Fmore')).toBe(
+      'https://evil.example.com' // normalized: path stripped
+    );
+  });
+
+  it('survives a non-string or garbage search value', () => {
+    expect(parseEmbedOriginParam('??')).toBeNull();
+    expect(parseEmbedOriginParam('%')).toBeNull();
   });
 });

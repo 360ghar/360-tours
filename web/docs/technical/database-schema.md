@@ -189,7 +189,6 @@ The 360 Viewer database extends the 360 Ghar backend database infrastructure. Th
 | folder | VARCHAR(255) | Nullable | Virtual folder for organization |
 | visibility | VARCHAR(20) | Default: 'private', Check constraint: must be 'public', 'private', or 'unlisted' | Access control setting |
 | is_processed | BOOLEAN | Default: false | Whether the file has been processed |
-| processing_metadata | JSONB | Default: '{}' | Processing results and optimization data |
 | created_at | TIMESTAMP WITH TIME ZONE | Default: NOW() | Upload timestamp |
 | expires_at | TIMESTAMP WITH TIME ZONE | Nullable | Expiration timestamp for temporary files |
 
@@ -313,7 +312,7 @@ The 360 Viewer database extends the 360 Ghar backend database infrastructure. Th
 - **idx_floor_plans_tour_id**: B-tree index on tour_id for fetching tour's floor plans
 - **idx_floor_plans_floor_number**: Composite B-tree index on (tour_id, floor_number) for ordered retrieval
 
-**Notes**: Public tour payloads "hydrate" `settings.floor_plans` from this table for viewer consumption.
+**Notes**: This table is the only source of floor plans. `tour.settings` carries no `floor_plans` key (the API rejects it on write); owner and public tour reads return the rows as the top-level `floor_plans` list.
 
 ## Geospatial Tables
 

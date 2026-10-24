@@ -26,6 +26,8 @@ export function ForgotPasswordPage() {
   const [identifier, setIdentifier] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Neutral, non-error status line (enumeration-safe reset confirmation). */
+  const [notice, setNotice] = useState<string | null>(null);
 
   const requestForm = useForm<{ identifier: string }>({
     resolver: zodResolver(channel === 'email' ? emailIdentifierSchema : phoneIdentifierSchema),
@@ -76,10 +78,20 @@ export function ForgotPasswordPage() {
     setIsLoading(true);
     setError(null);
     try {
-      if (channel === 'email') {
-        await authApi.requestPasswordResetEmailOTP(identifier);
-      } else {
-        await authApi.requestPasswordResetOTP(identifier);
+      // Same neutral rule as the first request: an unknown identifier gets no
+      // dispatch, but the same cooldown and no error, so Resend cannot be used
+      // to tell an unknown identifier from a known one.
+      const status = await checkIdentifierStatusSafe(identifier);
+      if ('unavailable' in status) {
+        setError(IDENTIFIER_STATUS_UNAVAILABLE_MESSAGE);
+        return;
+      }
+      if (status.exists) {
+        if (channel === 'email') {
+          await authApi.requestPasswordResetEmailOTP(identifier);
+        } else {
+          await authApi.requestPasswordResetOTP(identifier);
+        }
       }
       // Only start the cooldown after a confirmed success — never on error.
       resendTimer.start();
@@ -95,6 +107,7 @@ export function ForgotPasswordPage() {
     setChannel(next);
     requestForm.reset({ identifier: '' });
     setError(null);
+    setNotice(null);
   };
 
   const onRequestOTP = async (data: { identifier: string }) => {
@@ -108,23 +121,27 @@ export function ForgotPasswordPage() {
         setError(IDENTIFIER_STATUS_UNAVAILABLE_MESSAGE);
         return;
       }
-      if (!status.exists) {
-        setError(
-          'No account found with this email or phone. Check the address or sign up.'
-        );
-        return;
+      // Never reveal whether the identifier has an account: BOTH branches show
+      // the same notice and land on the same verify step. Only an existing
+      // identifier actually dispatches a code (no wasted SMS, no enumeration
+      // via response timing on the dispatch endpoint); an unknown one simply
+      // never receives one, exactly as Supabase's own reset endpoints behave.
+      // Previously the unknown branch stopped dead on the request step with the
+      // notice rendered as an ERROR — visibly different from the success path,
+      // so it both leaked enumeration and stranded legitimate typos.
+      if (status.exists) {
+        if (channel === 'email') {
+          await authApi.requestPasswordResetEmailOTP(data.identifier);
+        } else {
+          await authApi.requestPasswordResetOTP(data.identifier);
+        }
       }
-      if (channel === 'email') {
-        await authApi.requestPasswordResetEmailOTP(data.identifier);
-      } else {
-        await authApi.requestPasswordResetOTP(data.identifier);
-      }
-      // Only advance when an OTP was actually dispatched. Supabase's reset
-      // endpoints intentionally return success for unknown identifiers to
-      // avoid user enumeration, so a thrown error here is a genuine
-      // transport/infrastructure failure that must not be hidden.
+      // A throw from the dispatch above is a genuine transport/infrastructure
+      // failure (Supabase returns success for unknown identifiers by design),
+      // so it surfaces as an error on the request step instead of advancing.
       setIdentifier(data.identifier);
       resendTimer.start();
+      setNotice('If an account exists for this identifier, a reset code has been sent.');
       setStep('verify');
     } catch (err) {
       setError(mapSupabaseAuthError(err, 'forgot_password'));
@@ -291,6 +308,12 @@ export function ForgotPasswordPage() {
 
       {step === 'verify' && (
         <form onSubmit={otpForm.handleSubmit(onVerifyOTP)} className="mt-8 space-y-6">
+          {notice && (
+            <div className="rounded-lg bg-[var(--color-surface-raised)] p-3 text-sm text-[var(--color-text-muted)]">
+              {notice}
+            </div>
+          )}
+
           {error && (
             <div
               role="alert"
@@ -332,6 +355,7 @@ export function ForgotPasswordPage() {
               onClick={() => {
                 setStep('request');
                 setError(null);
+                setNotice(null);
                 otpForm.reset();
                 resendTimer.reset();
               }}

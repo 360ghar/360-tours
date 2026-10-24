@@ -49,7 +49,7 @@ JSON-LD structured data for public tours:
 ```json
 {
   "@context": "https://schema.org",
-  "@type": "VirtualLocation",
+  "@type": "ImageGallery",
   "name": "Tour Title",
   "description": "Tour description",
   "image": "thumbnail_url",
