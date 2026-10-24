@@ -61,7 +61,7 @@ describe('Auth Integration', () => {
       server.use(
         http.get('/api/v1/users/me', () => {
           return HttpResponse.json(
-            { detail: 'Invalid credentials' },
+            { error: { code: 'TOKEN_INVALID', message: 'Invalid credentials' } },
             { status: 401 }
           );
         })
@@ -131,7 +131,7 @@ describe('Tour Integration', () => {
       server.use(
         http.get('/api/v1/tours', () => {
           return HttpResponse.json(
-            { detail: 'Server error' },
+            { error: { code: 'INTERNAL_ERROR', message: 'Internal Server Error' } },
             { status: 500 }
           );
         })
@@ -166,7 +166,7 @@ describe('Tour CRUD', () => {
 
   it('updates a tour', async () => {
     const response = await fetch('/api/v1/tours/tour-1', {
-      method: 'PUT',
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: 'Updated Tour',
@@ -183,7 +183,8 @@ describe('Tour CRUD', () => {
       method: 'DELETE',
     });
 
-    expect(response.ok).toBe(true);
+    // A delete is 204 with no body.
+    expect(response.status).toBe(204);
   });
 });
 
@@ -194,8 +195,9 @@ describe('Scene Integration', () => {
     const data = await response.json();
 
     expect(response.ok).toBe(true);
-    expect(data).toHaveLength(1);
-    expect(data[0].title).toBe('Test Scene');
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].title).toBe('Test Scene');
+    expect(data).toMatchObject({ next_cursor: null, has_more: false });
   });
 
   it('creates a new scene', async () => {
@@ -222,8 +224,8 @@ describe('Hotspot Integration', () => {
     const data = await response.json();
 
     expect(response.ok).toBe(true);
-    expect(data).toHaveLength(1);
-    expect(data[0].title).toBe('Go to Living Room');
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].title).toBe('Go to Living Room');
   });
 
   it('creates a new hotspot', async () => {
@@ -233,8 +235,7 @@ describe('Hotspot Integration', () => {
       body: JSON.stringify({
         type: 'info',
         title: 'Information',
-        yaw: 45,
-        pitch: 0,
+        position: { yaw: 45, pitch: 0 },
       }),
     });
 
@@ -248,7 +249,7 @@ describe('Hotspot Integration', () => {
 // Analytics integration test
 describe('Analytics Integration', () => {
   it('fetches dashboard stats', async () => {
-    const response = await fetch('/api/v1/analytics/dashboard');
+    const response = await fetch('/api/v1/dashboard/stats');
     const data = await response.json();
 
     expect(response.ok).toBe(true);
@@ -257,11 +258,11 @@ describe('Analytics Integration', () => {
   });
 
   it('fetches tour analytics', async () => {
-    const response = await fetch('/api/v1/analytics/tours/tour-1');
+    const response = await fetch('/api/v1/tours/tour-1/analytics');
     const data = await response.json();
 
     expect(response.ok).toBe(true);
     expect(data.total_views).toBe(100);
-    expect(data.unique_visitors).toBe(50);
+    expect(data.unique_views).toBe(50);
   });
 });

@@ -1,22 +1,17 @@
 import { apiClient } from './client';
 import { supabaseAuth, type SupabaseSession } from '@/lib/supabaseAuth';
-import type { User, AuthTokens, LoginCredentials, RegisterCredentials } from '@/types';
+import type { User, AuthTokens, LoginCredentials } from '@/types';
 import type { AuthMethod } from '@/lib/lastAuthMethod';
+import type { components } from '@/lib/api/schema.gen';
 
-/** Channel the identifier resolves to (frozen backend contract). */
-export type IdentifierChannel = 'phone' | 'email';
+type Schemas = components['schemas'];
 
+/** `POST /auth/identifier-status`: neutral and rate-limited. */
+export type IdentifierStatus = Schemas['IdentifierStatusResponse'];
+/** Channel the identifier resolves to. */
+export type IdentifierChannel = IdentifierStatus['channel'];
 /** Next step the login state-machine should take. */
-export type IdentifierNextStep = 'password' | 'otp';
-
-/** Response shape of POST /api/v1/auth/identifier-status (neutral, rate-limited). */
-export interface IdentifierStatus {
-  exists: boolean;
-  verified: boolean;
-  has_password: boolean;
-  channel: IdentifierChannel;
-  next_step: IdentifierNextStep;
-}
+export type IdentifierNextStep = IdentifierStatus['next_step'];
 
 /**
  * Result of {@link checkIdentifierStatusSafe}. On network/5xx failure the
@@ -74,28 +69,6 @@ export const authApi = {
    */
   async login(credentials: LoginCredentials): Promise<{ user: User; tokens: AuthTokens }> {
     const session = await supabaseAuth.signInWithPassword(credentials);
-    return completeAuthSession(session);
-  },
-
-  /**
-   * Register a new user with phone
-   */
-  async register(
-    data: RegisterCredentials
-  ): Promise<{ user: User | null; tokens: AuthTokens | null }> {
-    const { session } = await supabaseAuth.signUp({
-      phone: data.phone,
-      password: data.password,
-      data: {
-        full_name: data.full_name ?? null,
-        email: data.email ?? null,
-      },
-    });
-
-    if (!session) {
-      return { user: null, tokens: null };
-    }
-
     return completeAuthSession(session);
   },
 

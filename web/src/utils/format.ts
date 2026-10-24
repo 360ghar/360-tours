@@ -1,4 +1,4 @@
-import { format, formatDistanceToNow, parseISO } from 'date-fns';
+import { format, formatDistanceToNow, parse, parseISO } from 'date-fns';
 
 const OFFSET_OR_Z_SUFFIX = /([zZ]|[+-]\d{2}:\d{2})$/;
 
@@ -62,6 +62,17 @@ export function formatDateOnlyForApi(value: string | Date | null | undefined): s
 
 export function getLocalDateKey(value: string | Date): string {
   return format(parseServerTimestamp(value), 'yyyy-MM-dd');
+}
+
+/**
+ * Show a date-only field (`YYYY-MM-DD`, for example `daily_views[].date`) as the
+ * calendar day it names. `new Date('2026-10-01')` is UTC midnight, so formatting
+ * it in a zone west of UTC shows the day before. A value that is not a date-only
+ * string is returned unchanged.
+ */
+export function formatDateOnly(value: string, formatStr: string = 'MMM d, yyyy'): string {
+  const parsed = parse(value, 'yyyy-MM-dd', new Date());
+  return Number.isNaN(parsed.getTime()) ? value : format(parsed, formatStr);
 }
 
 /**
