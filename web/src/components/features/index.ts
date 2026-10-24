@@ -9,7 +9,6 @@ export { FloorPlanOverlay } from './FloorPlanOverlay';
 export { FloorPlanEditor } from './FloorPlanEditor';
 export { BrandingPanel } from './BrandingPanel';
 export { CustomDomainSetup } from './CustomDomainSetup';
-export { ActivityFeed } from './ActivityFeed';
 export { VideoUploader } from './VideoUploader';
 export { VideoPlayer } from './VideoPlayer';
 

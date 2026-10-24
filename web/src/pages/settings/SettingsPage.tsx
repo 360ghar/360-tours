@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { useMutation } from '@tanstack/react-query';
-import { Eye, EyeOff, Bell, Shield, Palette, Trash2 } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Eye, EyeOff, Bell, Shield, Palette, Trash2, Globe } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -11,10 +11,13 @@ import {
   Button,
   Input,
 } from '@/components/ui';
-import { authApi, usersApi } from '@/api';
+import { CustomDomainSetup } from '@/components/features';
+import { authApi, usersApi, toursApi, customDomainsApi } from '@/api';
 import { useAuthStore, useUIStore } from '@/stores';
 import { useToast } from '@/hooks/useToast';
+import { QUERY_KEYS } from '@/constants';
 import { cn } from '@/utils';
+import type { NotificationSettingsWrite } from '@/types';
 
 export function SettingsPage() {
   const { user } = useAuthStore();
@@ -22,16 +25,55 @@ export function SettingsPage() {
   const { toast } = useToast();
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [domainSetupOpen, setDomainSetupOpen] = useState(false);
 
-  // Notification settings state
+  // Published tours that a custom domain would serve (empty/loading states).
+  const {
+    data: publishedTours,
+    isLoading: isLoadingTours,
+    isError: isToursError,
+    refetch: refetchTours,
+  } = useQuery({
+    queryKey: [QUERY_KEYS.TOURS, { status: 'published', scope: 'custom-domains' }],
+    // `total` is null unless include_total is set.
+    queryFn: () => toursApi.getTours({ status: 'published', limit: 1, include_total: true }),
+  });
+  const publishedTourCount = publishedTours?.total ?? publishedTours?.items.length ?? 0;
+
+  // The account's existing domain, so reopening the dialog manages it instead of
+  // showing a blank Add Domain form.
+  const {
+    data: domains,
+    isError: isDomainsError,
+    refetch: refetchDomains,
+  } = useQuery({
+    queryKey: [QUERY_KEYS.USER, 'custom-domains'],
+    queryFn: () => customDomainsApi.listDomains(),
+  });
+  // The domain the dialog manages; null opens it to add a new one.
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
+  const currentDomain = domains?.find(d => d.id === selectedDomainId);
+  // A domain added inside the open dialog: the dialog keeps its own state for it,
+  // but a later Remove still has to know which id to delete.
+  const createdDomainIdRef = useRef<string | null>(null);
+  const openDomainDialog = (domainId: string | null) => {
+    createdDomainIdRef.current = null;
+    setSelectedDomainId(domainId);
+    setDomainSetupOpen(true);
+  };
+
+  // Notification settings state. The backend knows four keys (push_notifications,
+  // email_notifications, sms_notifications, promotional_emails); marketing consent
+  // is promotional_emails and a missing value means opt-out.
   const [notifications, setNotifications] = useState({
-    email_notifications: (user?.notification_settings?.email_notifications as boolean) ?? true,
-    marketing_emails: (user?.notification_settings?.marketing_emails as boolean) ?? false,
+    email_notifications: user?.notification_settings?.email_notifications ?? true,
+    promotional_emails: user?.notification_settings?.promotional_emails ?? false,
   });
 
-  // Notification settings mutation
+  // Notification settings mutation: the server merges the keys it gets into the
+  // stored settings, so only the key that changed is sent.
   const notificationMutation = useMutation({
-    mutationFn: (settings: Record<string, boolean>) =>
+    mutationFn: (settings: NotificationSettingsWrite) =>
       usersApi.updateProfile({ notification_settings: settings }),
     onSuccess: () => {
       toast('success', 'Notification preferences saved.', { title: 'Settings updated' });
@@ -43,7 +85,7 @@ export function SettingsPage() {
       const previous = notifications;
       const updated = { ...notifications, [key]: value };
       setNotifications(updated);
-      notificationMutation.mutate(updated, {
+      notificationMutation.mutate({ [key]: value }, {
         onError: (error: Error) => {
           setNotifications(previous);
           toast('error', error.message || 'Failed to update notifications.', { title: 'Error' });
@@ -152,6 +194,96 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Custom Domains */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-[var(--color-text-muted)]" />
+            <CardTitle>Custom Domains</CardTitle>
+          </div>
+          <CardDescription>Serve your tours from your own branded URL</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {isLoadingTours ? (
+              <p className="text-sm text-[var(--color-text-muted)]" role="status">
+                Loading your published tours...
+              </p>
+            ) : isToursError ? (
+              <p className="text-sm text-[var(--color-error-600)]" role="alert">
+                Could not load your published tours.{' '}
+                <button type="button" className="underline" onClick={() => void refetchTours()}>
+                  Try again
+                </button>
+              </p>
+            ) : publishedTourCount > 0 ? (
+              <p className="text-sm text-[var(--color-text-muted)]">
+                Your custom domain applies to{' '}
+                <span className="font-medium text-[var(--color-text-primary)]">
+                  {publishedTourCount} published tour{publishedTourCount === 1 ? '' : 's'}
+                </span>
+                .
+              </p>
+            ) : (
+              <p className="text-sm text-[var(--color-text-muted)]">
+                You have no published tours yet. Publish a tour first, then connect a custom
+                domain.
+              </p>
+            )}
+            {isDomainsError && (
+              <p className="text-sm text-[var(--color-error-600)]" role="alert">
+                Could not load your domains.{' '}
+                <button type="button" className="underline" onClick={() => void refetchDomains()}>
+                  Try again
+                </button>
+              </p>
+            )}
+            {domains && domains.length > 0 && (
+              <ul className="space-y-2">
+                {domains.map(d => (
+                  <li key={d.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span>
+                      <span className="font-medium text-[var(--color-text-primary)]">{d.domain}</span>{' '}
+                      <span className="text-[var(--color-text-muted)]">{d.verification_status}</span>
+                    </span>
+                    <Button variant="outline" size="sm" onClick={() => openDomainDialog(d.id)}>
+                      Manage
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Button onClick={() => openDomainDialog(null)}>Set up custom domain</Button>
+            <CustomDomainSetup
+              open={domainSetupOpen}
+              onOpenChange={next => {
+                setDomainSetupOpen(next);
+                if (!next) void refetchDomains();
+              }}
+              currentDomainId={currentDomain?.id}
+              currentDomain={currentDomain?.domain}
+              verificationStatus={currentDomain?.verification_status}
+              sslStatus={currentDomain?.ssl_status}
+              verificationToken={currentDomain?.verification_token}
+              onAddDomain={async domain => {
+                const created = await customDomainsApi.createDomain(domain);
+                createdDomainIdRef.current = created.id;
+                await refetchDomains();
+                return created;
+              }}
+              onRemoveDomain={async () => {
+                const id = currentDomain?.id ?? createdDomainIdRef.current;
+                if (!id) return;
+                await customDomainsApi.deleteDomain(id);
+                createdDomainIdRef.current = null;
+                setSelectedDomainId(null);
+                await refetchDomains();
+              }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Notifications */}
       <Card>
         <CardHeader>
@@ -187,8 +319,8 @@ export function SettingsPage() {
               </div>
               <input
                 type="checkbox"
-                checked={notifications.marketing_emails}
-                onChange={e => handleNotificationChange('marketing_emails', e.target.checked)}
+                checked={notifications.promotional_emails}
+                onChange={e => handleNotificationChange('promotional_emails', e.target.checked)}
                 disabled={notificationMutation.isPending}
                 className="h-5 w-5 rounded border-[var(--color-border)] text-[var(--color-primary-600)]"
               />

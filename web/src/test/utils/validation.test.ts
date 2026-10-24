@@ -301,7 +301,6 @@ describe('tourSchema', () => {
     const result = tourSchema.safeParse({
       title: 'My Tour',
       description: 'A nice tour',
-      status: 'published',
       visibility: 'public',
       settings: {
         auto_rotate: true,
@@ -326,7 +325,7 @@ describe('tourSchema', () => {
     const result = tourSchema.safeParse({ title: 'x'.repeat(256) });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe('Title must be less than 255 characters');
+      expect(result.error.issues[0].message).toBe('Title must be at most 255 characters');
     }
   });
 
@@ -345,9 +344,12 @@ describe('tourSchema', () => {
     );
   });
 
-  it('rejects an invalid status', () => {
-    const result = tourSchema.safeParse({ title: 'Tour', status: 'deleted' });
-    expect(result.success).toBe(false);
+  it('drops a status key: a new tour is a draft and publish changes the status', () => {
+    const result = tourSchema.safeParse({ title: 'Tour', status: 'published' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('status');
+    }
   });
 
   it('rejects an invalid visibility', () => {
@@ -393,8 +395,7 @@ describe('sceneSchema', () => {
     const result = sceneSchema.safeParse({
       title: 'Living Room',
       description: 'A cozy space',
-      order_index: 0,
-      metadata: {
+      scene_metadata: {
         initial_view: { yaw: 45, pitch: -10, zoom: 1.5 },
       },
     });
@@ -409,21 +410,26 @@ describe('sceneSchema', () => {
     expect(sceneSchema.safeParse({ description: 'x'.repeat(2001) }).success).toBe(false);
   });
 
-  it('rejects negative order_index', () => {
-    expect(sceneSchema.safeParse({ order_index: -1 }).success).toBe(false);
+  it('drops order_index: the server appends a scene and POST /scenes/reorder orders them', () => {
+    const result = sceneSchema.safeParse({ order_index: 3 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('order_index');
+    }
   });
 
-  it('rejects non-integer order_index', () => {
-    expect(sceneSchema.safeParse({ order_index: 1.5 }).success).toBe(false);
+  it('keeps the initial view inside the backend ranges', () => {
+    const view = (initial_view: object) => sceneSchema.safeParse({ scene_metadata: { initial_view } });
+    expect(view({ yaw: 181, pitch: 0 }).success).toBe(false);
+    expect(view({ yaw: 0, pitch: -91 }).success).toBe(false);
+    expect(view({ yaw: 0, pitch: 0, zoom: 101 }).success).toBe(false);
+    expect(view({ yaw: 0, pitch: 0, zoom: -1 }).success).toBe(false);
+    expect(view({ yaw: -180, pitch: 90, zoom: 100 }).success).toBe(true);
   });
 
-  it('accepts order_index of 0', () => {
-    expect(sceneSchema.safeParse({ order_index: 0 }).success).toBe(true);
-  });
-
-  it('accepts metadata without zoom (optional)', () => {
+  it('accepts scene_metadata without zoom (optional)', () => {
     const result = sceneSchema.safeParse({
-      metadata: { initial_view: { yaw: 0, pitch: 0 } },
+      scene_metadata: { initial_view: { yaw: 0, pitch: 0 } },
     });
     expect(result.success).toBe(true);
   });
@@ -445,7 +451,7 @@ describe('hotspotSchema', () => {
   it('accepts a full hotspot object', () => {
     const result = hotspotSchema.safeParse({
       type: 'navigation',
-      position: { yaw: 90, pitch: 45, radius: 5 },
+      position: { yaw: 90, pitch: 45 },
       target_scene_id: '550e8400-e29b-41d4-a716-446655440000',
       title: 'Go to kitchen',
       description: 'Navigate to the kitchen area',
@@ -510,25 +516,17 @@ describe('hotspotSchema', () => {
     ).toBe(true);
   });
 
-  it('rejects non-positive radius', () => {
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: 0, radius: 0 } })
-        .success
-    ).toBe(false);
-    expect(
-      hotspotSchema.safeParse({ ...validHotspot, position: { yaw: 0, pitch: 0, radius: -1 } })
-        .success
-    ).toBe(false);
-  });
-
   it('accepts null target_scene_id', () => {
     expect(hotspotSchema.safeParse({ ...validHotspot, target_scene_id: null }).success).toBe(true);
   });
 
-  it('rejects non-UUID target_scene_id', () => {
+  it('rejects a target_scene_id longer than 36 characters', () => {
     expect(
-      hotspotSchema.safeParse({ ...validHotspot, target_scene_id: 'not-a-uuid' }).success
+      hotspotSchema.safeParse({ ...validHotspot, target_scene_id: 'x'.repeat(37) }).success
     ).toBe(false);
+    expect(
+      hotspotSchema.safeParse({ ...validHotspot, target_scene_id: 'x'.repeat(36) }).success
+    ).toBe(true);
   });
 
   it('rejects invalid icon_color format', () => {
@@ -570,6 +568,30 @@ describe('hotspotSchema', () => {
       hotspotSchema.safeParse({ ...validHotspot, description: 'x'.repeat(2001) }).success
     ).toBe(false);
   });
+
+  it('rejects an icon longer than 50 and an icon_name longer than 100 characters', () => {
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon: 'x'.repeat(51) }).success).toBe(false);
+    expect(hotspotSchema.safeParse({ ...validHotspot, icon: 'x'.repeat(50) }).success).toBe(true);
+    expect(
+      hotspotSchema.safeParse({ ...validHotspot, icon_name: 'x'.repeat(101) }).success
+    ).toBe(false);
+    expect(
+      hotspotSchema.safeParse({ ...validHotspot, icon_name: 'x'.repeat(100) }).success
+    ).toBe(true);
+  });
+
+  it('accepts null for the fields a PATCH clears', () => {
+    const cleared = hotspotSchema.safeParse({
+      ...validHotspot,
+      title: null,
+      description: null,
+      icon: null,
+      icon_name: null,
+      icon_color: null,
+      target_scene_id: null,
+    });
+    expect(cleared.success).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -584,10 +606,21 @@ describe('profileSchema', () => {
       notification_settings: {
         email_notifications: true,
         push_notifications: false,
-        marketing_emails: false,
+        sms_notifications: false,
+        promotional_emails: false,
       },
     });
     expect(result.success).toBe(true);
+  });
+
+  it('keeps promotional_emails and drops the retired marketing_emails key', () => {
+    const result = profileSchema.safeParse({
+      notification_settings: { promotional_emails: true, marketing_emails: true },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.notification_settings).toEqual({ promotional_emails: true });
+    }
   });
 
   it('accepts an empty object (all fields optional)', () => {

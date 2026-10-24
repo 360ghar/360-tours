@@ -30,51 +30,14 @@ vi.mock('@/lib/supabaseAuth', () => ({
 describe('viewerStore', () => {
   beforeEach(() => {
     // Reset store to initial state before each test
-    useViewerStore.setState({ currentSceneId: null, currentSceneIdsByScope: {} });
+    useViewerStore.setState({ currentSceneIdsByScope: {} });
     vi.clearAllMocks();
   });
 
   describe('initial state', () => {
-    it('has currentSceneId set to null', () => {
+    it('starts with no scoped scene selections', () => {
       const state = useViewerStore.getState();
-      expect(state.currentSceneId).toBeNull();
       expect(state.currentSceneIdsByScope).toEqual({});
-    });
-  });
-
-  describe('setCurrentScene', () => {
-    it('sets the scene ID', () => {
-      useViewerStore.getState().setCurrentScene('scene-123');
-      expect(useViewerStore.getState().currentSceneId).toBe('scene-123');
-    });
-
-    it('can change the scene ID to a different value', () => {
-      useViewerStore.getState().setCurrentScene('scene-1');
-      useViewerStore.getState().setCurrentScene('scene-2');
-      expect(useViewerStore.getState().currentSceneId).toBe('scene-2');
-    });
-
-    it('can set the scene ID to null', () => {
-      useViewerStore.getState().setCurrentScene('scene-1');
-      useViewerStore.getState().setCurrentScene(null);
-      expect(useViewerStore.getState().currentSceneId).toBeNull();
-    });
-  });
-
-  describe('reset', () => {
-    it('clears currentSceneId back to null', () => {
-      useViewerStore.getState().setCurrentScene('scene-abc');
-      expect(useViewerStore.getState().currentSceneId).toBe('scene-abc');
-
-      useViewerStore.getState().reset();
-      expect(useViewerStore.getState().currentSceneId).toBeNull();
-      expect(useViewerStore.getState().currentSceneIdsByScope).toEqual({});
-    });
-
-    it('is idempotent when state is already initial', () => {
-      useViewerStore.getState().reset();
-      expect(useViewerStore.getState().currentSceneId).toBeNull();
-      expect(useViewerStore.getState().currentSceneIdsByScope).toEqual({});
     });
   });
 
@@ -178,11 +141,10 @@ describe('usePublicTourTracking', () => {
       scene_id: 'scene-1',
       hotspot_id: 'hotspot-1',
       session_id: result.current.sessionId,
-      event_data: undefined,
     });
   });
 
-  it('tracks tour_view only once when tourLoaded becomes true', async () => {
+  it('sends session_start once when tourLoaded becomes true and never sends tour_view', async () => {
     const { rerender } = renderHook(props => usePublicTourTracking(props), {
       initialProps: {
         tourId: 'tour-1',
@@ -190,44 +152,24 @@ describe('usePublicTourTracking', () => {
         currentSceneId: undefined,
       },
     });
+    const eventTypes = () =>
+      mockTrackEvent.mock.calls.map(
+        (call: unknown[]) => (call[1] as { event_type?: string }).event_type
+      );
 
-    // No tour_view tracked yet because tourLoaded is false
-    // The session_start is also not tracked yet
-    const tourViewCalls = mockTrackEvent.mock.calls.filter(
-      (call: unknown[]) =>
-        (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
-    );
-    expect(tourViewCalls.length).toBe(0);
+    // Nothing is tracked while the tour is still loading.
+    expect(eventTypes()).toEqual([]);
 
-    // Set tourLoaded to true
     await act(async () => {
-      rerender({
-        tourId: 'tour-1',
-        tourLoaded: true,
-        currentSceneId: undefined,
-      });
+      rerender({ tourId: 'tour-1', tourLoaded: true, currentSceneId: undefined });
+    });
+    // Same props again: no second session_start.
+    await act(async () => {
+      rerender({ tourId: 'tour-1', tourLoaded: true, currentSceneId: undefined });
     });
 
-    const tourViewCallsAfter = mockTrackEvent.mock.calls.filter(
-      (call: unknown[]) =>
-        (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
-    );
-    expect(tourViewCallsAfter.length).toBe(1);
-
-    // Re-render again with same props - should NOT fire tour_view again
-    await act(async () => {
-      rerender({
-        tourId: 'tour-1',
-        tourLoaded: true,
-        currentSceneId: undefined,
-      });
-    });
-
-    const tourViewCallsFinal = mockTrackEvent.mock.calls.filter(
-      (call: unknown[]) =>
-        (call[1] as { event_type?: string } | undefined)?.event_type === 'tour_view'
-    );
-    expect(tourViewCallsFinal.length).toBe(1);
+    // A page view is not an event: the server counts it on GET /public/tours/{id}.
+    expect(eventTypes()).toEqual(['session_start']);
   });
 
   it('does not track events when tourId is undefined', async () => {
@@ -240,7 +182,7 @@ describe('usePublicTourTracking', () => {
     );
 
     await act(async () => {
-      await result.current.trackEvent('some_event');
+      await result.current.trackEvent('share');
     });
 
     expect(mockTrackEvent).not.toHaveBeenCalled();
@@ -271,9 +213,33 @@ describe('usePublicTourTracking', () => {
         (call[1] as { event_type?: string } | undefined)?.event_type === 'scene_view'
     );
     expect(sceneViewCalls.length).toBe(1);
+    // The server requires numeric yaw and pitch on a scene_view (the heatmap reads them).
     expect(sceneViewCalls[0][1]).toMatchObject({
       event_type: 'scene_view',
       scene_id: 'scene-42',
+      event_data: { yaw: 0, pitch: 0 },
+    });
+  });
+
+  it('sends the scene initial view as the yaw and pitch of a scene_view', async () => {
+    renderHook(() =>
+      usePublicTourTracking({
+        tourId: 'tour-1',
+        tourLoaded: true,
+        currentSceneId: 'scene-7',
+        currentSceneView: { yaw: 45, pitch: -10 },
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockTrackEvent).toHaveBeenCalledWith(
+        'tour-1',
+        expect.objectContaining({
+          event_type: 'scene_view',
+          scene_id: 'scene-7',
+          event_data: { yaw: 45, pitch: -10 },
+        })
+      );
     });
   });
 

@@ -1,0 +1,73 @@
+{
+  "stitch_completed": {
+    "job": {
+      "actual_duration": 70.0,
+      "completed_at": "2026-10-15T09:31:10Z",
+      "created_at": "2026-10-15T09:30:00Z",
+      "error_message": null,
+      "id": "b7c4e1d2-93a8-4f60-a5b1-0c2d3e4f5a6b",
+      "job_type": "panorama_stitch",
+      "progress": 100,
+      "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+      "started_at": "2026-10-15T09:30:00Z",
+      "status": "completed",
+      "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+      "updated_at": null
+    },
+    "result": {
+      "height": 4096,
+      "image_url": "https://res.cloudinary.com/demo/image/upload/tours/3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11/stitched",
+      "width": 8192
+    }
+  },
+  "stitch_failed": {
+    "job": {
+      "actual_duration": 70.0,
+      "completed_at": "2026-10-15T09:31:10Z",
+      "created_at": "2026-10-15T09:30:00Z",
+      "error_message": "Not enough overlap between frames",
+      "id": "b7c4e1d2-93a8-4f60-a5b1-0c2d3e4f5a6b",
+      "job_type": "panorama_stitch",
+      "progress": 60,
+      "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+      "started_at": "2026-10-15T09:30:00Z",
+      "status": "failed",
+      "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+      "updated_at": null
+    },
+    "result": null
+  },
+  "stitch_processing": {
+    "job": {
+      "actual_duration": null,
+      "completed_at": null,
+      "created_at": "2026-10-15T09:30:00Z",
+      "error_message": null,
+      "id": "b7c4e1d2-93a8-4f60-a5b1-0c2d3e4f5a6b",
+      "job_type": "panorama_stitch",
+      "progress": 40,
+      "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+      "started_at": "2026-10-15T09:30:00Z",
+      "status": "processing",
+      "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+      "updated_at": null
+    },
+    "result": null
+  },
+  "stitch_started": {
+    "job": {
+      "actual_duration": null,
+      "completed_at": null,
+      "created_at": "2026-10-15T09:30:00Z",
+      "error_message": null,
+      "id": "b7c4e1d2-93a8-4f60-a5b1-0c2d3e4f5a6b",
+      "job_type": "panorama_stitch",
+      "progress": 0,
+      "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+      "started_at": null,
+      "status": "pending",
+      "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+      "updated_at": null
+    }
+  }
+}

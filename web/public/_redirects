@@ -1,0 +1,3 @@
+# SPA fallback: client-side routes (/login, /view/:id, /embed/:id, ...) must
+# serve index.html instead of a Netlify 404. Existing files are served as-is.
+/*  /index.html  200
