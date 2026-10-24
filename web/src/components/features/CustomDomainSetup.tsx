@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Globe,
   Check,
@@ -26,6 +26,7 @@ import {
   AlertDescription,
 } from '@/components/ui';
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import { depsChanged } from '@/utils/depsChanged';
 import { useToast } from '@/hooks/useToast';
 import { confirm } from '@/stores';
 import { API_LIMITS } from '@/lib/api/limits.gen';
@@ -131,24 +132,29 @@ export function CustomDomainSetup({
   const canCheckVerification = Boolean(onVerifyDomain || activeDomainId);
   const canRemoveDomain = Boolean(onRemoveDomain || activeDomainId);
 
-  useEffect(() => {
-    if (!open) return;
-    setDomain(currentDomain || '');
-    setLocalDomain(currentDomain || '');
-    setLocalDomainId(currentDomainId || '');
-    setLocalTxtRecordName(verificationTxtRecordName || '');
-    setLocalTxtRecordValue(verificationTxtRecordValue || verificationToken || '');
-    setLocalVerificationStatus(null);
-    setLocalSslStatus(null);
-    setError(null);
-  }, [
+  // Reload the local copy each time the dialog opens or the saved domain changes.
+  const resetDeps = [
     currentDomain,
     currentDomainId,
     open,
     verificationToken,
     verificationTxtRecordName,
     verificationTxtRecordValue,
-  ]);
+  ];
+  const [prevResetDeps, setPrevResetDeps] = useState<unknown[] | null>(null);
+  if (depsChanged(prevResetDeps, resetDeps)) {
+    setPrevResetDeps(resetDeps);
+    if (open) {
+      setDomain(currentDomain || '');
+      setLocalDomain(currentDomain || '');
+      setLocalDomainId(currentDomainId || '');
+      setLocalTxtRecordName(verificationTxtRecordName || '');
+      setLocalTxtRecordValue(verificationTxtRecordValue || verificationToken || '');
+      setLocalVerificationStatus(null);
+      setLocalSslStatus(null);
+      setError(null);
+    }
+  }
 
   const applyDomainResponse = (response: CustomDomainResponse | void, fallbackDomain: string) => {
     const nextDomain = response?.domain || fallbackDomain;

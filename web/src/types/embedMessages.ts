@@ -88,7 +88,7 @@ export function parseEmbedInboundCommand(value: unknown): EmbedInboundCommand | 
  * extra origin check, never as a trust boundary on its own.
  */
 export function parseEmbedOriginParam(search: string): string | null {
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = new URL(search, 'http://embed.invalid').searchParams.get('origin');
   } catch {
