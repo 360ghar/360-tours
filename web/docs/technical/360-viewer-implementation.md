@@ -134,7 +134,7 @@ The viewer MUST gracefully degrade when a VR capability is unavailable.
 
 Event naming is defined in `../00-conventions.md`.
 
-- On first paint: emit `tour_view`.
+- On first paint: nothing is posted; `GET /public/tours/{id}` counts the view.
 - On scene change: emit `scene_view`.
 - On hotspot interaction: emit `hotspot_click`.
 

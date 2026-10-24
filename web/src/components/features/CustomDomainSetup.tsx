@@ -28,6 +28,7 @@ import {
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { useToast } from '@/hooks/useToast';
 import { confirm } from '@/stores';
+import { API_LIMITS } from '@/lib/api/limits.gen';
 import {
   customDomainsApi,
   type CustomDomainResponse,
@@ -76,6 +77,9 @@ function normalizeDomain(value: string): string {
 }
 
 function isValidDomain(value: string): boolean {
+  const { domainMin, domainMax } = API_LIMITS.customDomain;
+  if (value.length < domainMin || value.length > domainMax) return false;
+
   const labels = value.split('.');
   if (labels.length < 2) return false;
 
@@ -153,8 +157,9 @@ export function CustomDomainSetup({
     setLocalDomainId(response?.id || '');
     setLocalTxtRecordName('');
     setLocalTxtRecordValue(response?.verification_token || '');
-    setLocalVerificationStatus(response?.verification_status || 'pending');
-    setLocalSslStatus(response?.ssl_status || 'pending');
+    // No response (a caller-supplied onAddDomain that returns nothing) leaves the status to the props.
+    setLocalVerificationStatus(response?.verification_status ?? null);
+    setLocalSslStatus(response?.ssl_status ?? null);
   };
 
   const applyVerificationResponse = (response: CustomDomainVerificationResponse | void) => {
@@ -166,7 +171,8 @@ export function CustomDomainSetup({
     setLocalTxtRecordValue(response.txt_record_value);
     setLocalVerificationStatus(response.is_verified ? 'verified' : 'pending');
     if (response.is_verified) {
-      setLocalSslStatus('provisioning');
+      // The server sets ssl_status to `pending` on verify; `provisioning` is not a wire value.
+      setLocalSslStatus('pending');
     }
   };
 
@@ -285,13 +291,6 @@ export function CustomDomainSetup({
             Verified
           </Badge>
         );
-      case 'verifying':
-        return (
-          <Badge variant="warning">
-            <Clock className="h-3 w-3 mr-1 animate-spin" />
-            Verifying
-          </Badge>
-        );
       case 'failed':
         return (
           <Badge variant="destructive">
@@ -318,11 +317,19 @@ export function CustomDomainSetup({
             SSL Active
           </Badge>
         );
-      case 'provisioning':
+      case 'pending':
+        if (displayVerificationStatus === 'verified') {
+          return (
+            <Badge variant="warning">
+              <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+              Provisioning SSL
+            </Badge>
+          );
+        }
         return (
-          <Badge variant="warning">
-            <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-            Provisioning SSL
+          <Badge variant="secondary">
+            <Clock className="h-3 w-3 mr-1" />
+            Awaiting Verification
           </Badge>
         );
       case 'failed':

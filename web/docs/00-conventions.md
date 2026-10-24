@@ -127,7 +127,7 @@ interface Scene {
   vr_url?: string | null;
 
   order_index: number;
-  metadata?: SceneMetadata;
+  scene_metadata?: SceneMetadata | null;
 
   is_processed?: boolean;
   processing_error?: string | null;
@@ -188,27 +188,22 @@ type HotspotContent =
   | CustomContent;
 
 interface NavigationContent {
-  // Optional additional UI hints (e.g., arrow labels); core behavior is via target_scene_id.
-  kind: 'navigation';
-  label?: string;
+  // Empty: the label is the hotspot `title`; core behavior is via target_scene_id.
 }
 
 interface InfoContent {
-  kind: 'info';
   text?: string;
   html?: string; // sanitized by backend OR rendered in a sandbox (see Security sections)
   image_url?: string;
 }
 
 interface AudioContent {
-  kind: 'audio';
   audio_url: string;
   autoplay?: boolean;
   loop?: boolean;
 }
 
 interface VideoContent {
-  kind: 'video';
   // Exactly one source should be set
   video_url?: string; // direct mp4/webm
   youtube_id?: string;
@@ -216,17 +211,16 @@ interface VideoContent {
   autoplay?: boolean;
   muted?: boolean;
   poster_url?: string;
+  loop?: boolean;
 }
 
 interface LinkContent {
-  kind: 'link';
   url: string;
   target?: '_blank' | '_self';
   label?: string;
 }
 
 interface CustomContent {
-  kind: 'custom';
   html?: string;
   component_key?: string;
   props?: Record<string, unknown>;
@@ -287,14 +281,17 @@ interface MediaFile {
 
 All analytics are built from an append-only `analytics_event` stream.
 
-**MVP event types**:
-- `tour_view`
-- `tour_like`
-- `tour_share`
+**Event types** (`ViewerEventType`):
 - `scene_view`
 - `hotspot_click`
+- `share`
 - `fullscreen_enter`
 - `fullscreen_exit`
+- `vr_enter`
+- `vr_exit`
+- `session_start`
+- `session_end`
+- `session_duration`
 
 #### Canonical event properties
 

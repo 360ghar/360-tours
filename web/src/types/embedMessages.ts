@@ -6,7 +6,8 @@ export type EmbedOutboundMessageType =
   | 'hotspotClick'
   | 'panoramaClick'
   | 'fullscreenChange'
-  | 'error';
+  | 'error'
+  | 'tour_error';
 
 export interface EmbedOutboundData {
   [key: string]: unknown;
@@ -72,5 +73,32 @@ export function parseEmbedInboundCommand(value: unknown): EmbedInboundCommand | 
       return { type };
     default:
       return null;
+  }
+}
+
+/**
+ * Parse and validate the `origin` query param that `public/embed.js` appends
+ * to the embed URL (the embedding page's origin). Returns a normalized
+ * `http(s)://host[:port]` string usable as a `postMessage` targetOrigin, or
+ * `null` when absent/invalid (direct iframe embeds omit the param).
+ *
+ * Security note: the param is advisory (a malicious embedder can omit or fake
+ * it — the embedding page controls its own iframe), so it is used to make
+ * outbound messages origin-targeted and to gate inbound commands with an
+ * extra origin check, never as a trust boundary on its own.
+ */
+export function parseEmbedOriginParam(search: string): string | null {
+  let raw: string | null = null;
+  try {
+    raw = new URL(search, 'http://embed.invalid').searchParams.get('origin');
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : null;
+  } catch {
+    return null;
   }
 }

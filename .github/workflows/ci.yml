@@ -3,17 +3,14 @@ name: Web CI
 on:
   push:
     branches: [main]
-    paths: ['web/**', '.github/workflows/ci.yml']
+    # docs/embed-parity-golden.html is the cross-app embed contract artifact:
+    # both web and mobile unit suites assert against it, so touching it must
+    # run both CIs.
+    paths: ['web/**', '.github/workflows/ci.yml', 'docs/embed-parity-golden.html']
   pull_request:
     branches: [main]
-    paths: ['web/**', '.github/workflows/ci.yml']
+    paths: ['web/**', '.github/workflows/ci.yml', 'docs/embed-parity-golden.html']
   workflow_dispatch:
-    inputs:
-      run_e2e_smoke:
-        description: 'Run manual Chromium smoke e2e tests'
-        required: false
-        type: boolean
-        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -48,6 +45,11 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      - name: Generated API types and limits match openapi/openapi.json
+        run: |
+          npm run api:types
+          git diff --exit-code -- src/lib/api/schema.gen.ts src/lib/api/limits.gen.ts
+
       - name: Lint
         run: npm run lint
 
@@ -64,10 +66,22 @@ jobs:
           path: web/coverage/
           retention-days: 7
 
+  # The cross-app embed contract (root AGENTS.md) is enforced in the unit
+  # suites above: web/src/test/utils/embedCode.test.ts reads
+  # docs/embed-parity-golden.html and asserts byte-identical output (the
+  # mobile suite does the same for its Dart generator). This job runs the
+  # hermetic smoke specs (auth + landing, chromium only) on every web-touching
+  # PR — they need no backend (no TEST_USER_* env in CI → the setup project
+  # saves an empty storage state and the specs assert UI only). The dummy
+  # Supabase env vars are required: supabaseAuth.ts throws at import when they
+  # are unset, which would blank every page; the smoke specs never call
+  # Supabase, so dummy values keep the app rendering hermetically.
   e2e-smoke:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_e2e_smoke }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      VITE_SUPABASE_URL: https://dummy-project.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: dummy-anon-key
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

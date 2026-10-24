@@ -63,14 +63,14 @@ class SupabaseAuthRepository implements AuthRepository {
     final google = GoogleSignIn.instance;
     // Client IDs come from the backend so they aren't baked into the app.
     final config = await _api.getAuthConfig();
-    final iosClientId = config['google_ios_client_id'] as String?;
+    final iosClientId = config.googleIosClientId;
     if (Platform.isIOS && (iosClientId == null || iosClientId.isEmpty)) {
       throw const AuthException(
           "Google sign-in isn't available on this device yet.");
     }
     await google.initialize(
       clientId: iosClientId,
-      serverClientId: config['google_web_client_id'] as String?,
+      serverClientId: config.googleWebClientId,
     );
   }
 

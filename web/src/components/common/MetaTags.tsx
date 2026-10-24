@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { APP_NAME } from '@/constants';
 
 interface MetaTagsProps {
@@ -17,8 +17,19 @@ interface MetaTagsProps {
 }
 
 interface StructuredDataProps {
-  type: 'WebApplication' | 'Organization' | 'Product' | 'VirtualTour' | 'ImageGallery';
+  /** Must be a real schema.org type — consumers silently drop an unknown one. */
+  type: 'WebApplication' | 'Organization' | 'Product' | 'ImageGallery';
   data: Record<string, unknown>;
+}
+
+/** Default social preview image; overridden per page via the `image` prop. */
+const DEFAULT_OG_IMAGE = '/og-image-home.jpg';
+
+function resolveDefaultOgImage(): string {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${DEFAULT_OG_IMAGE}`;
+  }
+  return DEFAULT_OG_IMAGE;
 }
 
 export function MetaTags({
@@ -81,10 +92,9 @@ export function MetaTags({
     setMetaTag('og:description', metaDescription, true);
     setMetaTag('og:type', type, true);
     setMetaTag('og:url', currentUrl, true);
-    if (image) {
-      setMetaTag('og:image', image, true);
-      setMetaTag('og:image:alt', fullTitle, true);
-    }
+    const ogImage = image || resolveDefaultOgImage();
+    setMetaTag('og:image', ogImage, true);
+    setMetaTag('og:image:alt', fullTitle, true);
     setMetaTag('og:site_name', APP_NAME, true);
     if (publishedTime) {
       setMetaTag('article:published_time', publishedTime, true);
@@ -96,9 +106,7 @@ export function MetaTags({
     setMetaTag('twitter:card', twitterCard);
     setMetaTag('twitter:title', fullTitle);
     setMetaTag('twitter:description', metaDescription);
-    if (image) {
-      setMetaTag('twitter:image', image);
-    }
+    setMetaTag('twitter:image', ogImage);
 
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {
@@ -207,23 +215,30 @@ export function VirtualTourStructuredData({
   datePublished?: string;
   dateModified?: string;
 }) {
-  return (
-    <StructuredData
-      type="ImageGallery"
-      data={{
-        name,
-        description,
-        image,
-        url: url || (typeof window !== 'undefined' ? window.location.href : ''),
-        creator: creator ? { '@type': 'Person', name: creator } : undefined,
-        datePublished,
-        dateModified,
-        accessMode: ['visual'],
-        accessibilityFeature: ['highContrastDisplay'],
-        isAccessibleForFree: true,
-      }}
-    />
+  // Memoize so the StructuredData effect does not re-run on every parent
+  // render (e.g. PublicTourPage re-renders on every scene change).
+  const data = useMemo(
+    () => ({
+      name,
+      description,
+      image,
+      url: url || (typeof window !== 'undefined' ? window.location.href : ''),
+      creator: creator ? { '@type': 'Person', name: creator } : undefined,
+      datePublished,
+      dateModified,
+      accessMode: ['visual'],
+      accessibilityFeature: ['highContrastDisplay'],
+      isAccessibleForFree: true,
+    }),
+    [name, description, image, url, creator, datePublished, dateModified]
   );
+
+  // `VirtualTour` is NOT a schema.org term — consumers (Google's Rich Results
+  // test included) drop an unknown @type, so the block was inert. ImageGallery
+  // is a real CreativeWork subtype and the only one here that actually carries
+  // the properties emitted above (creator, datePublished, accessMode,
+  // accessibilityFeature, isAccessibleForFree).
+  return <StructuredData type="ImageGallery" data={data} />;
 }
 
 export function WebApplicationStructuredData({
@@ -257,7 +272,6 @@ export function WebApplicationStructuredData({
           'VR support',
           'Interactive hotspots',
           'Analytics dashboard',
-          'Team collaboration',
           'White-label branding',
         ],
       }}

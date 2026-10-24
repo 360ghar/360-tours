@@ -1,68 +1,103 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { EmbedTourPage } from '@/pages/EmbedTourPage';
 import { toursApi } from '@/api';
 import { DEFAULT_TOUR_SETTINGS } from '@/constants';
-import type { Tour, Scene } from '@/types';
+import { makeHotspot, makePublicScene, makePublicTour, makeFloorPlan } from '@/test/fixtures';
+import type { PublicScene, PublicTour } from '@/types';
 
 vi.mock('@/components/features/PanoramaViewer', () => ({
-  PanoramaViewer: () => null,
+  PanoramaViewer: ({
+    hotspots,
+    onHotspotClick,
+    onSceneChange,
+  }: {
+    hotspots: Array<{
+      id: string;
+      type: string;
+      title: string | null;
+      target_scene_id: string | null;
+    }>;
+    onHotspotClick?: (hotspot: unknown) => void;
+    onSceneChange?: (sceneId: string) => void;
+  }) => (
+    <div data-testid="panorama-viewer">
+      {hotspots.map(hotspot => (
+        <button
+          key={hotspot.id}
+          type="button"
+          data-testid={`hotspot-${hotspot.id}`}
+          onClick={() => {
+            if (hotspot.type === 'navigation' && hotspot.target_scene_id) {
+              onSceneChange?.(hotspot.target_scene_id);
+            }
+            onHotspotClick?.(hotspot);
+          }}
+        >
+          {hotspot.title || hotspot.type}
+        </button>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock('@/components/features/FloorPlanOverlay', () => ({
-  FloorPlanOverlay: () => null,
-}));
-
-vi.mock('@/components/features/HotspotContentModal', () => ({
-  HotspotContentModal: () => null,
+  FloorPlanOverlay: ({ floorPlans }: { floorPlans: Array<{ id: string; name: string }> }) => (
+    <div data-testid="floor-plan-overlay">{floorPlans.map(fp => fp.name).join(',')}</div>
+  ),
 }));
 
 vi.mock('@/api', () => ({
   toursApi: {
     getPublicTour: vi.fn(),
-    getPublicFloorPlans: vi.fn(),
     trackEvent: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
-const mockScene: Scene = {
+const mockScene: PublicScene = makePublicScene({
   id: 'scene-1',
-  tour_id: 'tour-1',
   title: 'Living Room',
-  description: null,
   image_url: 'https://example.com/pano.jpg',
-  thumbnail_url: null,
-  vr_url: null,
-  order_index: 0,
-  is_processed: true,
-  processing_error: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  hotspots: [],
-};
+  hotspots: [
+    makeHotspot({
+      id: 'hs-info',
+      type: 'info',
+      title: 'About this room',
+      content: { text: 'Sunny corner room with a fireplace' },
+    }),
+    makeHotspot({
+      id: 'hs-nav',
+      type: 'navigation',
+      title: 'Go to Kitchen',
+      target_scene_id: 'scene-2',
+    }),
+  ],
+});
 
-const mockTour: Tour = {
-  id: 'tour-1',
-  user_id: 'user-1',
+const kitchenScene: PublicScene = makePublicScene({
+  id: 'scene-2',
+  title: 'Kitchen',
+  image_url: 'https://example.com/pano.jpg',
+  order_index: 1,
+  hotspots: [
+    makeHotspot({
+      id: 'hs-kitchen',
+      scene_id: 'scene-2',
+      type: 'info',
+      title: 'Kitchen tip',
+      content: { text: 'New quartz countertops' },
+    }),
+  ],
+});
+
+const mockTour: PublicTour = makePublicTour({
   title: 'Embed Test Tour',
-  description: null,
-  status: 'published',
-  visibility: 'public',
-  is_featured: false,
-  view_count: 0,
-  like_count: 0,
-  share_count: 0,
   settings: { ...DEFAULT_TOUR_SETTINGS },
-  thumbnail_url: null,
-  published_at: null,
-  archived_at: null,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-  deleted_at: null,
-  scenes: [mockScene],
-};
+  scenes: [mockScene, kitchenScene],
+});
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -85,11 +120,9 @@ describe('EmbedTourPage postMessage', () => {
 
   beforeEach(() => {
     vi.mocked(toursApi.getPublicTour).mockReset();
-    vi.mocked(toursApi.getPublicFloorPlans).mockReset();
     vi.mocked(toursApi.trackEvent).mockReset().mockResolvedValue(undefined);
 
     vi.mocked(toursApi.getPublicTour).mockResolvedValue(mockTour);
-    vi.mocked(toursApi.getPublicFloorPlans).mockResolvedValue([]);
 
     // jsdom default: window.parent === window (top-level, not in iframe)
     expect(window.parent).toBe(window);
@@ -124,11 +157,113 @@ describe('EmbedTourPage postMessage', () => {
       tour_id: 'tour-1',
       data: {
         title: 'Embed Test Tour',
-        sceneCount: 1,
-        scene_count: 1,
+        sceneCount: 2,
+        scene_count: 2,
         currentSceneId: 'scene-1',
         current_scene_id: 'scene-1',
       },
     });
+  });
+
+  it('posts tour_error when the tour exists but has zero scenes', async () => {
+    vi.mocked(toursApi.getPublicTour).mockResolvedValue({ ...mockTour, scenes: [] });
+
+    renderPage();
+
+    await screen.findByText('Tour not available');
+
+    await waitFor(() => {
+      const errorCall = messageListener.mock.calls.find(call => {
+        const event = call[0] as MessageEvent;
+        return event?.data?.type === 'tour_error';
+      });
+      expect(errorCall).toBeDefined();
+    });
+
+    // No `ready` is posted when there is nothing to render.
+    const readyCall = messageListener.mock.calls.find(call => {
+      const event = call[0] as MessageEvent;
+      return event?.data?.type === 'ready';
+    });
+    expect(readyCall).toBeUndefined();
+  });
+
+  it('posts error on fetch failure and recovers via the Retry button', async () => {
+    vi.mocked(toursApi.getPublicTour)
+      .mockRejectedValueOnce(new Error('network fail'))
+      .mockResolvedValueOnce(mockTour);
+
+    renderPage();
+
+    await screen.findByText('Failed to load tour');
+
+    await waitFor(() => {
+      const errorCall = messageListener.mock.calls.find(call => {
+        const event = call[0] as MessageEvent;
+        return event?.data?.type === 'error';
+      });
+      expect(errorCall).toBeDefined();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      const readyCall = messageListener.mock.calls.find(call => {
+        const event = call[0] as MessageEvent;
+        return event?.data?.type === 'ready';
+      });
+      expect(readyCall).toBeDefined();
+    });
+    expect(screen.queryByText('Failed to load tour')).not.toBeInTheDocument();
+  });
+
+  it('opens info content and switches scenes from hotspot clicks', async () => {
+    renderPage();
+
+    await userEvent.click(await screen.findByTestId('hotspot-hs-info'));
+    expect(await screen.findByRole('heading', { name: 'About this room' })).toBeInTheDocument();
+    expect(screen.getByText('Sunny corner room with a fireplace')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await userEvent.click(screen.getByTestId('hotspot-hs-nav'));
+    expect(await screen.findByTestId('hotspot-hs-kitchen')).toBeInTheDocument();
+  });
+
+  it('renders the floor plan overlay from the top-level tour.floor_plans', async () => {
+    vi.mocked(toursApi.getPublicTour).mockResolvedValue({
+      ...mockTour,
+      floor_plans: [makeFloorPlan({ name: 'Ground floor' })],
+    });
+
+    renderPage();
+
+    expect(await screen.findByTestId('floor-plan-overlay')).toHaveTextContent('Ground floor');
+  });
+
+  it('does not play an unpublished draft as an embed', async () => {
+    vi.mocked(toursApi.getPublicTour).mockResolvedValue({
+      ...mockTour,
+      status: 'draft',
+      visibility: 'private',
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Tour not available')).toBeInTheDocument();
+    expect(screen.queryByTestId('panorama-viewer')).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      const errorCall = messageListener.mock.calls.find(call => {
+        const event = call[0] as MessageEvent;
+        return event?.data?.type === 'tour_error';
+      });
+      expect(errorCall).toBeDefined();
+    });
+
+    const readyCall = messageListener.mock.calls.find(call => {
+      const event = call[0] as MessageEvent;
+      return event?.data?.type === 'ready';
+    });
+    expect(readyCall).toBeUndefined();
   });
 });

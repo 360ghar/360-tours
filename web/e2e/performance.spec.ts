@@ -76,24 +76,25 @@ test.describe('Performance', () => {
     expect(jsErrors).toHaveLength(0);
   });
 
-  test('should have lazy-loaded images where appropriate', async ({ page }) => {
+  test('should not load dashboard chunks on the landing page', async ({ page }) => {
+    // The landing page must only load the marketing chunk graph: authed-app
+    // routes (dashboard, tours, editor, media) are lazy-loaded and must never
+    // be requested while viewing `/`. (Replaces the old lazy-image test,
+    // which was vacuous — the landing page renders no `<img>` elements.)
+    const requestedChunks: string[] = [];
+    page.on('request', req => {
+      const url = req.url();
+      if (/\/assets\/.*\.js/.test(url)) requestedChunks.push(url);
+    });
+
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
 
-    // Check for lazy loading attribute on images
-    const images = page.locator('img');
-    const imageCount = await images.count();
-
-    if (imageCount > 3) {
-      // If there are many images, at least some should be lazy loaded
-      let lazyLoadedCount = 0;
-      for (let i = 0; i < imageCount; i++) {
-        const loading = await images.nth(i).getAttribute('loading');
-        if (loading === 'lazy') {
-          lazyLoadedCount++;
-        }
-      }
-      // At least one image should be lazy loaded if there are many
-      expect(lazyLoadedCount).toBeGreaterThanOrEqual(0);
-    }
+    const authedChunks = requestedChunks.filter(url =>
+      /DashboardPage|ToursPage|TourEditPage|TourCreatePage|MediaLibraryPage|AnalyticsPage/.test(
+        url
+      )
+    );
+    expect(authedChunks).toHaveLength(0);
   });
 });
