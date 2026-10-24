@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
@@ -14,8 +14,6 @@ import {
   List,
   Images,
   Clock,
-  Archive,
-  ArchiveRestore,
 } from 'lucide-react';
 import { Card, CardContent, Button, Input, Badge, Skeleton, SkeletonCard } from '@/components/ui';
 import { toursApi } from '@/api';
@@ -23,7 +21,7 @@ import { useUIStore, confirm } from '@/stores';
 import { ROUTES, QUERY_KEYS, TOUR_STATUS_OPTIONS } from '@/constants';
 import { formatCompactNumber, formatRelativeTime } from '@/utils/format';
 import { useDebounce } from '@/hooks';
-import type { Tour } from '@/types';
+import type { Tour, TourStatus } from '@/types';
 import { cn } from '@/utils';
 
 type ViewMode = 'grid' | 'list';
@@ -33,12 +31,28 @@ export function ToursPage() {
   const queryClient = useQueryClient();
   const addToast = useUIStore(s => s.addToast);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  // Seed the search box from the `?search=` query param (header search submits
+  // `/tours?search=<query>`). Local typing never rewrites the URL, so the sync
+  // effect below only fires when the param actually changes.
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') ?? '');
+  const [statusFilter, setStatusFilter] = useState<TourStatus | 'all'>('all');
   const [cursor, setCursor] = useState<string | null>(null);
   // Stack of cursors used for previous pages, enabling a "Prev" navigation.
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
   const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Keep local search state in sync with the URL param without clobbering
+  // in-page typing (which never changes the URL).
+  const lastSearchParamRef = useRef(searchParams.get('search') ?? '');
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') ?? '';
+    if (urlSearch !== lastSearchParamRef.current) {
+      lastSearchParamRef.current = urlSearch;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSearchQuery(urlSearch);
+    }
+  }, [searchParams]);
 
   // Fetch tours (cursor pagination)
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -47,6 +61,8 @@ export function ToursPage() {
       toursApi.getTours({
         cursor,
         limit: 12,
+        // `total` is null unless it is asked for.
+        include_total: true,
         search: debouncedSearch || undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
       }),
@@ -64,6 +80,11 @@ export function ToursPage() {
     mutationFn: (id: string) => toursApi.deleteTour(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
+      addToast({
+        type: 'success',
+        message: 'Your tour has been permanently deleted.',
+        title: 'Tour deleted',
+      });
     },
     onError: (error: Error) => {
       addToast({ type: 'error', message: error.message || 'Action failed' });
@@ -75,18 +96,11 @@ export function ToursPage() {
     mutationFn: (id: string) => toursApi.duplicateTour(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
-    },
-    onError: (error: Error) => {
-      addToast({ type: 'error', message: error.message || 'Action failed' });
-    },
-  });
-
-  // Archive/unarchive tour mutation
-  const archiveMutation = useMutation({
-    mutationFn: ({ id, archive }: { id: string; archive: boolean }) =>
-      toursApi.updateTour(id, { status: archive ? 'archived' : 'draft' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.TOURS] });
+      addToast({
+        type: 'success',
+        message: 'A copy of your tour has been created.',
+        title: 'Tour duplicated',
+      });
     },
     onError: (error: Error) => {
       addToast({ type: 'error', message: error.message || 'Action failed' });
@@ -142,15 +156,6 @@ export function ToursPage() {
     }
   };
 
-  const handleArchive = async (tour: Tour) => {
-    const archive = tour.status !== 'archived';
-    try {
-      await archiveMutation.mutateAsync({ id: tour.id, archive });
-    } catch {
-      // Error toast is handled by the mutation.
-    }
-  };
-
   return (
     <div className="animate-fade-in space-y-6">
       {/* Header */}
@@ -187,7 +192,10 @@ export function ToursPage() {
           {/* Status Filter */}
           <select
             value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
+            onChange={e => {
+              const next = TOUR_STATUS_OPTIONS.find(option => option.value === e.target.value);
+              setStatusFilter(next ? next.value : 'all');
+            }}
             aria-label="Filter tours by status"
             className="h-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-500)]"
           >
@@ -300,7 +308,6 @@ export function ToursPage() {
               onEdit={() => navigate(`/tours/${tour.id}/edit`)}
               onDelete={() => handleDelete(tour)}
               onDuplicate={() => handleDuplicate(tour)}
-              onArchive={() => handleArchive(tour)}
             />
           ))}
         </div>
@@ -313,7 +320,6 @@ export function ToursPage() {
               onEdit={() => navigate(`/tours/${tour.id}/edit`)}
               onDelete={() => handleDelete(tour)}
               onDuplicate={() => handleDuplicate(tour)}
-              onArchive={() => handleArchive(tour)}
             />
           ))}
         </div>
@@ -344,10 +350,9 @@ interface TourCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
-  onArchive: () => void;
 }
 
-function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardProps) {
+function TourCard({ tour, onEdit, onDelete, onDuplicate }: TourCardProps) {
   const [showMenu, setShowMenu] = useState(false);
 
   return (
@@ -446,26 +451,6 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
                       View Live
                     </a>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMenu(false);
-                      onArchive();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-[var(--color-surface)]"
-                  >
-                    {tour.status === 'archived' ? (
-                      <>
-                        <ArchiveRestore className="h-4 w-4" />
-                        Unarchive
-                      </>
-                    ) : (
-                      <>
-                        <Archive className="h-4 w-4" />
-                        Archive
-                      </>
-                    )}
-                  </button>
                   <hr className="my-1 border-[var(--color-border)]" />
                   <button
                     type="button"
@@ -489,7 +474,7 @@ function TourCard({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardPr
 }
 
 // Tour List Item Component
-function TourListItem({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCardProps) {
+function TourListItem({ tour, onEdit, onDelete, onDuplicate }: TourCardProps) {
   return (
     <Card className="transition-shadow hover:shadow-md">
       <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
@@ -551,19 +536,6 @@ function TourListItem({ tour, onEdit, onDelete, onDuplicate, onArchive }: TourCa
             onClick={onDuplicate}
           >
             <Copy className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`${tour.status === 'archived' ? 'Unarchive' : 'Archive'} ${tour.title}`}
-            title={tour.status === 'archived' ? 'Unarchive' : 'Archive'}
-            onClick={onArchive}
-          >
-            {tour.status === 'archived' ? (
-              <ArchiveRestore className="h-4 w-4" />
-            ) : (
-              <Archive className="h-4 w-4" />
-            )}
           </Button>
           <Button
             variant="ghost"

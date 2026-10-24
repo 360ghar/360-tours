@@ -1,16 +1,37 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { CheckCircle2, XCircle, Loader2, Clock, AlertCircle, X, Wifi, WifiOff } from 'lucide-react';
 import { Button, Progress, Badge } from '@/components/ui';
-import { aiApi } from '@/api';
+import { aiApi, parseApiError } from '@/api';
 import { useAIJobWebSocket, type AIJobUpdate } from '@/hooks';
-import type { AIProcessingJob } from '@/types';
+import type { AIJobType, AIProcessingJob } from '@/types';
 import { cn } from '@/utils';
+
+/** Label per job type. A `Record` over the generated union: a new backend type fails to compile until it is named here. */
+const JOB_TYPE_LABELS: Record<AIJobType, string> = {
+  generate_tour: 'Tour Generation',
+  analyze_scene: 'Scene Analysis',
+  analyze_scenes: 'Scene Analysis',
+  generate_description: 'Description Generation',
+  generate_descriptions: 'Description Generation',
+  suggest_hotspots: 'Hotspot Suggestions',
+  suggest_tour_hotspots: 'Hotspot Suggestions',
+  optimize_tour: 'Tour Optimization',
+  spatial_connect: 'Spatial Linking',
+  analyze_floor_plan: 'Floor Plan Analysis',
+  panorama_stitch: 'Panorama Stitching',
+};
+
+/** Statuses a job can still leave. `completed`, `failed` and `cancelled` are final. */
+function isRunning(job: AIProcessingJob): boolean {
+  return job.status === 'pending' || job.status === 'processing';
+}
 
 const POLLING_INTERVAL_MS = 2000;
 const WEBSOCKET_CONNECTING_FALLBACK_GRACE_MS = 5000;
 
 interface AIJobStatusProps {
   jobId: string;
+  /** `result` is the job's result model; read it with the `read*` helpers of `@/api`. */
   onComplete?: (job: AIProcessingJob, result?: unknown) => void;
   onError?: (job: AIProcessingJob | null, error: string) => void;
   onCancel?: () => void;
@@ -50,22 +71,20 @@ export function AIJobStatus({
     useWebSocket ? jobId : null,
     {
       onUpdate: (update: AIJobUpdate) => {
-        if (update.type === 'job_update' && update.data) {
-          // Update job with WebSocket data
-          setJob((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              status: update.data!.status as AIProcessingJob['status'],
-              progress: update.data!.progress,
-              error_message: update.data!.error_message || null,
-            };
-          });
+        const { status, progress, error_message, result: frameResult } = update.data;
+        // Update the job from the frame. A status outside the enum reads null and is ignored.
+        setJob((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            status: status ?? prev.status,
+            progress: progress ?? prev.progress,
+            error_message: error_message ?? prev.error_message ?? null,
+          };
+        });
 
-          // Handle result from WebSocket
-          if (update.data.result) {
-            setResult(update.data.result);
-          }
+        if (frameResult) {
+          setResult(frameResult);
         }
       },
       onComplete: (wsResult: Record<string, unknown>) => {
@@ -88,7 +107,8 @@ export function AIJobStatus({
       const response = await aiApi.getJobStatus(jobId);
       setJob(response.job);
 
-      const responseResult = response.result ?? response.job.output_data;
+      // The result is read only from the top-level `result` of the status response.
+      const responseResult = response.result;
 
       if (responseResult) {
         setResult(responseResult);
@@ -100,11 +120,11 @@ export function AIJobStatus({
         return true; // Stop polling
       }
 
-      if ((response.job.status === 'failed' || response.job.status === 'canceled') && !terminalCallbackHandledRef.current) {
+      if ((response.job.status === 'failed' || response.job.status === 'cancelled') && !terminalCallbackHandledRef.current) {
         terminalCallbackHandledRef.current = true;
         const errorMsg =
           response.job.error_message ||
-          (response.job.status === 'canceled' ? 'Processing was canceled' : 'Processing failed');
+          (response.job.status === 'cancelled' ? 'Processing was cancelled' : 'Processing failed');
         setError(errorMsg);
         onError?.(response.job, errorMsg);
         return true; // Stop polling
@@ -184,11 +204,11 @@ export function AIJobStatus({
     if (job.status === 'completed' && result) {
       terminalCallbackHandledRef.current = true;
       onComplete?.(job, result);
-    } else if (job.status === 'failed' || job.status === 'canceled') {
+    } else if (job.status === 'failed' || job.status === 'cancelled') {
       terminalCallbackHandledRef.current = true;
       const errorMsg =
         job.error_message ||
-        (job.status === 'canceled' ? 'Processing was canceled' : 'Processing failed');
+        (job.status === 'cancelled' ? 'Processing was cancelled' : 'Processing failed');
       setError(errorMsg);
       onError?.(job, errorMsg);
     }
@@ -197,10 +217,18 @@ export function AIJobStatus({
   const handleCancel = async () => {
     setIsCancelling(true);
     try {
-      await aiApi.cancelJob(jobId);
+      const response = await aiApi.cancelJob(jobId);
+      setJob(response.job);
+      // The user chose to cancel: skip the failure callbacks for this terminal state.
+      terminalCallbackHandledRef.current = true;
       onCancel?.();
-    } catch {
-      // Ignore cancel errors
+    } catch (err) {
+      if (parseApiError(err).code === 'JOB_NOT_CANCELLABLE') {
+        // The job finished (or was cancelled) first: show how it really ended.
+        await fetchJobStatus();
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not cancel the job');
+      }
     } finally {
       setIsCancelling(false);
     }
@@ -210,7 +238,6 @@ export function AIJobStatus({
     if (!job) return <Loader2 className="h-5 w-5 animate-spin text-[var(--color-primary-500)]" />;
 
     switch (job.status) {
-      case 'queued':
       case 'pending':
         return <Clock className="h-5 w-5 text-[var(--color-warning-500)]" />;
       case 'processing':
@@ -219,10 +246,8 @@ export function AIJobStatus({
         return <CheckCircle2 className="h-5 w-5 text-[var(--color-success-500)]" />;
       case 'failed':
         return <XCircle className="h-5 w-5 text-[var(--color-error-500)]" />;
-      case 'canceled':
+      case 'cancelled':
         return <XCircle className="h-5 w-5 text-[var(--color-text-muted)]" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-[var(--color-text-muted)]" />;
     }
   };
 
@@ -230,7 +255,6 @@ export function AIJobStatus({
     if (!job) return 'Loading...';
 
     switch (job.status) {
-      case 'queued':
       case 'pending':
         return 'Waiting to start...';
       case 'processing':
@@ -239,44 +263,15 @@ export function AIJobStatus({
         return 'Completed';
       case 'failed':
         return 'Failed';
-      case 'canceled':
-        return 'Canceled';
-      default:
-        return job.status;
+      case 'cancelled':
+        return 'Cancelled';
     }
   };
 
   const getJobTypeLabel = () => {
-    if (!job) return 'AI Processing';
-
-    switch (job.job_type) {
-      case 'tour_generation':
-        return 'Tour Generation';
-      case 'scene_detection':
-        return 'Scene Analysis';
-      case 'hotspot_suggestions':
-      case 'hotspot_placement':
-        return 'Hotspot Suggestions';
-      case 'description_generation':
-        return 'Description Generation';
-      case 'quality_checks':
-        return 'Quality Checks';
-      case 'generate_reel':
-        return 'Reel Generation';
-      case 'optimization':
-        return 'Tour Optimization';
-      default:
-        return 'AI Processing';
-    }
-  };
-
-  const getEstimatedTime = () => {
-    if (!job?.estimated_duration) return null;
-
-    const seconds = job.estimated_duration;
-    if (seconds < 60) return `~${seconds}s remaining`;
-    const minutes = Math.ceil(seconds / 60);
-    return `~${minutes} min remaining`;
+    // job_type is null when the stored value is outside the enum.
+    if (!job?.job_type) return 'AI Processing';
+    return JOB_TYPE_LABELS[job.job_type];
   };
 
   return (
@@ -320,12 +315,11 @@ export function AIJobStatus({
       </div>
 
       {/* Progress bar */}
-      {job && (job.status === 'queued' || job.status === 'pending' || job.status === 'processing') && (
+      {job && isRunning(job) && (
         <div className="space-y-2">
           <Progress value={job.progress} />
           <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
             <span>{job.progress}%</span>
-            {getEstimatedTime() && <span>{getEstimatedTime()}</span>}
           </div>
         </div>
       )}
@@ -340,20 +334,8 @@ export function AIJobStatus({
         </div>
       )}
 
-      {/* Processing details */}
-      {job?.status === 'processing' && job.input_data && (
-        <div className="mt-3 text-xs text-[var(--color-text-muted)]">
-          {typeof job.input_data.scene_count === 'number' && (
-            <p>Processing {job.input_data.scene_count} scenes...</p>
-          )}
-          {typeof job.input_data.image_count === 'number' && (
-            <p>Analyzing {job.input_data.image_count} images...</p>
-          )}
-        </div>
-      )}
-
       {/* Cancel button */}
-      {showCancelButton && job && (job.status === 'queued' || job.status === 'pending' || job.status === 'processing') && (
+      {showCancelButton && job && isRunning(job) && (
         <div className="mt-4 pt-3 border-t border-[var(--color-border)]">
           <Button
             variant="outline"
@@ -369,10 +351,10 @@ export function AIJobStatus({
       )}
 
       {/* Completion time */}
-      {job?.status === 'completed' && job.actual_duration && (
+      {job?.status === 'completed' && job.actual_duration != null && job.actual_duration > 0 && (
         <p className="mt-2 text-xs text-[var(--color-text-muted)]">
           Completed in {job.actual_duration < 60
-            ? `${job.actual_duration} seconds`
+            ? `${Math.round(job.actual_duration)} seconds`
             : `${Math.round(job.actual_duration / 60)} minutes`}
         </p>
       )}
