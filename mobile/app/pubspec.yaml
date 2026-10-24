@@ -114,3 +114,17 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# opencv_dart 2 builds only core, imgcodecs and imgproc by default. The
+# on-device stitcher (cv.Stitcher) also needs stitching and the modules it
+# links against; an excluded module throws "symbol not found" at runtime.
+hooks:
+  user_defines:
+    dartcv4:
+      include_modules:
+        - imgcodecs
+        - imgproc
+        - calib3d
+        - features2d
+        - flann
+        - stitching
