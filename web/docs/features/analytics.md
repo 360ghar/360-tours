@@ -17,12 +17,14 @@ Related docs:
 Analytics is built from an append-only event stream.
 
 **MVP event types** (see `../00-conventions.md`):
-- `tour_view`
-- `scene_view`
+- `scene_view` (numeric `event_data.yaw` and `pitch` required; the heatmap is built from them)
 - `hotspot_click`
-- `tour_share`
-- `tour_like`
+- `share`
 - `fullscreen_enter` / `fullscreen_exit`
+- `vr_enter` / `vr_exit`
+- `session_start` / `session_end` / `session_duration`
+
+A page view is counted by `GET /api/v1/public/tours/{tour_id}` (once per client IP in 30 minutes), not by an event. Likes use `POST` and `DELETE /api/v1/public/tours/{tour_id}/like`.
 
 ## Dashboard requirements (MVP)
 

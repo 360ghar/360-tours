@@ -239,7 +239,6 @@ class _StatusBadge extends StatelessWidget {
       AssetStatus.capturing => ('Capturing', AppColors.inkDim),
       AssetStatus.stitching => ('Stitching…', AppColors.accent),
       AssetStatus.pendingCloudStitch => ('Uploading…', AppColors.accent),
-      AssetStatus.processing3d => ('Building 3D…', AppColors.accent),
       AssetStatus.failed => ('Failed', AppColors.danger),
       AssetStatus.ready => ('Ready', AppColors.success),
     };

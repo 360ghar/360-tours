@@ -3,12 +3,16 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { supabaseAuth } from '@/lib/supabaseAuth';
 import { API_BASE_URL } from '@/constants';
+import { WS_CLOSE_NOT_FOUND, WS_CLOSE_UNAUTHORIZED, type ClientAuthFrame } from '@/types/realtime';
 
 export type WebSocketState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 const PING_INTERVAL = 25000;
 const DEFAULT_RECONNECT_DELAY = 3000;
 const DEFAULT_CONNECTION_TIMEOUT = 10000;
+// 4001: the auth frame was missing or invalid. 4004: the job is not visible to the caller.
+// Retrying with the same token and URL cannot succeed, so these closes do not reconnect.
+const NO_RETRY_CLOSE_CODES = new Set([WS_CLOSE_UNAUTHORIZED, WS_CLOSE_NOT_FOUND]);
 
 export function buildWebSocketBaseUrl(): string {
   try {
@@ -30,10 +34,10 @@ interface UseWebSocketOptions {
 }
 
 export function useWebSocket(
-  urlBuilder: (token: string) => string,
+  urlBuilder: () => string,
   options: UseWebSocketOptions = {}
 ) {
-  const { isAuthenticated } = useAuthStore();
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
   const [state, setState] = useState<WebSocketState>('disconnected');
   const stateRef = useRef<WebSocketState>('disconnected');
   const wsRef = useRef<WebSocket | null>(null);
@@ -145,8 +149,9 @@ export function useWebSocket(
         stateRef.current = 'disconnected';
         return;
       }
+      const authToken: string = accessToken;
 
-      const wsUrl = urlBuilderRef.current(accessToken);
+      const wsUrl = urlBuilderRef.current();
       let ws: WebSocket;
       try {
         ws = new WebSocket(wsUrl);
@@ -164,6 +169,9 @@ export function useWebSocket(
 
       ws.onopen = () => {
         if (connectionIdRef.current !== connectionId) return;
+        // The token travels in the first frame, never in the URL. The server reads it before it serves the socket.
+        const authFrame: ClientAuthFrame = { type: 'auth', token: authToken };
+        ws.send(JSON.stringify(authFrame));
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
           connectionTimeoutRef.current = null;
@@ -194,14 +202,14 @@ export function useWebSocket(
         stateRef.current = 'error';
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event: CloseEvent) => {
         if (connectionIdRef.current !== connectionId) return;
 
         cleanup();
         setState('disconnected');
         stateRef.current = 'disconnected';
 
-        if (autoReconnect && enabled) {
+        if (autoReconnect && enabled && !NO_RETRY_CLOSE_CODES.has(event.code)) {
           reconnectTimeoutRef.current = setTimeout(() => {
             connectRef.current();
           }, reconnectDelay);
@@ -228,6 +236,12 @@ export function useWebSocket(
   useEffect(() => {
     if (enabled && isAuthenticated) connect();
     return () => {
+      // Invalidate the live connection id BEFORE closing, exactly as
+      // disconnect()/connect() do. cleanup() closes the socket asynchronously,
+      // so without this bump the socket's own onclose still matches the current
+      // id, passes the stale-connection guard and schedules a reconnect that
+      // opens a fresh WebSocket after the component is gone.
+      connectionIdRef.current += 1;
       cleanup();
     };
   }, [enabled, isAuthenticated, connect, cleanup, urlBuilder]);

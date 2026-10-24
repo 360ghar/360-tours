@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import type { User, AuthTokens } from '@/types';
 import { authApi } from '@/api';
 import type { IdentifierChannel } from '@/api/auth';
-import { supabaseAuth, type SupabaseSession } from '@/lib/supabaseAuth';
+import { sessionReady, supabaseAuth, type SupabaseSession } from '@/lib/supabaseAuth';
 import { setLastAuthMethod, type AuthMethod } from '@/lib/lastAuthMethod';
 import { ERROR_MESSAGES } from '@/constants';
 import { mapSupabaseAuthError } from '@/lib/authErrors';
+import { purgeAccountCaches } from '@/lib/accountCache';
 
 /**
  * Determine whether an error represents a genuine authentication failure
@@ -45,8 +46,8 @@ interface AuthState {
 
 interface AuthActions {
   setUser: (user: User | null) => void;
-  setTokens: (tokens: AuthTokens | null) => void;
-  setLoading: (isLoading: boolean) => void;
+  /** Local error override used by the auth pages' state machines (cleared by
+   *  every action that starts a request). */
   setError: (error: string | null) => void;
   login: (phone: string, password: string) => Promise<void>;
   /** Password login for the identifier state-machine (email or phone channel). */
@@ -67,12 +68,6 @@ interface AuthActions {
     identifier: string,
     password: string
   ) => Promise<void>;
-  register: (data: {
-    phone: string;
-    password: string;
-    full_name?: string;
-    email?: string;
-  }) => Promise<void>;
   logout: () => Promise<void>;
   fetchCurrentUser: () => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -95,6 +90,10 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     method: AuthMethod,
     identifier: string
   ) => {
+    // A different account signing in on the same tab must not see the cached
+    // data of the previous one.
+    const previous = get().user;
+    if (previous && previous.id !== auth.user.id) purgeAccountCaches();
     set({
       user: auth.user,
       tokens: auth.tokens,
@@ -114,26 +113,60 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     commitCompletedSession(auth, method, identifier);
   };
 
+  /**
+   * Compensation for a failed login. Only a genuine auth error (bad
+   * credentials, 401/403, session expired) justifies destroying the session:
+   * the credential step may already have succeeded and a transient 5xx/network
+   * failure from `completeSession`'s GET /users/me must NOT revoke a valid
+   * refresh token — the same invariant `fetchCurrentUser`/`checkAuth` hold.
+   */
+  const discardSessionOnAuthError = async (error: unknown) => {
+    // Supabase rejects credentials with its own AuthApiError (marked
+    // `__isAuthError`, status 400/401/403 — never wrapped in an Axios
+    // `.response`), so accept those alongside the shared isAuthError check.
+    const supabaseStatus =
+      error && typeof error === 'object' && '__isAuthError' in error
+        ? (error as { status?: unknown }).status
+        : undefined;
+    const isCredentialRejection =
+      typeof supabaseStatus === 'number' && supabaseStatus >= 400 && supabaseStatus < 500;
+
+    if (!isAuthError(error) && !isCredentialRejection) {
+      console.error(
+        'Transient error completing login (session preserved):',
+        error instanceof Error ? error.message : error
+      );
+      // The Supabase session may already belong to the NEW account while the
+      // store still holds the previous user: drop that identity (the session
+      // itself is kept and restored on the next checkAuth).
+      if (get().user) get().clearAuth();
+      return;
+    }
+    try {
+      await authApi.logout();
+    } catch {
+      // Best-effort: clear any dangling partial session after failed login.
+    }
+    get().clearAuth();
+  };
+
   return {
     user: null,
     tokens: null,
     isAuthenticated: false,
-    isLoading: false,
+    // Boot starts in the "checking" state so auth-dependent routes can wait for
+    // checkAuth to settle the restored session: ProtectedRoute and RootRedirect
+    // render a PageLoader while this is true. Initial false here caused a
+    // cold-load race that dumped users with valid sessions on the login page.
+    // The router itself is NOT gated on this — public viewer routes must render
+    // without waiting on the session (see App.tsx).
+    isLoading: true,
     error: null,
 
     setUser: user => {
       set({ user, isAuthenticated: !!user });
     },
-
-    setTokens: tokens => {
-      set({ tokens });
-    },
-
-    setLoading: isLoading => {
-      set({ isLoading });
-    },
-
-    setError: error => {
+    setError: (error: string | null) => {
       set({ error });
     },
 
@@ -144,12 +177,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         commitCompletedSession(auth, 'phone_password', phone);
       } catch (error) {
         const message = mapSupabaseAuthError(error);
-        try {
-          await authApi.logout();
-        } catch {
-          // Best-effort: clear any dangling partial session after failed login.
-        }
-        get().clearAuth();
+        await discardSessionOnAuthError(error);
         set({ isLoading: false, error: message });
         throw error;
       }
@@ -166,12 +194,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         await completeSupabaseSession(session, passwordMethodFor(channel), identifier);
       } catch (error) {
         const message = mapSupabaseAuthError(error);
-        try {
-          await authApi.logout();
-        } catch {
-          // Best-effort: clear any dangling partial session after failed login.
-        }
-        get().clearAuth();
+        await discardSessionOnAuthError(error);
         set({ isLoading: false, error: message });
         throw error;
       }
@@ -204,29 +227,6 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         recordSuccessfulAuthMethod(passwordMethodFor(channel), identifier);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to set password';
-        set({ isLoading: false, error: message });
-        throw error;
-      }
-    },
-
-    register: async data => {
-      set({ isLoading: true, error: null });
-      try {
-        const { user, tokens } = await authApi.register(data);
-        if (!tokens?.access_token || !tokens?.refresh_token || !user) {
-          set({
-            user: null,
-            tokens: null,
-            isAuthenticated: false,
-            isLoading: false,
-            error: 'Account created. Please verify your account and log in.',
-          });
-          throw new Error('Account created. Please verify your account and log in.');
-        }
-
-        set({ user, tokens, isAuthenticated: true, isLoading: false, error: null });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Registration failed';
         set({ isLoading: false, error: message });
         throw error;
       }
@@ -360,12 +360,18 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
 
       set({ isLoading: true, error: null });
 
-      if (!tokens) {
+      // Wait for the boot-time session restore to settle before reading the
+      // tokens: the restore is async and losing this race silently signs a
+      // stored-session user out on every cold load.
+      await sessionReady;
+
+      const restoredTokens = supabaseAuth.getTokens();
+      if (!restoredTokens) {
         set({ isLoading: false, isAuthenticated: false, user: null, tokens: null });
         return;
       }
 
-      set({ tokens });
+      set({ tokens: restoredTokens });
 
       try {
         const user = await authApi.getCurrentUser();
@@ -397,6 +403,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     },
 
     clearAuth: () => {
+      // Sign-out purges the account's caches: query data and account-scoped storage.
+      // An anonymous visit has nothing to purge, and clearing the query cache then
+      // would drop the public viewer's in-flight request.
+      const wasSignedIn = get().user !== null || get().tokens !== null;
+      if (wasSignedIn) purgeAccountCaches();
       set({
         user: null,
         tokens: null,
@@ -407,11 +418,3 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     },
   };
 });
-
-export function resetAuthListener() {
-  if (authListenerUnsubscribe) {
-    authListenerUnsubscribe();
-    authListenerUnsubscribe = null;
-  }
-  authListenerInitialized = false;
-}
