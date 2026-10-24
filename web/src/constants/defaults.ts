@@ -7,16 +7,6 @@ export const TOUR_STATUS_OPTIONS = [
   { value: 'archived', label: 'Archived', color: 'bg-yellow-100 text-yellow-700' },
 ] as const;
 
-// Hotspot Types
-export const HOTSPOT_TYPES = [
-  { value: 'navigation', label: 'Navigation', icon: 'ArrowRight', description: 'Navigate to another scene' },
-  { value: 'info', label: 'Information', icon: 'Info', description: 'Display text or images' },
-  { value: 'audio', label: 'Audio', icon: 'Volume2', description: 'Play audio content' },
-  { value: 'video', label: 'Video', icon: 'Play', description: 'Play video content' },
-  { value: 'link', label: 'Link', icon: 'Link', description: 'Open external URL' },
-  { value: 'custom', label: 'Custom', icon: 'Code', description: 'Custom HTML or action' },
-] as const;
-
 // Default Tour Settings
 export const DEFAULT_TOUR_SETTINGS: ResolvedTourSettings = {
   auto_rotate: false,
@@ -36,21 +26,6 @@ export const DEFAULT_TOUR_SETTINGS: ResolvedTourSettings = {
     button_style: 'rounded',
     show_watermark: true,
     watermark_position: 'bottom-right',
-  },
-};
-
-// Default Scene Metadata. The backend default zoom is 50 on the Photo Sphere Viewer
-// zoomLevel scale (0 widest, 100 closest); the editor and the viewer use the same value.
-export const DEFAULT_SCENE_METADATA = {
-  initial_view: {
-    yaw: 0,
-    pitch: 0,
-    zoom: 50,
-  },
-  camera: {
-    fov: 70,
-    min_fov: 30,
-    max_fov: 90,
   },
 };
 

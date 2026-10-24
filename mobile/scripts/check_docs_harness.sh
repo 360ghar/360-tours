@@ -20,24 +20,6 @@ if (( AGENTS_LINES > 150 )); then
 fi
 ok "AGENTS.md present (${AGENTS_LINES} lines)"
 
-# --- CLAUDE.md identical via symlink (or content hash fallback) --------------
-[[ -e CLAUDE.md ]] || fail "CLAUDE.md missing"
-if [[ -L CLAUDE.md ]]; then
-  target="$(readlink CLAUDE.md)"
-  [[ "$target" == "AGENTS.md" || "$target" == "./AGENTS.md" ]] \
-    || fail "CLAUDE.md symlink must point to AGENTS.md (got: $target)"
-  ok "CLAUDE.md → AGENTS.md symlink"
-else
-  if command -v shasum >/dev/null 2>&1; then
-    h1=$(shasum -a 256 AGENTS.md | awk '{print $1}')
-    h2=$(shasum -a 256 CLAUDE.md | awk '{print $1}')
-  else
-    h1=$(sha256sum AGENTS.md | awk '{print $1}')
-    h2=$(sha256sum CLAUDE.md | awk '{print $1}')
-  fi
-  [[ "$h1" == "$h2" ]] || fail "CLAUDE.md is not a symlink and content differs from AGENTS.md"
-  warn "CLAUDE.md is a regular file (content matches). Prefer symlink to AGENTS.md."
-fi
 
 # --- Required paths ----------------------------------------------------------
 REQUIRED=(

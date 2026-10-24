@@ -63,13 +63,16 @@ let cachedSession: SupabaseSession | null = null;
  * signed out on cold load.
  */
 export const sessionReady: Promise<void> = supabase
-  ? supabase.auth.getSession().then(({ data }) => {
-      cachedSession = normalizeSession(data.session);
-    }).catch(() => {
-      // Storage/boot failure (e.g. privacy mode): treat as signed out rather
-      // than rejecting, which would strand checkAuth on an infinite spinner.
-      cachedSession = null;
-    })
+  ? supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        cachedSession = normalizeSession(data.session);
+      })
+      .catch(() => {
+        // Storage/boot failure (e.g. privacy mode): treat as signed out rather
+        // than rejecting, which would strand checkAuth on an infinite spinner.
+        cachedSession = null;
+      })
   : Promise.resolve();
 
 function nowEpochSeconds(): number {
@@ -320,6 +323,29 @@ export const supabaseAuth = {
     return cachedSession!;
   },
 
+  /** Send a login/signup OTP on the given channel. */
+  requestOtpFor(
+    channel: 'email' | 'phone',
+    identifier: string,
+    shouldCreateUser: boolean,
+    data?: Record<string, unknown>
+  ): Promise<void> {
+    return channel === 'email'
+      ? supabaseAuth.requestEmailOtp({ email: identifier, shouldCreateUser, data })
+      : supabaseAuth.requestOtp({ phone: identifier, shouldCreateUser, data });
+  },
+
+  /** Verify a login/signup OTP on the given channel. */
+  verifyOtpFor(
+    channel: 'email' | 'phone',
+    identifier: string,
+    token: string
+  ): Promise<SupabaseSession> {
+    return channel === 'email'
+      ? supabaseAuth.verifyEmailOtp({ email: identifier, token })
+      : supabaseAuth.verifyOtp({ phone: identifier, token });
+  },
+
   async updatePassword(newPassword: string): Promise<void> {
     const client = requireClient();
     const { error } = await client.auth.updateUser({ password: newPassword });
@@ -341,9 +367,7 @@ export const supabaseAuth = {
    */
   async signInWithGoogle(redirectTo?: string): Promise<void> {
     const client = requireClient();
-    const cleanRedirect =
-      redirectTo ??
-      buildCleanOAuthCallbackUrl();
+    const cleanRedirect = redirectTo ?? buildCleanOAuthCallbackUrl();
     const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {

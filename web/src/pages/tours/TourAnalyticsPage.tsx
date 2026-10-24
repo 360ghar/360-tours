@@ -33,7 +33,8 @@ import {
 import { toursApi } from '@/api';
 import { QUERY_KEYS, ROUTES } from '@/constants';
 import { formatCompactNumber, formatDateOnly } from '@/utils/format';
-import { downloadAnalyticsCSV, downloadAnalyticsJSON, formatDuration } from '@/utils/analytics';
+import { downloadAnalyticsCSV, downloadAnalyticsJSON } from '@/utils/analytics';
+import { formatDuration } from '@/utils/format';
 import { useToast } from '@/hooks/useToast';
 import {
   BarChart,
@@ -708,12 +709,7 @@ export function TourAnalyticsPage() {
                           style: { fill: 'var(--color-text-muted)', fontSize: 12 },
                         }}
                       />
-                      <ZAxis
-                        type="number"
-                        dataKey="count"
-                        range={[20, 400]}
-                        name="Interactions"
-                      />
+                      <ZAxis type="number" dataKey="count" range={[20, 400]} name="Interactions" />
                       <RechartsTooltip
                         cursor={{ strokeDasharray: '3 3' }}
                         contentStyle={{
@@ -772,54 +768,29 @@ export function TourAnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
-                  <tr>
-                    <td className="py-3">Total Views</td>
-                    <td className="py-3 text-right font-medium">
-                      {analytics?.total_views?.toLocaleString() ?? 0}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3">Unique Visitors</td>
-                    <td className="py-3 text-right font-medium">
-                      {analytics?.unique_views?.toLocaleString() ?? 0}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3">Total Likes</td>
-                    <td className="py-3 text-right font-medium">
-                      {analytics?.total_likes?.toLocaleString() ?? 0}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3">Total Shares</td>
-                    <td className="py-3 text-right font-medium">
-                      {analytics?.total_shares?.toLocaleString() ?? 0}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3">Avg. Session Duration</td>
-                    <td className="py-3 text-right font-medium">
-                      {formatDuration(analytics?.avg_session_duration ?? 0)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3">Desktop Views</td>
-                    <td className="py-3 text-right font-medium">
-                      {analytics?.device_breakdown?.desktop?.toLocaleString() ?? 0}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3">Mobile Views</td>
-                    <td className="py-3 text-right font-medium">
-                      {analytics?.device_breakdown?.mobile?.toLocaleString() ?? 0}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-3">VR Views</td>
-                    <td className="py-3 text-right font-medium">
-                      {analytics?.device_breakdown?.vr?.toLocaleString() ?? 0}
-                    </td>
-                  </tr>
+                  {(
+                    [
+                      ['Total Views', (analytics?.total_views ?? 0).toLocaleString()],
+                      ['Unique Visitors', (analytics?.unique_views ?? 0).toLocaleString()],
+                      ['Total Likes', (analytics?.total_likes ?? 0).toLocaleString()],
+                      ['Total Shares', (analytics?.total_shares ?? 0).toLocaleString()],
+                      [
+                        'Avg. Session Duration',
+                        formatDuration(analytics?.avg_session_duration ?? 0),
+                      ],
+                      [
+                        'Desktop Views',
+                        (analytics?.device_breakdown?.desktop ?? 0).toLocaleString(),
+                      ],
+                      ['Mobile Views', (analytics?.device_breakdown?.mobile ?? 0).toLocaleString()],
+                      ['VR Views', (analytics?.device_breakdown?.vr ?? 0).toLocaleString()],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <tr key={label}>
+                      <td className="py-3">{label}</td>
+                      <td className="py-3 text-right font-medium">{value}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

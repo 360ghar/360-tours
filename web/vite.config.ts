@@ -13,9 +13,7 @@ const chunkGroups: Record<string, string[]> = {
   forms: ['@hookform/resolvers', 'react-hook-form', 'zod'],
   viewer: [
     '@photo-sphere-viewer/core',
-    '@photo-sphere-viewer/gyroscope-plugin',
     '@photo-sphere-viewer/markers-plugin',
-    '@photo-sphere-viewer/stereo-plugin',
   ],
   'ui-vendor': [
     '@radix-ui',

@@ -15,6 +15,17 @@ vi.mock('@/lib/supabaseAuth', () => ({
     verifyEmailOtp: vi.fn().mockResolvedValue({}),
     updatePassword: vi.fn().mockResolvedValue(undefined),
     signInWithGoogle: vi.fn(),
+    // Mirror the real channel helpers so assertions stay on the per-channel calls.
+    requestOtpFor(c: string, i: string, s: boolean, d?: Record<string, unknown>) {
+      return c === 'email'
+        ? this.requestEmailOtp({ email: i, shouldCreateUser: s, data: d })
+        : this.requestOtp({ phone: i, shouldCreateUser: s, data: d });
+    },
+    verifyOtpFor(c: string, i: string, t: string) {
+      return c === 'email'
+        ? this.verifyEmailOtp({ email: i, token: t })
+        : this.verifyOtp({ phone: i, token: t });
+    },
   },
 }));
 

@@ -184,13 +184,3 @@ export function formatDateRange(from: Date, to: Date): string {
   return `${format(from, 'MMM d, yyyy')} - ${format(to, 'MMM d, yyyy')}`;
 }
 
-/**
- * Calculate percentage change between two values
- */
-export function calculatePercentageChange(current: number, previous: number): number {
-  if (previous === 0) return current > 0 ? 100 : 0;
-  return Math.round(((current - previous) / previous) * 100);
-}
-
-// Re-export formatDuration from format utils for backwards compatibility
-export { formatDuration } from './format';

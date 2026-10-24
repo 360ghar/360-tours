@@ -35,16 +35,11 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
       ref.invalidate(floorPlansProvider(tourId));
       _say('Estimated from your rooms and doorways — schematic, not to scale.');
     } catch (e) {
-      _say('Could not generate a floor plan. ${_reason(e)}');
+      _say('Could not generate a floor plan. ${failureReason(e)}');
     } finally {
       if (mounted) setState(() => _isGenerating = false);
     }
   }
-
-  /// Says what failed, with the server's reason when it sent one.
-  String _reason(Object e) => e is ApiException && !e.isNetwork
-      ? e.userMessage
-      : 'Check your connection and try again.';
 
   void _say(String message) {
     if (!mounted) return;
@@ -98,7 +93,7 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          _reason(e),
+                          failureReason(e),
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: AppColors.inkFaint),
                         ),

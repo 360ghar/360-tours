@@ -3,8 +3,7 @@
 Capture a room as a guided 360° panorama in under a minute, stitch it on
 device, publish it to the 360ghar backend, and share a public link.
 
-> **Agents:** start at the repo root [`AGENTS.md`](../AGENTS.md) (same content as
-> `CLAUDE.md`). This README is the human runbook for the Flutter package.
+> **Agents:** start at the repo root [`AGENTS.md`](../AGENTS.md). This README is the human runbook for the Flutter package.
 
 ## Stack
 

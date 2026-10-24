@@ -12,7 +12,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Button, Slider, Popover, PopoverContent, PopoverTrigger } from '@/components/ui';
-import { cn } from '@/utils';
+import { cn, formatClock } from '@/utils';
 
 export interface VideoSource {
   src: string;
@@ -75,14 +75,6 @@ export function VideoPlayer({
     mediaError ?? (!hasVideoSource ? 'No video source is available.' : null);
 
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Format time as MM:SS
-  const formatTime = (seconds: number) => {
-    if (isNaN(seconds)) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const getProgressPercent = (value: number) => {
     if (!Number.isFinite(value) || !Number.isFinite(duration) || duration <= 0) return 0;
@@ -381,7 +373,7 @@ export function VideoPlayer({
             aria-valuemin={0}
             aria-valuemax={Math.max(0, Math.round(duration))}
             aria-valuenow={Math.round(currentTime)}
-            aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
+            aria-valuetext={`${formatClock(currentTime)} of ${formatClock(duration)}`}
           >
             {/* Buffered */}
             <div
@@ -466,7 +458,7 @@ export function VideoPlayer({
 
               {/* Time Display */}
               <span className="text-white text-sm ml-2">
-                {formatTime(currentTime)} / {formatTime(duration)}
+                {formatClock(currentTime)} / {formatClock(duration)}
               </span>
             </div>
 

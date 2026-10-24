@@ -1,3 +1,4 @@
+import { sortScenes } from '@/utils/scenes';
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -42,7 +43,7 @@ export function TourViewPage() {
   });
 
   const sortedScenes = useMemo(
-    () => (scenes ? [...scenes].sort((a, b) => a.order_index - b.order_index) : undefined),
+    () => (scenes ? sortScenes(scenes) : undefined),
     [scenes]
   );
 

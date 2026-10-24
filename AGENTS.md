@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This is a two-app monorepo: `web/` (React) and `mobile/` (Flutter). Each is self-documenting and agent-first — `web/CLAUDE.md` and `mobile/AGENTS.md` (symlinked as `mobile/CLAUDE.md`) are canonical for their own subtree. Read the subtree's own docs first; fall back to this file only for whole-repo concerns (root CI, root dependabot config, or a change that touches the web/mobile contract below).
+This is a two-app monorepo: `web/` (React) and `mobile/` (Flutter). Each is self-documenting and agent-first — `web/AGENTS.md` and `mobile/AGENTS.md` are canonical for their own subtree. Read the subtree's own docs first; fall back to this file only for whole-repo concerns (root CI, root dependabot config, or a change that touches the web/mobile contract below).
 
 ## The one cross-app contract to watch
 
@@ -10,7 +10,7 @@ This is a two-app monorepo: `web/` (React) and `mobile/` (Flutter). Each is self
 
 ```text
 360-tours/
-├── web/      # React 19 + TypeScript SPA — see web/CLAUDE.md
+├── web/      # React 19 + TypeScript SPA — see web/AGENTS.md
 ├── mobile/   # Flutter client — see mobile/AGENTS.md
 └── .github/  # CI for both apps (path-filtered per app)
 ```

@@ -1,5 +1,4 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { AxiosError } from 'axios';
 import { MetaTags, VirtualTourStructuredData } from '@/components/common/MetaTags';
@@ -11,12 +10,11 @@ import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { ShareModal } from '@/components/features/ShareModal';
 import { FloorPlanOverlay } from '@/components/features/FloorPlanOverlay';
 import { HotspotContentModal } from '@/components/features/HotspotContentModal';
-import { getViewerSceneScope, useViewerStore } from '@/stores';
 import { usePublicTourTracking } from '@/hooks/usePublicTourTracking';
+import { usePublicTourViewer, toggleDocumentFullscreen } from '@/hooks/usePublicTourViewer';
 import { useTwoFingerSwipe } from '@/hooks';
-import { cn, parseBooleanParam } from '@/utils';
+import { cn } from '@/utils';
 import { openHotspotLink, sceneViewDirection, watermarkPositionClass } from '@/utils/publicViewer';
-import { resolveTourSettings } from '@/utils/tourSettings';
 import { isPlayablePublicTour } from '@/utils/publicTour';
 import { parseLinkHotspotContent } from '@/types/hotspotContent';
 import type { Hotspot } from '@/types';
@@ -34,47 +32,18 @@ export function PublicTourPage() {
   const [isLiking, setIsLiking] = useState(false);
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
   const [showHotspotModal, setShowHotspotModal] = useState(false);
-  const sceneScopeId = useMemo(() => (id ? getViewerSceneScope('public', id) : null), [id]);
-  const currentSceneId = useViewerStore(state =>
-    sceneScopeId ? (state.currentSceneIdsByScope[sceneScopeId] ?? null) : null
-  );
-  const setCurrentSceneForScope = useViewerStore(state => state.setCurrentSceneForScope);
-  const clearCurrentSceneScope = useViewerStore(state => state.clearCurrentSceneScope);
-  const setCurrentScene = useCallback(
-    (sceneId: string | null) => {
-      if (sceneScopeId) setCurrentSceneForScope(sceneScopeId, sceneId);
-    },
-    [sceneScopeId, setCurrentSceneForScope]
-  );
   const thumbnailScrollRef = useRef<HTMLDivElement>(null);
   const viewerWrapRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    return () => {
-      if (sceneScopeId) clearCurrentSceneScope(sceneScopeId);
-    };
-  }, [sceneScopeId, clearCurrentSceneScope]);
-
-  // Get URL parameters for customization
-  const startSceneId = searchParams.get('scene');
-  const autoplayParam = parseBooleanParam(searchParams.get('autoplay'));
-  const navbarParam = parseBooleanParam(searchParams.get('navbar'));
-  const fullscreenParam = parseBooleanParam(searchParams.get('fullscreen'));
-  const vrParam = parseBooleanParam(searchParams.get('vr'));
-  const rotateParam = parseBooleanParam(searchParams.get('rotate'));
-
-  // Use public API endpoints (no authentication required)
   const {
-    data: tour,
-    isLoading: isLoadingTour,
-    error: tourError,
-    refetch: refetchTour,
-  } = useQuery({
-    queryKey: ['public-tour', id],
-    // The server counts the view when the tour is fetched (once per viewer per 30 minutes).
-    queryFn: () => toursApi.getPublicTour(id!),
-    enabled: !!id,
-  });
+    tourQuery: { data: tour, isLoading: isLoadingTour, error: tourError, refetch: refetchTour },
+    sortedScenes,
+    currentScene,
+    currentSceneId,
+    setCurrentScene,
+    baseSettings: viewerSettings,
+    resolveInitialScene,
+  } = usePublicTourViewer('public', id, searchParams);
 
   // Hydrate the like count from the fetched tour. The public tour carries no
   // per-viewer liked flag: the server counts each viewer (client IP) once.
@@ -83,62 +52,18 @@ export function PublicTourPage() {
     setLikeCount(tour.like_count);
   }, [tour]);
 
-  // Only published, non-private tours feed the public player.
-  const playableTour = tour && isPlayablePublicTour(tour) ? tour : undefined;
-  const scenes = playableTour?.scenes;
   const isLoadingScenes = isLoadingTour;
 
   // Floor plans come from the top-level tour.floor_plans (floor_plans table).
   const floorPlans = tour?.floor_plans ?? [];
-
-  const sortedScenes = useMemo(() => {
-    if (!scenes) return [];
-    return [...scenes].sort((a, b) => a.order_index - b.order_index);
-  }, [scenes]);
-
-  const viewerSettings = useMemo(() => {
-    if (!tour) return undefined;
-
-    const base = resolveTourSettings(tour.settings);
-    const autoplay = autoplayParam ?? true;
-    const showNavbar = navbarParam ?? true;
-    const enableFullscreen = fullscreenParam ?? true;
-    const enableVR = vrParam ?? true;
-
-    let autoRotate = base.auto_rotate === true;
-    if (rotateParam !== undefined) {
-      autoRotate = rotateParam;
-    }
-    if (!autoplay) {
-      autoRotate = false;
-    }
-
-    return {
-      ...base,
-      auto_rotate: autoRotate,
-      show_navbar: base.show_navbar && showNavbar,
-      enable_fullscreen: base.enable_fullscreen && enableFullscreen,
-      enable_vr: base.enable_vr && enableVR,
-    };
-  }, [autoplayParam, fullscreenParam, navbarParam, rotateParam, tour, vrParam]);
 
   const showNavbar = viewerSettings?.show_navbar !== false;
   const fullscreenEnabled = viewerSettings?.enable_fullscreen !== false;
   const branding = viewerSettings?.branding;
 
   const toggleFullscreen = useCallback(() => {
-    if (!fullscreenEnabled) return;
-    if (!document.fullscreenElement) {
-      void document.documentElement.requestFullscreen().catch(() => undefined);
-      return;
-    }
-    void document.exitFullscreen().catch(() => undefined);
+    if (fullscreenEnabled) toggleDocumentFullscreen();
   }, [fullscreenEnabled]);
-
-  const currentScene = useMemo(() => {
-    if (!sortedScenes.length) return undefined;
-    return sortedScenes.find(s => s.id === currentSceneId) || sortedScenes[0];
-  }, [currentSceneId, sortedScenes]);
 
   const currentSceneIdForAnalytics = currentScene?.id;
 
@@ -157,26 +82,11 @@ export function PublicTourPage() {
       return;
     }
 
-    const sceneExists = (sceneId: string | null | undefined) =>
-      !!sceneId && sortedScenes.some(scene => scene.id === sceneId);
-    const requestedScene = sceneExists(startSceneId) ? startSceneId : undefined;
-    const configuredInitialScene = sceneExists(playableTour?.settings?.initial_scene_id)
-      ? playableTour?.settings?.initial_scene_id
-      : undefined;
-    const initialScene = requestedScene || configuredInitialScene || sortedScenes[0].id;
-    const shouldUseInitialScene =
-      (requestedScene && currentSceneId !== requestedScene) || !sceneExists(currentSceneId);
-
+    const { initialScene, shouldUseInitialScene } = resolveInitialScene();
     if (shouldUseInitialScene) {
       setCurrentScene(initialScene);
     }
-  }, [
-    currentSceneId,
-    setCurrentScene,
-    sortedScenes,
-    startSceneId,
-    playableTour?.settings?.initial_scene_id,
-  ]);
+  }, [currentSceneId, setCurrentScene, sortedScenes, resolveInitialScene]);
 
   // Keyboard shortcuts
   // Keep the latest currentSceneId in a ref so the keyboard listener can be
@@ -336,9 +246,7 @@ export function PublicTourPage() {
     setLikeCount(count => Math.max(0, count + (next ? 1 : -1)));
 
     try {
-      const result = next
-        ? await toursApi.likePublicTour(id)
-        : await toursApi.unlikePublicTour(id);
+      const result = next ? await toursApi.likePublicTour(id) : await toursApi.unlikePublicTour(id);
       // Prefer the server's authoritative count over the optimistic guess.
       setLikeCount(result.like_count);
     } catch {

@@ -11,13 +11,7 @@ import { useUIStore } from '@/stores';
 import { applyTheme } from '@/stores/uiStore';
 import { onAuthExpired } from '@/api';
 import { ROUTES } from '@/constants';
-import { isSameOriginPath } from '@/utils/url';
-
-const AUTH_REDIRECT_BLOCKLIST: readonly string[] = [
-  ROUTES.LOGIN,
-  ROUTES.REGISTER,
-  ROUTES.AUTH_CALLBACK,
-];
+import { redirectToLogin } from '@/utils/url';
 
 function ThemeInitializer() {
   const { theme } = useUIStore();
@@ -43,16 +37,7 @@ function AuthInitializer() {
       if (window.location.pathname === ROUTES.LOGIN) {
         return;
       }
-      const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      const loginUrl = new URL(ROUTES.LOGIN, window.location.origin);
-      if (
-        isSameOriginPath(returnPath) &&
-        !AUTH_REDIRECT_BLOCKLIST.includes(window.location.pathname)
-      ) {
-        loginUrl.searchParams.set('next', returnPath);
-      }
-      // Use replace so back-button doesn't re-enter a dying dashboard session.
-      window.location.replace(loginUrl.toString());
+      redirectToLogin();
     });
     return unsubscribe;
   }, []);

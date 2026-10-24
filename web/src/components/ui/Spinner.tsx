@@ -21,30 +21,6 @@ export function Spinner({ size = 'md', className }: SpinnerProps) {
   );
 }
 
-interface LoadingOverlayProps {
-  message?: string;
-  fullScreen?: boolean;
-}
-
-export function LoadingOverlay({
-  message = 'Loading...',
-  fullScreen = false,
-}: LoadingOverlayProps) {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={cn(
-        'flex flex-col items-center justify-center gap-4 bg-[var(--color-background)]/80 backdrop-blur-sm',
-        fullScreen ? 'fixed inset-0 z-[var(--z-modal)]' : 'absolute inset-0'
-      )}
-    >
-      <Spinner size="lg" />
-      <p className="text-sm text-[var(--color-text-muted)]">{message}</p>
-    </div>
-  );
-}
-
 interface PageLoaderProps {
   message?: string;
 }

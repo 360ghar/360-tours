@@ -1,3 +1,5 @@
+import { ROUTES } from '@/constants/routes';
+
 /**
  * True when `path` is a same-origin relative path that is safe to hand to
  * `navigate()` / `history.replaceState()`.
@@ -14,8 +16,7 @@
  */
 export function isSameOriginPath(path: string | null | undefined): path is string {
   if (!path || !path.startsWith('/')) return false;
-  const origin =
-    typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
   try {
     return new URL(path, origin).origin === origin;
   } catch {
@@ -34,3 +35,24 @@ export function parseBooleanParam(value: string | null): boolean | undefined {
   return undefined;
 }
 
+// Auth flows that must never receive a `next=` return path (avoids bounce loops).
+const AUTH_REDIRECT_BLOCKLIST: readonly string[] = [
+  ROUTES.LOGIN,
+  ROUTES.REGISTER,
+  ROUTES.AUTH_CALLBACK,
+];
+
+/**
+ * Hard-redirect to the login page, keeping the current location as `next=`
+ * so the user lands back where they were. Uses replace so the back button
+ * does not re-enter a dying session.
+ */
+export function redirectToLogin(): void {
+  const { pathname, search, hash, origin } = window.location;
+  const returnPath = `${pathname}${search}${hash}`;
+  const loginUrl = new URL(ROUTES.LOGIN, origin);
+  if (isSameOriginPath(returnPath) && !AUTH_REDIRECT_BLOCKLIST.includes(pathname)) {
+    loginUrl.searchParams.set('next', returnPath);
+  }
+  window.location.replace(loginUrl.toString());
+}

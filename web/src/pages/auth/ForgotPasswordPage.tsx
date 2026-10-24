@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { IdentifierChannelTabs } from '@/components/features/IdentifierChannelTabs';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, CheckCircle, KeyRound, Mail } from 'lucide-react';
@@ -233,38 +234,11 @@ export function ForgotPasswordPage() {
             </div>
           )}
 
-          <div
-            role="tablist"
-            aria-label="Password reset channel"
-            className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={channel === 'phone'}
-              onClick={() => switchChannel('phone')}
-              className={
-                channel === 'phone'
-                  ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                  : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
-              }
-            >
-              Phone
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={channel === 'email'}
-              onClick={() => switchChannel('email')}
-              className={
-                channel === 'email'
-                  ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                  : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
-              }
-            >
-              Email
-            </button>
-          </div>
+          <IdentifierChannelTabs
+            value={channel}
+            onChange={switchChannel}
+            label="Password reset channel"
+          />
 
           {channel === 'phone' ? (
             <Controller

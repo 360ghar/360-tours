@@ -4,7 +4,7 @@ export { PanoramaViewer } from './PanoramaViewer';
 export { ScenePanel } from './ScenePanel';
 export { HotspotPanel } from './HotspotPanel';
 export { HotspotContentModal } from './HotspotContentModal';
-export { ErrorBoundary, ErrorFallback } from './ErrorBoundary';
+export { ErrorBoundary } from './ErrorBoundary';
 export { FloorPlanOverlay } from './FloorPlanOverlay';
 export { FloorPlanEditor } from './FloorPlanEditor';
 export { BrandingPanel } from './BrandingPanel';

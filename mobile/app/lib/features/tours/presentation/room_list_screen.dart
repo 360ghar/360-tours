@@ -8,6 +8,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/ui/dialogs.dart';
 import '../../assets/data/local_asset_repository.dart';
 import '../../assets/presentation/asset_providers.dart';
 
@@ -298,39 +299,23 @@ class _RoomTile extends ConsumerWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceRaised,
-        title: Text('Delete "${room.name}"?'),
-        content: const Text(
-          'This removes the local photo and the scene from your tour. '
+    final confirmed = await confirmDialog(
+      context,
+      title: 'Delete "${room.name}"?',
+      body: 'This removes the local photo and the scene from your tour. '
           "This can't be undone.",
-          style: TextStyle(color: AppColors.inkDim),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete',
+      destructive: true,
+      dimBody: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await ref.read(assetRepositoryProvider).deleteRoom(assetId, room.id);
     } catch (e) {
       // The room is still there: say why, so nobody thinks it is gone while
       // the tour still shows it.
       if (!context.mounted) return;
-      final reason = e is ApiException && !e.isNetwork
-          ? e.userMessage
-          : 'Check your connection and try again.';
+      final reason = failureReason(e);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not delete the room. $reason')),
       );

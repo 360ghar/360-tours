@@ -22,4 +22,4 @@ Both clients talk to the same backend (`360ghar-backend`) and share Supabase aut
 
 ## Agents
 
-See [`web/CLAUDE.md`](web/CLAUDE.md) and [`mobile/AGENTS.md`](mobile/AGENTS.md) for each app's full agent-facing docs — don't duplicate their content here. Root [`AGENTS.md`](AGENTS.md) covers cross-app concerns only.
+See [`web/AGENTS.md`](web/AGENTS.md) and [`mobile/AGENTS.md`](mobile/AGENTS.md) for each app's full agent-facing docs — don't duplicate their content here. Root [`AGENTS.md`](AGENTS.md) covers cross-app concerns only.

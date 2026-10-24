@@ -12,6 +12,7 @@ import '../../../core/models/models.dart';
 import '../../../core/models/wire_enums.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/ui/dialogs.dart';
 import '../../assets/presentation/asset_providers.dart';
 
 /// Candidate destinations for a hotspot: the main scene and every uploaded
@@ -112,9 +113,7 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
   /// Says what failed, with the server's reason when it sent one.
   void _fail(String what, Object e) {
     if (!mounted) return;
-    final reason = e is ApiException && !e.isNetwork
-        ? e.userMessage
-        : 'Check your connection and try again.';
+    final reason = failureReason(e);
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text('$what $reason')));
   }
@@ -249,29 +248,15 @@ class _HotspotEditorScreenState extends ConsumerState<HotspotEditorScreen> {
 
   Future<void> _deleteHotspot(HotspotDto entry) async {
     final label = entry.title ?? 'Untitled hotspot';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceRaised,
-        title: Text('Delete “$label”?'),
-        content: const Text(
-          'This removes the hotspot from the tour. This can\'t be undone.',
-          style: TextStyle(color: AppColors.inkDim),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDialog(
+      context,
+      title: 'Delete “$label”?',
+      body: 'This removes the hotspot from the tour. This can\'t be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      dimBody: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     setState(() => _busy = true);
     try {
       await ref.read(backendApiProvider).deleteHotspot(entry.id);

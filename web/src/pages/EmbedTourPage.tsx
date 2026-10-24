@@ -1,19 +1,16 @@
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Expand, Minimize } from 'lucide-react';
 import { PageLoader, Button } from '@/components/ui';
-import { toursApi } from '@/api';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { FloorPlanOverlay } from '@/components/features/FloorPlanOverlay';
 import { HotspotContentModal } from '@/components/features/HotspotContentModal';
-import { getViewerSceneScope, useViewerStore } from '@/stores';
 import { usePublicTourTracking } from '@/hooks/usePublicTourTracking';
+import { usePublicTourViewer, toggleDocumentFullscreen } from '@/hooks/usePublicTourViewer';
 import { cn, parseBooleanParam } from '@/utils';
 import { parseEmbedInboundCommand, parseEmbedOriginParam } from '@/types/embedMessages';
 import { parseLinkHotspotContent } from '@/types/hotspotContent';
 import { openHotspotLink, sceneViewDirection, watermarkPositionClass } from '@/utils/publicViewer';
-import { resolveTourSettings } from '@/utils/tourSettings';
 import { isPlayablePublicTour } from '@/utils/publicTour';
 import type { Hotspot } from '@/types';
 import type { EmbedOutboundMessage } from '@/types/embedMessages';
@@ -21,18 +18,6 @@ import type { EmbedOutboundMessage } from '@/types/embedMessages';
 export function EmbedTourPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const sceneScopeId = useMemo(() => (id ? getViewerSceneScope('embed', id) : null), [id]);
-  const currentSceneId = useViewerStore(state =>
-    sceneScopeId ? (state.currentSceneIdsByScope[sceneScopeId] ?? null) : null
-  );
-  const setCurrentSceneForScope = useViewerStore(state => state.setCurrentSceneForScope);
-  const clearCurrentSceneScope = useViewerStore(state => state.clearCurrentSceneScope);
-  const setCurrentScene = useCallback(
-    (sceneId: string | null) => {
-      if (sceneScopeId) setCurrentSceneForScope(sceneScopeId, sceneId);
-    },
-    [sceneScopeId, setCurrentSceneForScope]
-  );
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
@@ -40,103 +25,50 @@ export function EmbedTourPage() {
   const hasPostedReadyRef = useRef(false);
   const hasPostedTourErrorRef = useRef(false);
 
-  useEffect(() => {
-    return () => {
-      if (sceneScopeId) clearCurrentSceneScope(sceneScopeId);
-    };
-  }, [sceneScopeId, clearCurrentSceneScope]);
+  const {
+    tourQuery: { data: tour, isLoading: isLoadingTour, error: tourError, refetch: refetchTour },
+    playableTour,
+    sortedScenes,
+    currentScene,
+    setCurrentScene,
+    baseSettings,
+    resolveInitialScene,
+  } = usePublicTourViewer('embed', id, searchParams);
 
   // URL parameter configuration
-  const startSceneId = searchParams.get('scene');
-  const autoplay = parseBooleanParam(searchParams.get('autoplay')) ?? true;
-  const navbarParam = parseBooleanParam(searchParams.get('navbar'));
   const brandingParam = parseBooleanParam(searchParams.get('branding'));
   const minimalChrome = parseBooleanParam(searchParams.get('minimal')) ?? false;
   const autoHideControls = parseBooleanParam(searchParams.get('autohide')) ?? false;
-  const fullscreenParam = parseBooleanParam(searchParams.get('fullscreen'));
-  const vrParam = parseBooleanParam(searchParams.get('vr'));
-  const rotateParam = parseBooleanParam(searchParams.get('rotate'));
   // editmode=1: run the viewer as an editor surface and post panorama clicks to the parent
   const editMode = searchParams.get('editmode') === '1';
 
-  // Use public API endpoints (no authentication required for embeds)
-  const {
-    data: tour,
-    isLoading: isLoadingTour,
-    error: tourError,
-    refetch: refetchTour,
-  } = useQuery({
-    queryKey: ['public-tour', id],
-    // The server counts the view when the tour is fetched (once per viewer per 30 minutes).
-    queryFn: () => toursApi.getPublicTour(id!),
-    enabled: !!id,
-  });
-
-  // Only published, non-private tours feed the embed player and `ready`.
-  // A draft payload must not look playable to the parent iframe.
-  const playableTour = tour && isPlayablePublicTour(tour) ? tour : undefined;
   const scenes = playableTour?.scenes;
-  const sortedScenes = useMemo(() => {
-    if (!scenes) return [];
-    return [...scenes].sort((a, b) => a.order_index - b.order_index);
-  }, [scenes]);
 
   // Floor plans come from the top-level tour.floor_plans (floor_plans table).
   const floorPlans = tour?.floor_plans ?? [];
 
   const viewerSettings = useMemo(() => {
-    if (!tour) return undefined;
-
-    const base = resolveTourSettings(tour.settings);
-    const showNavbar = navbarParam ?? true;
-    const showBranding = brandingParam ?? true;
-    const enableFullscreen = fullscreenParam ?? true;
-    const enableVR = vrParam ?? true;
-    const baseBranding = base.branding;
-
-    let autoRotate = base.auto_rotate === true;
-    if (rotateParam !== undefined) {
-      autoRotate = rotateParam;
-    }
-    if (!autoplay) {
-      autoRotate = false;
-    }
-
+    if (!baseSettings) return undefined;
     return {
-      ...base,
-      auto_rotate: autoRotate,
-      show_navbar: base.show_navbar && showNavbar,
-      enable_fullscreen: base.enable_fullscreen && enableFullscreen,
-      enable_vr: base.enable_vr && enableVR,
+      ...baseSettings,
       branding: {
-        ...baseBranding,
-        show_watermark: baseBranding.show_watermark && showBranding,
+        ...baseSettings.branding,
+        show_watermark: baseSettings.branding.show_watermark && (brandingParam ?? true),
       },
     };
-  }, [autoplay, brandingParam, fullscreenParam, navbarParam, rotateParam, tour, vrParam]);
+  }, [baseSettings, brandingParam]);
 
   const showNavbar = viewerSettings?.show_navbar !== false;
   const showBrandingAssets = brandingParam !== false;
   const showWatermark = viewerSettings?.branding?.show_watermark !== false;
   const fullscreenEnabled = viewerSettings?.enable_fullscreen !== false;
-  const currentScene = useMemo(() => {
-    if (!sortedScenes.length) return undefined;
-    return sortedScenes.find(scene => scene.id === currentSceneId) || sortedScenes[0];
-  }, [currentSceneId, sortedScenes]);
   const currentIndex = useMemo(() => {
     if (!currentScene) return -1;
     return sortedScenes.findIndex(scene => scene.id === currentScene.id);
   }, [currentScene, sortedScenes]);
 
   const toggleFullscreen = useCallback(() => {
-    if (!fullscreenEnabled) return;
-
-    if (!document.fullscreenElement) {
-      void document.documentElement.requestFullscreen().catch(() => undefined);
-      return;
-    }
-
-    void document.exitFullscreen().catch(() => undefined);
+    if (fullscreenEnabled) toggleDocumentFullscreen();
   }, [fullscreenEnabled]);
 
   // Send message to parent window
@@ -234,16 +166,7 @@ export function EmbedTourPage() {
   // Set initial scene and notify parent. Drafts/private tours never post `ready`.
   useEffect(() => {
     if (playableTour && sortedScenes.length) {
-      const sceneExists = (sceneId: string | null | undefined) =>
-        !!sceneId && sortedScenes.some(scene => scene.id === sceneId);
-      const requestedScene = sceneExists(startSceneId) ? startSceneId : undefined;
-      const configuredInitialScene = sceneExists(playableTour.settings?.initial_scene_id)
-        ? playableTour.settings?.initial_scene_id
-        : undefined;
-      const initialScene = requestedScene || configuredInitialScene || sortedScenes[0].id;
-      const shouldUseInitialScene =
-        (requestedScene && currentSceneId !== requestedScene) || !sceneExists(currentSceneId);
-
+      const { initialScene, shouldUseInitialScene } = resolveInitialScene();
       if (shouldUseInitialScene) {
         setCurrentScene(initialScene);
       }
@@ -265,15 +188,7 @@ export function EmbedTourPage() {
         });
       }
     }
-  }, [
-    playableTour,
-    sortedScenes,
-    startSceneId,
-    setCurrentScene,
-    currentSceneId,
-    id,
-    postMessage,
-  ]);
+  }, [playableTour, sortedScenes, resolveInitialScene, setCurrentScene, id, postMessage]);
 
   // Notify parent on scene change (scene_view analytics handled by usePublicTourTracking)
   useEffect(() => {
@@ -428,13 +343,7 @@ export function EmbedTourPage() {
     if (hasPostedReadyRef.current) return;
     if (tourError) return;
     if (isLoadingTour) return;
-    if (
-      !tour ||
-      !isPlayablePublicTour(tour) ||
-      !scenes ||
-      scenes.length === 0 ||
-      !currentScene
-    ) {
+    if (!tour || !isPlayablePublicTour(tour) || !scenes || scenes.length === 0 || !currentScene) {
       if (!hasPostedTourErrorRef.current) {
         hasPostedTourErrorRef.current = true;
         postMessage({

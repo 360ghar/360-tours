@@ -29,6 +29,7 @@ import {
   Checkbox,
 } from '@/components/ui';
 import { cn } from '@/utils';
+import { toggleInSet } from '@/utils/toggleInSet';
 import { useToast } from '@/hooks';
 import type { Scene } from '@/types';
 import type { SceneAnalysisResult } from '@/api';
@@ -136,13 +137,7 @@ export function SceneAnalysis({
   };
 
   const handleToggleScene = (sceneId: string) => {
-    const newSelected = new Set(selectedScenes);
-    if (newSelected.has(sceneId)) {
-      newSelected.delete(sceneId);
-    } else {
-      newSelected.add(sceneId);
-    }
-    setSelectedScenes(newSelected);
+    setSelectedScenes(toggleInSet(selectedScenes, sceneId));
   };
 
   const handleSelectAll = () => {
@@ -166,7 +161,6 @@ export function SceneAnalysis({
     .filter(u => u.title !== undefined || u.description !== undefined);
 
   const handleApply = () => {
-
     onApply(updates);
     onOpenChange(false);
   };
@@ -420,11 +414,7 @@ export function SceneAnalysis({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleApply}
-            disabled={updates.length === 0}
-            isLoading={isLoading}
-          >
+          <Button onClick={handleApply} disabled={updates.length === 0} isLoading={isLoading}>
             <Check className="h-4 w-4" />
             Apply to {updates.length} Scene{updates.length !== 1 ? 's' : ''}
           </Button>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { IdentifierChannelTabs } from '@/components/features/IdentifierChannelTabs';
 import type { Location as RouterLocation } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -206,14 +207,7 @@ export function LoginPage() {
       // An unknown identifier has no password; an existing account is gated on
       // has_password. Either way, force a set-password step after OTP succeeds.
       setRequiresPasswordSetup(!status.exists || !status.has_password);
-      if (channel === 'email') {
-        await supabaseAuth.requestEmailOtp({
-          email: data.identifier,
-          shouldCreateUser: !status.exists,
-        });
-      } else {
-        await supabaseAuth.requestOtp({ phone: data.identifier, shouldCreateUser: !status.exists });
-      }
+      await supabaseAuth.requestOtpFor(channel, data.identifier, !status.exists);
       resendTimer.start();
       setStep('otp');
     } catch (err) {
@@ -270,11 +264,7 @@ export function LoginPage() {
     resetErrors();
     setStepLoading(true);
     try {
-      if (channel === 'email') {
-        await supabaseAuth.requestEmailOtp({ email: identifier, shouldCreateUser: isSignupOtp });
-      } else {
-        await supabaseAuth.requestOtp({ phone: identifier, shouldCreateUser: isSignupOtp });
-      }
+      await supabaseAuth.requestOtpFor(channel, identifier, isSignupOtp);
       resendTimer.start();
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to resend the code.');
@@ -353,38 +343,11 @@ export function LoginPage() {
             </div>
 
             {/* Channel toggle */}
-            <div
-              role="tablist"
-              aria-label="Sign-in channel"
-              className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={channel === 'phone'}
-                onClick={() => switchChannel('phone')}
-                className={
-                  channel === 'phone'
-                    ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                    : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
-                }
-              >
-                Phone
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={channel === 'email'}
-                onClick={() => switchChannel('email')}
-                className={
-                  channel === 'email'
-                    ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                    : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
-                }
-              >
-                Email
-              </button>
-            </div>
+            <IdentifierChannelTabs
+              value={channel}
+              onChange={switchChannel}
+              label="Sign-in channel"
+            />
 
             <form onSubmit={identifierForm.handleSubmit(onSubmitIdentifier)} className="space-y-6">
               {channel === 'phone' ? (

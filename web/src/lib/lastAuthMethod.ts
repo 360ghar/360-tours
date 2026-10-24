@@ -89,12 +89,3 @@ export function setLastAuthMethod(method: AuthMethod, rawIdentifier?: string | n
   }
 }
 
-/** Forget the last-used auth method (e.g. on explicit "use a different method"). */
-export function clearLastAuthMethod(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // non-fatal
-  }
-}

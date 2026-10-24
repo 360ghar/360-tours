@@ -28,6 +28,31 @@ function isAuthError(error: unknown): boolean {
   return false;
 }
 
+const errText = (e: unknown) => (e instanceof Error ? e.message : e);
+
+/**
+ * After a failed /users/me: sign out on a genuine auth error, keep the session
+ * on a transient one (5xx/network). Returns true when it signed out.
+ */
+async function signOutOnAuthError(
+  error: unknown,
+  context: string,
+  clearAuth: () => void
+): Promise<boolean> {
+  if (!isAuthError(error)) {
+    console.error(`Transient error ${context} (session preserved):`, errText(error));
+    return false;
+  }
+  console.error(`Auth error ${context}, signing out:`, errText(error));
+  try {
+    await authApi.logout();
+  } catch (logoutError) {
+    console.error(`Logout ${context} failed:`, errText(logoutError));
+  }
+  clearAuth();
+  return true;
+}
+
 function passwordMethodFor(channel: IdentifierChannel): AuthMethod {
   return channel === 'email' ? 'email_password' : 'phone_password';
 }
@@ -203,10 +228,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
     verifyLoginOtp: async (channel, identifier, token) => {
       set({ isLoading: true, error: null });
       try {
-        const session =
-          channel === 'email'
-            ? await supabaseAuth.verifyEmailOtp({ email: identifier, token })
-            : await supabaseAuth.verifyOtp({ phone: identifier, token });
+        const session = await supabaseAuth.verifyOtpFor(channel, identifier, token);
 
         await completeSupabaseSession(session, otpMethodFor(channel), identifier);
       } catch (error) {
@@ -256,25 +278,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         // Only sign out on genuine auth errors (401/403 or session-expired).
         // A 5xx server error or network outage must NOT wipe the session —
         // the user may still have a valid token once the backend recovers.
-        if (isAuthError(error)) {
-          console.error(
-            'Auth error fetching current user, signing out:',
-            error instanceof Error ? error.message : error
-          );
-          try {
-            await authApi.logout();
-          } catch (logoutError) {
-            console.error(
-              'Logout during fetchCurrentUser failed:',
-              logoutError instanceof Error ? logoutError.message : logoutError
-            );
-          }
-          get().clearAuth();
-        } else {
-          console.error(
-            'Transient error fetching current user (session preserved):',
-            error instanceof Error ? error.message : error
-          );
+        if (!(await signOutOnAuthError(error, 'fetching current user', get().clearAuth))) {
           set({ isLoading: false });
         }
       }
@@ -320,26 +324,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
               if (get().isAuthenticated) {
                 return;
               }
-              if (isAuthError(error)) {
-                console.error(
-                  'Auth error on SIGNED_IN, signing out:',
-                  error instanceof Error ? error.message : error
-                );
-                try {
-                  await authApi.logout();
-                } catch (logoutError) {
-                  console.error(
-                    'Logout during SIGNED_IN failed:',
-                    logoutError instanceof Error ? logoutError.message : logoutError
-                  );
-                }
-                get().clearAuth();
-              } else {
-                console.error(
-                  'Transient error on SIGNED_IN (session preserved):',
-                  error instanceof Error ? error.message : error
-                );
-              }
+              await signOutOnAuthError(error, 'on SIGNED_IN', get().clearAuth);
             }
           }
         });
@@ -377,28 +362,8 @@ export const useAuthStore = create<AuthStore>()((set, get) => {
         const user = await authApi.getCurrentUser();
         set({ user, isAuthenticated: true, isLoading: false });
       } catch (error) {
-        if (isAuthError(error)) {
-          console.error(
-            'Auth error during checkAuth, signing out:',
-            error instanceof Error ? error.message : error
-          );
-          try {
-            await authApi.logout();
-          } catch (logoutError) {
-            console.error(
-              'Logout during checkAuth failed:',
-              logoutError instanceof Error ? logoutError.message : logoutError
-            );
-          }
-          get().clearAuth();
-          set({ isLoading: false });
-        } else {
-          console.error(
-            'Transient error during checkAuth (session preserved):',
-            error instanceof Error ? error.message : error
-          );
-          set({ isLoading: false });
-        }
+        await signOutOnAuthError(error, 'during checkAuth', get().clearAuth);
+        set({ isLoading: false });
       }
     },
 

@@ -17,13 +17,18 @@ import { ProtectedRoute } from '@/components/features/ProtectedRoute';
 // Landing page (eagerly loaded — first paint)
 import { HomePage } from '@/pages/HomePage';
 
-// Auth Pages (eagerly loaded — common entry point)
-import { LoginPage } from '@/pages/auth/LoginPage';
-import { RegisterPage } from '@/pages/auth/RegisterPage';
-import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { AuthCallbackPage } from '@/pages/auth/AuthCallbackPage';
 
 // Lazy-loaded pages
+const LoginPage = lazy(() =>
+  import('@/pages/auth/LoginPage').then(m => ({ default: m.LoginPage }))
+);
+const RegisterPage = lazy(() =>
+  import('@/pages/auth/RegisterPage').then(m => ({ default: m.RegisterPage }))
+);
+const ForgotPasswordPage = lazy(() =>
+  import('@/pages/auth/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage }))
+);
 const DashboardPage = lazy(() =>
   import('@/pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage }))
 );
@@ -133,9 +138,30 @@ export const router = createBrowserRouter([
     path: '/',
     element: <AuthLayout />,
     children: [
-      { path: ROUTES.LOGIN, element: <LoginPage /> },
-      { path: ROUTES.REGISTER, element: <RegisterPage /> },
-      { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage /> },
+      {
+        path: ROUTES.LOGIN,
+        element: (
+          <LazyPage>
+            <LoginPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.REGISTER,
+        element: (
+          <LazyPage>
+            <RegisterPage />
+          </LazyPage>
+        ),
+      },
+      {
+        path: ROUTES.FORGOT_PASSWORD,
+        element: (
+          <LazyPage>
+            <ForgotPasswordPage />
+          </LazyPage>
+        ),
+      },
     ],
   },
 
@@ -244,7 +270,6 @@ export const router = createBrowserRouter([
           </LazyPage>
         ),
       },
-
     ],
   },
   {

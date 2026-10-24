@@ -113,25 +113,3 @@ export async function downloadQRCodeSVG(
   URL.revokeObjectURL(blobUrl);
 }
 
-/**
- * Render QR code to a canvas element
- */
-export async function renderQRCodeToCanvas(
-  canvas: HTMLCanvasElement,
-  url: string,
-  options: QRCodeOptions = {}
-): Promise<void> {
-  const mergedOptions = { ...DEFAULT_OPTIONS, ...options };
-
-  try {
-    await QRCode.toCanvas(canvas, url, {
-      width: mergedOptions.width,
-      margin: mergedOptions.margin,
-      color: mergedOptions.color,
-      errorCorrectionLevel: mergedOptions.errorCorrectionLevel,
-    });
-  } catch (error) {
-    console.error('Failed to render QR code to canvas:', error);
-    throw new Error('Failed to render QR code to canvas');
-  }
-}

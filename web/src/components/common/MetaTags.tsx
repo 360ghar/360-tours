@@ -174,30 +174,6 @@ export function StructuredData({ type, data }: StructuredDataProps) {
   return null;
 }
 
-export function OrganizationStructuredData({
-  name = APP_NAME,
-  url,
-  logo,
-  sameAs = [],
-}: {
-  name?: string;
-  url?: string;
-  logo?: string;
-  sameAs?: string[];
-}) {
-  return (
-    <StructuredData
-      type="Organization"
-      data={{
-        name,
-        url: url || (typeof window !== 'undefined' ? window.location.origin : ''),
-        logo,
-        sameAs,
-      }}
-    />
-  );
-}
-
 export function VirtualTourStructuredData({
   name,
   description,
@@ -241,40 +217,3 @@ export function VirtualTourStructuredData({
   return <StructuredData type="ImageGallery" data={data} />;
 }
 
-export function WebApplicationStructuredData({
-  applicationCategory = 'BusinessApplication',
-  operatingSystem = 'Web Browser',
-  offers,
-}: {
-  applicationCategory?: string;
-  operatingSystem?: string;
-  offers?: {
-    price: string | number;
-    priceCurrency: string;
-  };
-}) {
-  return (
-    <StructuredData
-      type="WebApplication"
-      data={{
-        name: APP_NAME,
-        applicationCategory,
-        operatingSystem,
-        offers: offers
-          ? {
-              '@type': 'Offer',
-              price: offers.price,
-              priceCurrency: offers.priceCurrency,
-            }
-          : undefined,
-        featureList: [
-          '360° virtual tours',
-          'VR support',
-          'Interactive hotspots',
-          'Analytics dashboard',
-          'White-label branding',
-        ],
-      }}
-    />
-  );
-}

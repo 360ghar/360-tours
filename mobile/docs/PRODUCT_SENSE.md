@@ -20,7 +20,7 @@ Operators capturing real-estate or interior spaces: they need a trustworthy 360�
 
 ## Non-goals (for this client)
 
-- Being the backend or the viewer web app (those are separate products, now co-located at `../web` in this monorepo — see its `CLAUDE.md`).
+- Being the backend or the viewer web app (those are separate products, now co-located at `../web` in this monorepo — see its `AGENTS.md`).
 - Vendoring NDA-gated Insta360 SDK binaries.
 - Full offline editing of cloud-only metadata without sync.
 

@@ -21,6 +21,7 @@ import {
   ScrollArea,
 } from '@/components/ui';
 import { cn } from '@/utils';
+import { toggleInSet } from '@/utils/toggleInSet';
 import { useToast } from '@/hooks';
 import type { Scene } from '@/types';
 import type { HotspotSuggestion } from '@/api';
@@ -124,13 +125,7 @@ export function HotspotSuggestions({
   };
 
   const handleToggleSuggestion = (suggestionId: string) => {
-    const newSelected = new Set(selectedSuggestions);
-    if (newSelected.has(suggestionId)) {
-      newSelected.delete(suggestionId);
-    } else {
-      newSelected.add(suggestionId);
-    }
-    setSelectedSuggestions(newSelected);
+    setSelectedSuggestions(toggleInSet(selectedSuggestions, suggestionId));
   };
 
   const handleSelectAll = () => {

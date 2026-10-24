@@ -16,7 +16,7 @@ export { Badge } from './Badge';
 export { badgeVariants } from './badgeVariants';
 export { Progress } from './Progress';
 export { Skeleton, SkeletonCard, SkeletonTable, SkeletonAvatar } from './Skeleton';
-export { Spinner, LoadingOverlay, PageLoader } from './Spinner';
+export { Spinner, PageLoader } from './Spinner';
 
 // Form Components
 export { Checkbox } from './Checkbox';

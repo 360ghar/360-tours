@@ -11,19 +11,3 @@ export const ERROR_MESSAGES = {
   UPLOAD_TYPE: 'Invalid file type. Please upload a JPEG, PNG, or WebP image.',
   SESSION_EXPIRED: 'Your session has expired. Please log in again.',
 } as const;
-
-// Success Messages
-export const SUCCESS_MESSAGES = {
-  TOUR_CREATED: 'Tour created successfully!',
-  TOUR_UPDATED: 'Tour updated successfully!',
-  TOUR_DELETED: 'Tour deleted successfully!',
-  TOUR_PUBLISHED: 'Tour published successfully!',
-  SCENE_ADDED: 'Scene added successfully!',
-  SCENE_UPDATED: 'Scene updated successfully!',
-  SCENE_DELETED: 'Scene deleted successfully!',
-  HOTSPOT_CREATED: 'Hotspot created successfully!',
-  HOTSPOT_UPDATED: 'Hotspot updated successfully!',
-  HOTSPOT_DELETED: 'Hotspot deleted successfully!',
-  PROFILE_UPDATED: 'Profile updated successfully!',
-  PASSWORD_CHANGED: 'Password changed successfully!',
-} as const;

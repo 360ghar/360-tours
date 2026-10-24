@@ -210,18 +210,15 @@ void _naiveStitch({
     final yEnd = min(outH, ((pi / 2 - latMin) / pi * outH).ceil());
 
     for (var y = yStart; y < yEnd; y++) {
+      // Scalars, not a per-pixel List: this loop runs millions of times.
+      final dz = sinLat[y];
       for (var x = 0; x < outW; x++) {
-        final dir = [
-          sinLon[x] * cosLat[y],
-          cosLon[x] * cosLat[y],
-          sinLat[y],
-        ];
-        final w =
-            dir[0] * fwd[0] + dir[1] * fwd[1] + dir[2] * fwd[2];
+        final dx = sinLon[x] * cosLat[y];
+        final dy = cosLon[x] * cosLat[y];
+        final w = dx * fwd[0] + dy * fwd[1] + dz * fwd[2];
         if (w <= 0.1) continue; // behind or grazing the camera
-        final u =
-            (dir[0] * right[0] + dir[1] * right[1] + dir[2] * right[2]) / w;
-        final v = (dir[0] * up[0] + dir[1] * up[1] + dir[2] * up[2]) / w;
+        final u = (dx * right[0] + dy * right[1] + dz * right[2]) / w;
+        final v = (dx * up[0] + dy * up[1] + dz * up[2]) / w;
         final sx = u / tanH; // -1..1 across the frame width
         final sy = v / tanV;
         if (sx.abs() > 1 || sy.abs() > 1) continue;

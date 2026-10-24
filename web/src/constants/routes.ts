@@ -22,12 +22,3 @@ export const ROUTES = {
   EMBED_TOUR: '/embed/:id',
   LOCAL_TOUR: '/local/:propertyId',
 } as const;
-
-// Navigation Items
-export const NAV_ITEMS = [
-  { label: 'Dashboard', path: ROUTES.DASHBOARD, icon: 'LayoutDashboard' },
-  { label: 'Tours', path: ROUTES.TOURS, icon: 'Images' },
-  { label: 'Media', path: ROUTES.MEDIA, icon: 'FolderOpen' },
-  { label: 'Analytics', path: ROUTES.ANALYTICS, icon: 'BarChart3' },
-  { label: 'Settings', path: ROUTES.SETTINGS, icon: 'Settings' },
-] as const;

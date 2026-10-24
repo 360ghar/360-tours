@@ -1,3 +1,4 @@
+import { sortScenes } from '@/utils/scenes';
 import { useState, useRef, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -173,7 +174,7 @@ export function ScenePanel({
   const [collapsed, setCollapsed] = useState(false);
 
   // Sort scenes by order_index
-  const sortedScenes = [...scenes].sort((a, b) => a.order_index - b.order_index);
+  const sortedScenes = sortScenes(scenes);
 
   // DnD sensors
   const sensors = useSensors(

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/ui/dialogs.dart';
 import 'asset_providers.dart';
 
 class AssetListScreen extends ConsumerWidget {
@@ -101,25 +102,13 @@ class AssetListScreen extends ConsumerWidget {
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceRaised,
-        title: const Text('Sign out?'),
-        content: const Text('You can sign back in any time.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sign out'),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDialog(
+      context,
+      title: 'Sign out?',
+      body: 'You can sign back in any time.',
+      confirmLabel: 'Sign out',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await ref.read(authRepositoryProvider).signOut();
     } catch (e) {

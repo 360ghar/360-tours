@@ -5,8 +5,8 @@ import {
   events as MarkersEvents,
   type MarkerConfig,
 } from '@photo-sphere-viewer/markers-plugin';
-import { GyroscopePlugin } from '@photo-sphere-viewer/gyroscope-plugin';
-import { StereoPlugin } from '@photo-sphere-viewer/stereo-plugin';
+import type { GyroscopePlugin } from '@photo-sphere-viewer/gyroscope-plugin';
+import type { StereoPlugin } from '@photo-sphere-viewer/stereo-plugin';
 import '@photo-sphere-viewer/core/index.css';
 import '@photo-sphere-viewer/markers-plugin/index.css';
 import type { PublicScene, Hotspot, TourSettings } from '@/types';
@@ -15,7 +15,7 @@ import { cn, escapeHtml, viewerPositionToDegrees, degreesToViewerPosition } from
 import { Smartphone, Glasses, X } from 'lucide-react';
 import { Button, Spinner } from '@/components/ui';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui';
-import { useLocalStorage } from '@/hooks';
+import { useLocalStorage, useMediaQuery } from '@/hooks';
 
 interface PanoramaViewerProps {
   /** A public scene; the editor's owner `Scene` is assignable to it. */
@@ -192,7 +192,7 @@ export function PanoramaViewer({
   const [stereoEnabled, setStereoEnabled] = useState(false);
   const [vrError, setVrError] = useState<string | null>(null);
   const [isPanoramaLoading, setIsPanoramaLoading] = useState(true);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   // Photo Sphere Viewer discards markers added before the panorama texture has
   // loaded. We therefore only (re)apply markers once the viewer is ready, and
   // flip this back to false whenever a new panorama starts loading so markers are
@@ -209,6 +209,11 @@ export function PanoramaViewer({
   // is not required.
   const [persistedGyro, setPersistedGyro] = useLocalStorage<boolean>('360g:vr:gyroscope', false);
   const [, setPersistedStereo] = useLocalStorage<boolean>('360g:vr:stereo', false);
+  // Read at viewer construction only; a toggle must not rebuild the viewer.
+  const persistedGyroRef = useRef(persistedGyro);
+  useEffect(() => {
+    persistedGyroRef.current = persistedGyro;
+  });
 
   // Keep the latest onPositionClick in a ref so changing the callback prop
   // doesn't force a full viewer destroy/rebuild (black flash, lost camera position).
@@ -216,22 +221,6 @@ export function PanoramaViewer({
   useEffect(() => {
     onPositionClickRef.current = onPositionClick;
   });
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
-    updatePreference();
-
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', updatePreference);
-      return () => mediaQuery.removeEventListener('change', updatePreference);
-    }
-
-    mediaQuery.addListener(updatePreference);
-    return () => mediaQuery.removeListener(updatePreference);
-  }, []);
 
   // Track the latest scene so the serialized loader always resolves to the most
   // recently requested room when an in-flight load settles.
@@ -367,12 +356,23 @@ export function PanoramaViewer({
     if (!container) return;
 
     let viewerForCleanup: Viewer | null = null;
+    let disposed = false;
+    const vrEnabled = tourSettings?.enable_vr !== false;
 
     // Defer construction by one macrotask so React StrictMode's development-only
     // throwaway mount can clean up before Photo Sphere Viewer starts image/texture
     // loading. That avoids destroying a three.js-backed viewer mid-load.
-    const initViewer = () => {
-      if (!container.isConnected) return;
+    const initViewer = async () => {
+      // VR plugins are only fetched when the tour enables VR. A failed chunk
+      // load (offline, stale deploy) must not block the panorama: show it
+      // without VR instead.
+      const [gyroModule, stereoModule] = vrEnabled
+        ? await Promise.all([
+            import('@photo-sphere-viewer/gyroscope-plugin'),
+            import('@photo-sphere-viewer/stereo-plugin'),
+          ]).catch(() => [null, null] as const)
+        : [null, null];
+      if (disposed || !container.isConnected) return;
 
       // Build navbar items based on settings
       const navbarItems: string[] = [];
@@ -389,9 +389,9 @@ export function PanoramaViewer({
       const plugins: NonNullable<ViewerConfig['plugins']> = [[MarkersPlugin, { markers: [] }]];
 
       // Add gyroscope plugin if VR is enabled
-      if (tourSettings?.enable_vr !== false && tourSettings?.enable_gyroscope !== false) {
+      if (gyroModule && tourSettings?.enable_gyroscope !== false) {
         plugins.push([
-          GyroscopePlugin,
+          gyroModule.GyroscopePlugin,
           {
             touchmove: true,
             absolutePosition: false,
@@ -401,8 +401,8 @@ export function PanoramaViewer({
       }
 
       // Add stereo plugin if VR is enabled
-      if (tourSettings?.enable_vr !== false) {
-        plugins.push([StereoPlugin, {}]);
+      if (stereoModule) {
+        plugins.push([stereoModule.StereoPlugin, {}]);
       }
 
       const initialView = scene.scene_metadata?.initial_view ?? tourSettings?.initial_view;
@@ -454,10 +454,12 @@ export function PanoramaViewer({
       });
 
       // Get VR plugins if available
-      if (tourSettings?.enable_vr !== false) {
+      if (gyroModule && stereoModule) {
         try {
-          gyroscopePluginRef.current = viewer.getPlugin(GyroscopePlugin) as GyroscopePlugin;
-          stereoPluginRef.current = viewer.getPlugin(StereoPlugin) as StereoPlugin;
+          gyroscopePluginRef.current = viewer.getPlugin(
+            gyroModule.GyroscopePlugin
+          ) as GyroscopePlugin;
+          stereoPluginRef.current = viewer.getPlugin(stereoModule.StereoPlugin) as StereoPlugin;
         } catch {
           // Plugins not available
         }
@@ -467,7 +469,7 @@ export function PanoramaViewer({
         !isEditor &&
         tourSettings?.enable_vr !== false &&
         tourSettings?.enable_gyroscope !== false &&
-        (tourSettings?.gyroscope_auto_start === true || persistedGyro) &&
+        (tourSettings?.gyroscope_auto_start === true || persistedGyroRef.current) &&
         gyroscopePluginRef.current &&
         typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
           .requestPermission !== 'function'
@@ -495,9 +497,10 @@ export function PanoramaViewer({
       }
     };
 
-    const initTimeoutId = window.setTimeout(initViewer, 0);
+    const initTimeoutId = window.setTimeout(() => void initViewer(), 0);
 
     return () => {
+      disposed = true;
       window.clearTimeout(initTimeoutId);
       stopAutoRotate();
       // Cleanup VR states
@@ -517,9 +520,9 @@ export function PanoramaViewer({
     // the viewer on every scene change destroys it mid-load, which aborts the
     // in-flight texture fetch and poisons three.js's cache for that URL — the cause
     // of intermittent "The panorama cannot be loaded" errors. We only rebuild for
-    // structural changes (editor mode, tour settings, gyro preference).
+    // structural changes (editor mode, tour settings).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditor, stopAutoRotate, tourSettingsKey, persistedGyro]);
+  }, [isEditor, stopAutoRotate, tourSettingsKey]);
 
   // Swap to the latest desired scene via setPanorama — SERIALIZED. Only one
   // setPanorama runs at a time; new requests during a load are coalesced (latest

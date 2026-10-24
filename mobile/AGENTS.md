@@ -79,7 +79,3 @@ Small, local changes do not need an ExecPlan.
 ## Garbage collection
 
 Prefer shared `core` or feature `domain` over copy-pasted helpers. When you spot drift or a repeated bad pattern: fix a small instance, encode a rule or doc note, or add an entry in [`docs/exec-plans/tech-debt-tracker.md`](docs/exec-plans/tech-debt-tracker.md). Do not leave silent `TODO`s as the only record.
-
-## Identity
-
-`CLAUDE.md` is a symlink to this file. Keep them identical via that symlink — never fork instructions.

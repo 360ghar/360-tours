@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui';
 import { VideoPlayer } from './VideoPlayer';
 import { parseVideoUrl, buildVideoEmbedUrl } from '@/utils/videoUrl';
+import { formatClock } from '@/utils';
 import {
   parseAudioHotspotContent,
   parseCustomHotspotContent,
@@ -215,13 +216,6 @@ function AudioContent({
     }
   };
 
-  const formatTime = (seconds: number) => {
-    if (isNaN(seconds)) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   if (!audioUrl) {
     return <p className="text-[var(--color-text-muted)] italic">No audio file configured.</p>;
   }
@@ -267,8 +261,8 @@ function AudioContent({
               className="w-full h-2 bg-[var(--color-border)] rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-[var(--color-primary-500)] [&::-webkit-slider-thumb]:rounded-full"
             />
             <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
+              <span>{formatClock(currentTime)}</span>
+              <span>{formatClock(duration)}</span>
             </div>
           </div>
 

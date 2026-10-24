@@ -10,16 +10,14 @@ export {
   APP_VERSION,
 } from './config';
 
-export { ROUTES, NAV_ITEMS } from './routes';
+export { ROUTES } from './routes';
 
 export { QUERY_KEYS, STORAGE_KEYS } from './queryKeys';
 
 export {
   TOUR_STATUS_OPTIONS,
-  HOTSPOT_TYPES,
   DEFAULT_TOUR_SETTINGS,
-  DEFAULT_SCENE_METADATA,
   VIEWER_DEFAULTS,
 } from './defaults';
 
-export { ERROR_MESSAGES, SUCCESS_MESSAGES } from './messages';
+export { ERROR_MESSAGES } from './messages';

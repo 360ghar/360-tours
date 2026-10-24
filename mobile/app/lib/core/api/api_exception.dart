@@ -146,3 +146,9 @@ String describeError(Object e) => switch (e) {
       StateError() => e.message,
       _ => e.toString(),
     };
+
+/// The server's reason for a failed request, or a connection hint when the
+/// request did not reach the server (or the error is not an API error).
+String failureReason(Object e) => e is ApiException && !e.isNetwork
+    ? e.userMessage
+    : 'Check your connection and try again.';

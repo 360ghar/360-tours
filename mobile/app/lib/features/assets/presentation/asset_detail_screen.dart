@@ -10,6 +10,7 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/models/models.dart';
 import '../../../core/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/ui/dialogs.dart';
 import '../../capture/presentation/capture_controller.dart';
 import '../../settings/domain/processing_preference.dart';
 import 'asset_providers.dart';
@@ -201,27 +202,14 @@ class _Body extends ConsumerWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surfaceRaised,
-        title: const Text('Delete this scan?'),
-        content: const Text(
-            'The panorama, its share link and the published tour are removed.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDialog(
+      context,
+      title: 'Delete this scan?',
+      body: 'The panorama, its share link and the published tour are removed.',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await ref.read(assetRepositoryProvider).deleteAsset(asset.id);
     if (context.mounted) context.go('/');
   }

@@ -26,7 +26,7 @@ import {
   AlertDescription,
 } from '@/components/ui';
 import { uploadApi } from '@/api';
-import { cn } from '@/utils';
+import { cn, formatBytes, formatClock } from '@/utils';
 import { confirm } from '@/stores';
 
 interface VideoFile {
@@ -73,20 +73,6 @@ export function VideoUploader({
 }: VideoUploaderProps) {
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const acceptedFormatLabel = acceptedFormats
     .map(format => format.replace('video/', '').replace('quicktime', 'mov').toUpperCase())
@@ -170,56 +156,56 @@ export function VideoUploader({
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
-      const newVideos: VideoFile[] = [];
+      // Files are independent; extract metadata in parallel, keep drop order.
+      const newVideos = await Promise.all(
+        acceptedFiles.map(async (file): Promise<VideoFile> => {
+          // Validate file size
+          if (file.size > maxFileSize * 1024 * 1024) {
+            const id = createVideoId();
+            return {
+              id,
+              file,
+              name: file.name,
+              size: file.size,
+              status: 'error',
+              progress: 0,
+              error: `File exceeds ${maxFileSize}MB size limit`,
+              canRetry: false,
+            };
+          }
 
-      for (const file of acceptedFiles) {
-        // Validate file size
-        if (file.size > maxFileSize * 1024 * 1024) {
           const id = createVideoId();
-          newVideos.push({
-            id,
-            file,
-            name: file.name,
-            size: file.size,
-            status: 'error',
-            progress: 0,
-            error: `File exceeds ${maxFileSize}MB size limit`,
-            canRetry: false,
-          });
-          continue;
-        }
 
-        const id = createVideoId();
+          try {
+            const [duration, thumbnail] = await Promise.all([
+              extractDuration(file),
+              extractThumbnail(file),
+            ]);
 
-        try {
-          const [duration, thumbnail] = await Promise.all([
-            extractDuration(file),
-            extractThumbnail(file),
-          ]);
-
-          newVideos.push({
-            id,
-            file,
-            name: file.name,
-            size: file.size,
-            duration,
-            thumbnail,
-            status: 'pending',
-            progress: 0,
-          });
-        } catch {
-          newVideos.push({
-            id,
-            file,
-            name: file.name,
-            size: file.size,
-            status: 'error',
-            progress: 0,
-            error: 'Failed to read video metadata. Try again or choose a different file.',
-            canRetry: true,
-          });
-        }
-      }
+            return {
+              id,
+              file,
+              name: file.name,
+              size: file.size,
+              duration,
+              thumbnail,
+              status: 'pending',
+              progress: 0,
+            };
+          } catch {
+            return {
+              id,
+              file,
+              name: file.name,
+              size: file.size,
+              status: 'error',
+              progress: 0,
+              error: 'Failed to read video metadata. Try again or choose a different file.',
+              canRetry: true,
+            };
+          }
+        })
+      );
 
       setVideos(prev => [...prev, ...newVideos]);
     },
@@ -475,8 +461,8 @@ export function VideoUploader({
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{video.name}</p>
                     <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)] mt-1">
-                      <span>{formatFileSize(video.size)}</span>
-                      {video.duration && <span>{formatDuration(video.duration)}</span>}
+                      <span>{formatBytes(video.size)}</span>
+                      {video.duration && <span>{formatClock(video.duration)}</span>}
                     </div>
 
                     {/* Progress or Status */}

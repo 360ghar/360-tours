@@ -24,6 +24,7 @@ class OrientationEngine {
   StreamSubscription<AccelerometerEvent>? _accelSub;
   StreamSubscription<MagnetometerEvent>? _magSub;
   Timer? _emitTimer;
+  bool _hasEmitted = false;
 
   static const _alpha = 0.15; // low-pass factor
 
@@ -49,15 +50,24 @@ class OrientationEngine {
         .listen((e) {
       _mag = _lowPass(_mag, [e.x, e.y, e.z]);
     });
-    // Emit at a steady ~30 Hz for the overlay painter.
+    // Sample at ~30 Hz for the overlay painter; skip unchanged readings so
+    // a still phone does not wake every listener 30 times a second.
     _emitTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
       final o = _compute();
-      if (o != null) {
+      if (o != null && !(_hasEmitted && _sameAs(_current, o))) {
+        _hasEmitted = true;
         _current = o;
         _controller.add(o);
       }
     });
   }
+
+  static const _epsilon = 0.01; // degrees
+
+  static bool _sameAs(FrameOrientation a, FrameOrientation b) =>
+      (a.yaw - b.yaw).abs() < _epsilon &&
+      (a.pitch - b.pitch).abs() < _epsilon &&
+      (a.roll - b.roll).abs() < _epsilon;
 
   /// Snapshot the current yaw as the zero reference (call at capture start).
   void zero() {

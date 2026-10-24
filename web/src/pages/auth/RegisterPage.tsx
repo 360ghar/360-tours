@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { IdentifierChannelTabs } from '@/components/features/IdentifierChannelTabs';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Lock, Mail, User, KeyRound } from 'lucide-react';
@@ -131,19 +132,7 @@ export function RegisterPage() {
       }
 
       const profileData = { full_name: fullName.trim() };
-      if (channel === 'email') {
-        await supabaseAuth.requestEmailOtp({
-          email: formData.identifier,
-          shouldCreateUser: true,
-          data: profileData,
-        });
-      } else {
-        await supabaseAuth.requestOtp({
-          phone: formData.identifier,
-          shouldCreateUser: true,
-          data: profileData,
-        });
-      }
+      await supabaseAuth.requestOtpFor(channel, formData.identifier, true, profileData);
       setIdentifier(formData.identifier);
       resendTimer.start();
       setStep('otp');
@@ -159,11 +148,7 @@ export function RegisterPage() {
     resetErrors();
     setStepLoading(true);
     try {
-      if (channel === 'email') {
-        await supabaseAuth.verifyEmailOtp({ email: identifier, token: data.token, type: 'email' });
-      } else {
-        await supabaseAuth.verifyOtp({ phone: identifier, token: data.token, type: 'sms' });
-      }
+      await supabaseAuth.verifyOtpFor(channel, identifier, data.token);
       // OTP verified — session established. Move to set-password step.
       setStep('set-password');
     } catch (err) {
@@ -226,11 +211,7 @@ export function RegisterPage() {
         setExistingAccount(identifier);
         return;
       }
-      if (channel === 'email') {
-        await supabaseAuth.requestEmailOtp({ email: identifier, shouldCreateUser: true });
-      } else {
-        await supabaseAuth.requestOtp({ phone: identifier, shouldCreateUser: true });
-      }
+      await supabaseAuth.requestOtpFor(channel, identifier, true);
       resendTimer.start();
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to resend the code.');
@@ -246,7 +227,10 @@ export function RegisterPage() {
       // Preserve the return path across the OAuth round trip (mirrors
       // LoginPage); auth pages are blocklisted to avoid bounce loops.
       const from = (location.state as { from?: string } | null)?.from;
-      stashOAuthNext(from && !(OAUTH_RETURN_BLOCKLIST as readonly string[]).includes(from) ? from : null, ROUTES.DASHBOARD);
+      stashOAuthNext(
+        from && !(OAUTH_RETURN_BLOCKLIST as readonly string[]).includes(from) ? from : null,
+        ROUTES.DASHBOARD
+      );
       await supabaseAuth.signInWithGoogle();
       // Browser redirects to Google; nothing else runs here on success.
     } catch (err) {
@@ -314,38 +298,11 @@ export function RegisterPage() {
             </div>
 
             {/* Channel toggle */}
-            <div
-              role="tablist"
-              aria-label="Registration channel"
-              className="flex rounded-lg border border-[var(--color-border)] p-1 text-sm"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={channel === 'phone'}
-                onClick={() => switchChannel('phone')}
-                className={
-                  channel === 'phone'
-                    ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                    : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
-                }
-              >
-                Phone
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={channel === 'email'}
-                onClick={() => switchChannel('email')}
-                className={
-                  channel === 'email'
-                    ? 'flex min-h-10 flex-1 items-center justify-center rounded-md bg-[var(--color-primary-600)] py-1.5 font-medium text-white'
-                    : 'flex min-h-10 flex-1 items-center justify-center rounded-md py-1.5 text-[var(--color-text-muted)]'
-                }
-              >
-                Email
-              </button>
-            </div>
+            <IdentifierChannelTabs
+              value={channel}
+              onChange={switchChannel}
+              label="Registration channel"
+            />
 
             <form onSubmit={identifierForm.handleSubmit(onSubmitIdentifier)} className="space-y-5">
               {/* Full Name */}

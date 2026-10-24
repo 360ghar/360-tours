@@ -61,7 +61,6 @@
     "react-router-dom": "^7.18.1",
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.4.0",
-    "uuid": "^14.0.1",
     "zod": "^4.3.4",
     "zustand": "^5.0.9"
   },

@@ -20,7 +20,7 @@ cd app && flutter analyze && flutter test
 
 ## Agents
 
-This repository is **agent-first**. Read **[`AGENTS.md`](AGENTS.md)** first (table of contents). `CLAUDE.md` is a symlink to the same file.
+This repository is **agent-first**. Read **[`AGENTS.md`](AGENTS.md)** first (table of contents).
 
 Depth lives under [`docs/`](docs/) and [`ARCHITECTURE.md`](ARCHITECTURE.md). Do not grow `AGENTS.md` into an encyclopedia.
 

@@ -92,14 +92,6 @@ export function formatRelativeTime(date: string | Date): string {
 }
 
 /**
- * Format a date to a datetime string (e.g., "Jan 1, 2024 at 12:00 PM")
- */
-export function formatDateTime(date: string | Date): string {
-  const dateObj = parseServerTimestamp(date);
-  return format(dateObj, "MMM d, yyyy 'at' h:mm a");
-}
-
-/**
  * Format bytes to human-readable size
  */
 export function formatBytes(bytes: number, decimals: number = 2): string {
@@ -115,10 +107,13 @@ export function formatBytes(bytes: number, decimals: number = 2): string {
 }
 
 /**
- * Format a number with thousand separators
+ * Format seconds as m:ss (media playback clock).
  */
-export function formatNumber(num: number): string {
-  return new Intl.NumberFormat('en-US').format(num);
+export function formatClock(seconds: number): string {
+  if (isNaN(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 /**
@@ -129,13 +124,6 @@ export function formatCompactNumber(num: number): string {
     notation: 'compact',
     compactDisplay: 'short',
   }).format(num);
-}
-
-/**
- * Format a percentage
- */
-export function formatPercentage(value: number, decimals: number = 1): string {
-  return `${value.toFixed(decimals)}%`;
 }
 
 /**
@@ -181,14 +169,3 @@ export function getInitials(name: string): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
-/**
- * Slugify a string for URLs
- */
-export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
