@@ -36,6 +36,7 @@ import { cn } from '@/utils';
 import { resolveBranding } from '@/utils/tourSettings';
 import { API_LIMITS } from '@/lib/api/limits.gen';
 import type { BrandingSettings, ResolvedBranding } from '@/types';
+import { depsChanged } from '@/utils/depsChanged';
 
 interface BrandingPanelProps {
   open: boolean;
@@ -135,10 +136,13 @@ export function BrandingPanel({
     []
   );
 
-  useEffect(() => {
-    if (!open) return;
-    setSettings(resolveBranding(initialSettings));
-  }, [initialSettings, open]);
+  // Reload the draft each time the panel opens or its source settings change.
+  const resetDeps = [initialSettings, open];
+  const [prevResetDeps, setPrevResetDeps] = useState<unknown[] | null>(null);
+  if (depsChanged(prevResetDeps, resetDeps)) {
+    setPrevResetDeps(resetDeps);
+    if (open) setSettings(resolveBranding(initialSettings));
+  }
 
   const updateSetting = <K extends keyof ResolvedBranding>(key: K, value: ResolvedBranding[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));

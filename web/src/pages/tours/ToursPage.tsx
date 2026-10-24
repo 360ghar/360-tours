@@ -49,7 +49,6 @@ export function ToursPage() {
     const urlSearch = searchParams.get('search') ?? '';
     if (urlSearch !== lastSearchParamRef.current) {
       lastSearchParamRef.current = urlSearch;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchQuery(urlSearch);
     }
   }, [searchParams]);

@@ -44,7 +44,7 @@ export async function generateQRCodeDataURL(
     return dataUrl;
   } catch (error) {
     console.error('Failed to generate QR code:', error);
-    throw new Error('Failed to generate QR code');
+    throw new Error('Failed to generate QR code', { cause: error });
   }
 }
 
@@ -68,7 +68,7 @@ export async function generateQRCodeSVG(
     return svg;
   } catch (error) {
     console.error('Failed to generate QR code SVG:', error);
-    throw new Error('Failed to generate QR code SVG');
+    throw new Error('Failed to generate QR code SVG', { cause: error });
   }
 }
 
@@ -132,6 +132,6 @@ export async function renderQRCodeToCanvas(
     });
   } catch (error) {
     console.error('Failed to render QR code to canvas:', error);
-    throw new Error('Failed to render QR code to canvas');
+    throw new Error('Failed to render QR code to canvas', { cause: error });
   }
 }

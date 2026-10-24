@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   Plus,
   Trash2,
@@ -39,6 +39,7 @@ import {
 } from '@/lib/floorPlanSync';
 import { API_LIMITS } from '@/lib/api/limits.gen';
 import type { FloorPlan, FloorPlanMarkerInput, Scene } from '@/types';
+import { depsChanged } from '@/utils/depsChanged';
 
 interface FloorPlanEditorProps {
   open: boolean;
@@ -80,11 +81,16 @@ export function FloorPlanEditor({
 
   const selectedFloorPlan = localFloorPlans[selectedFloorIndex];
 
-  useEffect(() => {
-    if (!open) return;
-    setLocalFloorPlans(floorPlans.map(toDraft));
-    setSelectedFloorIndex(index => Math.min(index, Math.max(0, floorPlans.length - 1)));
-  }, [floorPlans, open]);
+  // Reload the drafts each time the editor opens or the saved plans change.
+  const resetDeps = [floorPlans, open];
+  const [prevResetDeps, setPrevResetDeps] = useState<unknown[] | null>(null);
+  if (depsChanged(prevResetDeps, resetDeps)) {
+    setPrevResetDeps(resetDeps);
+    if (open) {
+      setLocalFloorPlans(floorPlans.map(toDraft));
+      setSelectedFloorIndex(index => Math.min(index, Math.max(0, floorPlans.length - 1)));
+    }
+  }
 
   // Ask the caller to draw a plan from the tour, then let the refreshed query
   // replace the drafts. Unsaved edits would be lost, so confirm first.

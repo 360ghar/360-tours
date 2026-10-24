@@ -41,6 +41,12 @@ interface AIJobStatusProps {
   className?: string;
 }
 
+function terminalJobError(job: AIProcessingJob): string | null {
+  if (job.status === 'failed') return job.error_message || 'Processing failed';
+  if (job.status === 'cancelled') return job.error_message || 'Processing was cancelled';
+  return null;
+}
+
 export function AIJobStatus({
   jobId,
   onComplete,
@@ -54,7 +60,8 @@ export function AIJobStatus({
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [wsConnectingFallbackEnabled, setWsConnectingFallbackEnabled] = useState(false);
+  // Key of the (job, connection) pair whose connecting grace period ran out.
+  const [wsFallbackKey, setWsFallbackKey] = useState<string | null>(null);
   const terminalCallbackHandledRef = useRef(false);
   const jobRef = useRef<AIProcessingJob | null>(null);
 
@@ -145,19 +152,20 @@ export function AIJobStatus({
     }
   }, [jobId, onComplete, onError]);
 
-  useEffect(() => {
-    if (!useWebSocket || wsState !== 'connecting') {
-      setWsConnectingFallbackEnabled(false);
-      return;
-    }
+  // The fallback is enabled only for the exact (job, connection) state whose
+  // grace timer fired, so any state change disables it again with no reset.
+  const wsConnectingKey = `${jobId}|${useWebSocket}|${wsState}`;
+  const wsConnectingFallbackEnabled = wsFallbackKey === wsConnectingKey;
 
-    setWsConnectingFallbackEnabled(false);
+  useEffect(() => {
+    if (!useWebSocket || wsState !== 'connecting') return;
+
     const timeoutId = setTimeout(() => {
-      setWsConnectingFallbackEnabled(true);
+      setWsFallbackKey(wsConnectingKey);
     }, WEBSOCKET_CONNECTING_FALLBACK_GRACE_MS);
 
     return () => clearTimeout(timeoutId);
-  }, [jobId, useWebSocket, wsState]);
+  }, [wsConnectingKey, useWebSocket, wsState]);
 
   // Initial fetch and fallback polling (when WebSocket is disabled or not connected)
   useEffect(() => {
@@ -206,13 +214,12 @@ export function AIJobStatus({
       onComplete?.(job, result);
     } else if (job.status === 'failed' || job.status === 'cancelled') {
       terminalCallbackHandledRef.current = true;
-      const errorMsg =
-        job.error_message ||
-        (job.status === 'cancelled' ? 'Processing was cancelled' : 'Processing failed');
-      setError(errorMsg);
-      onError?.(job, errorMsg);
+      onError?.(job, terminalJobError(job) ?? 'Processing failed');
     }
   }, [job?.status, result, job, onComplete, onError]);
+
+  // A terminal job's own message shows when no request error was recorded.
+  const shownError = error ?? (job ? terminalJobError(job) : null);
 
   const handleCancel = async () => {
     setIsCancelling(true);
@@ -325,11 +332,11 @@ export function AIJobStatus({
       )}
 
       {/* Error message */}
-      {error && (
+      {shownError && (
         <div className="mt-3 p-3 rounded-md bg-[var(--color-error-50)] text-[var(--color-error-600)] text-sm">
           <div className="flex items-start gap-2">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
+            <span>{shownError}</span>
           </div>
         </div>
       )}

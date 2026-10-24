@@ -77,13 +77,26 @@ export function LoginPage() {
     useAuthStore();
 
   const [step, setStep] = useState<Step>('identifier');
-  const [channel, setChannel] = useState<IdentifierChannel>('phone');
+  // Router state (e.g. RegisterPage's "Sign in instead") wins over the
+  // last-used sign-in method when choosing the first channel.
+  const routeState = location.state as {
+    identifier?: string;
+    channel?: IdentifierChannel;
+  } | null;
+  const [channel, setChannel] = useState<IdentifierChannel>(() => {
+    if (routeState?.channel) return routeState.channel;
+    const method = getLastAuthMethod()?.method;
+    return method === 'email_password' || method === 'email_otp' ? 'email' : 'phone';
+  });
   const [identifier, setIdentifier] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [stepLoading, setStepLoading] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
+  // Surface Google-callback errors (?error=auth | ?error=not_staff).
+  const [localError, setLocalError] = useState<string | null>(
+    () => callbackErrorMessage(searchParams.get('error')) || null
+  );
   const [isSignupOtp, setIsSignupOtp] = useState(false);
   // Whether the OTP-authenticated account must set a password (no password yet).
   const [requiresPasswordSetup, setRequiresPasswordSetup] = useState(false);
@@ -94,40 +107,10 @@ export function LoginPage() {
     searchParams.get('next')
   );
 
-  // Pre-select the channel from the last-used method on first mount.
-  useEffect(() => {
-    if (lastMethod?.method === 'email_password' || lastMethod?.method === 'email_otp') {
-      setChannel('email');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Pre-fill identifier + channel from router state (e.g. RegisterPage's
-  // "Sign in instead" for an identifier that already has an account).
-  useEffect(() => {
-    const state = location.state as {
-      identifier?: string;
-      channel?: IdentifierChannel;
-    } | null;
-    if (state?.channel) {
-      setChannel(state.channel);
-    }
-    if (state?.identifier) {
-      identifierForm.setValue('identifier', state.identifier);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Surface Google-callback errors (?error=auth | ?error=not_staff).
-  useEffect(() => {
-    const msg = callbackErrorMessage(searchParams.get('error'));
-    if (msg) setLocalError(msg);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const identifierForm = useForm<IdentifierFormData>({
     resolver: zodResolver(channel === 'email' ? emailIdentifierSchema : phoneIdentifierSchema),
-    defaultValues: { identifier: '' },
+    defaultValues: { identifier: routeState?.identifier ?? '' },
   });
 
   const passwordForm = useForm<PasswordStepFormData>({

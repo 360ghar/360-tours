@@ -78,10 +78,11 @@ export function PublicTourPage() {
 
   // Hydrate the like count from the fetched tour. The public tour carries no
   // per-viewer liked flag: the server counts each viewer (client IP) once.
-  useEffect(() => {
-    if (!tour) return;
+  const [likeSourceTour, setLikeSourceTour] = useState<typeof tour>(undefined);
+  if (tour && tour !== likeSourceTour) {
+    setLikeSourceTour(tour);
     setLikeCount(tour.like_count);
-  }, [tour]);
+  }
 
   // Only published, non-private tours feed the public player.
   const playableTour = tour && isPlayablePublicTour(tour) ? tour : undefined;
