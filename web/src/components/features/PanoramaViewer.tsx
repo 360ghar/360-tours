@@ -9,16 +9,17 @@ import { GyroscopePlugin } from '@photo-sphere-viewer/gyroscope-plugin';
 import { StereoPlugin } from '@photo-sphere-viewer/stereo-plugin';
 import '@photo-sphere-viewer/core/index.css';
 import '@photo-sphere-viewer/markers-plugin/index.css';
-import type { Scene, Hotspot, TourSettings } from '@/types';
+import type { PublicScene, Hotspot, TourSettings } from '@/types';
 import { VIEWER_DEFAULTS } from '@/constants';
-import { cn, viewerPositionToDegrees, degreesToViewerPosition } from '@/utils';
+import { cn, escapeHtml, viewerPositionToDegrees, degreesToViewerPosition } from '@/utils';
 import { Smartphone, Glasses, X } from 'lucide-react';
 import { Button, Spinner } from '@/components/ui';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui';
 import { useLocalStorage } from '@/hooks';
 
 interface PanoramaViewerProps {
-  scene: Scene;
+  /** A public scene; the editor's owner `Scene` is assignable to it. */
+  scene: PublicScene;
   hotspots: Hotspot[];
   isEditor?: boolean;
   tourSettings?: TourSettings;
@@ -39,26 +40,99 @@ interface VRSupport {
   webxr: boolean;
 }
 
-// Escape user-controlled hotspot titles before interpolating them into HTML
-// attribute strings (aria-label, etc.). Prevents attribute/context-breakout
-// injection from malicious or malformed hotspot titles.
-const escapeHtml = (str: string) =>
-  str
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
 // hotspot.icon_color is editor-controlled and gets interpolated into a style
 // attribute — only allow a valid CSS hex/rgb(a) color, else fall back. Prevents
 // attribute-breakout XSS (e.g. `" onmouseover="...`).
 const safeColor = (color: string | null | undefined, fallback: string) =>
   color && /^(#[0-9A-Fa-f]{3,8}|rgba?\([\d.,\s%]+\))$/.test(color.trim()) ? color.trim() : fallback;
 
+/**
+ * Zoom of an initial view. A tour's `initial_view` has no zoom and an explicit
+ * `null` is possible (`??` only replaces undefined on the left), so null and a
+ * missing key both fall back to the default instead of throwing in the init effect.
+ */
+function initialZoom(view: object | null | undefined): number {
+  return view && 'zoom' in view && typeof view.zoom === 'number'
+    ? view.zoom
+    : VIEWER_DEFAULTS.defaultZoom;
+}
+
 // icon_size is interpolated into a px length — coerce to a sane integer.
 const safeSize = (size: number | null | undefined, fallback = 32) =>
   Number.isFinite(size) ? Math.min(Math.max(Math.round(size as number), 8), 256) : fallback;
+
+/**
+ * The info/audio/video/link/default markers are one component: a coloured
+ * circular puck with a white 24x24 line icon. Only the class name, the fallback
+ * colour and the icon geometry differ, so the markup lives here once instead of
+ * five near-identical 18-line template literals.
+ */
+const PUCK_MARKERS: Record<string, { className: string; defaultColor: string; iconPaths: string }> =
+  {
+    info: {
+      className: 'psv-marker-info',
+      defaultColor: '#10b981',
+      iconPaths: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+    },
+    audio: {
+      className: 'psv-marker-audio',
+      defaultColor: '#FF5733',
+      iconPaths:
+        '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>',
+    },
+    video: {
+      className: 'psv-marker-video',
+      defaultColor: '#ef4444',
+      iconPaths: '<polygon points="5 3 19 12 5 21 5 3"/>',
+    },
+    link: {
+      className: 'psv-marker-link',
+      defaultColor: '#FF5733',
+      iconPaths:
+        '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    },
+    default: {
+      className: 'psv-marker-default',
+      defaultColor: '#f59e0b',
+      iconPaths: '<circle cx="12" cy="12" r="3"/>',
+    },
+  };
+
+function puckMarkerHtml({
+  className,
+  markerId,
+  label,
+  size,
+  color,
+  iconPaths,
+}: {
+  className: string;
+  markerId: string;
+  /** Already HTML-escaped. */
+  label: string;
+  size: number;
+  color: string;
+  iconPaths: string;
+}): string {
+  return `
+            <div class="${className}" role="button" tabindex="0" aria-label="${label}" data-marker-id="${markerId}" style="
+              width: ${size}px;
+              height: ${size}px;
+              background-color: ${color};
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+              transition: transform 0.2s;
+            ">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                ${iconPaths}
+              </svg>
+            </div>
+          `;
+}
 
 export function PanoramaViewer({
   scene,
@@ -90,6 +164,24 @@ export function PanoramaViewer({
   const markersPluginRef = useRef<MarkersPlugin | null>(null);
   const gyroscopePluginRef = useRef<GyroscopePlugin | null>(null);
   const stereoPluginRef = useRef<StereoPlugin | null>(null);
+
+  // Marker callbacks are read through refs so the markers effect does not
+  // depend on their identity. Callers pass inline arrows, so depending on them
+  // rebuilt every marker on every parent render (and a public tour re-renders
+  // on each scene change, tick of analytics, etc.).
+  const onHotspotClickRef = useRef(onHotspotClick);
+  const onHotspotSelectRef = useRef(onHotspotSelect);
+  const onSceneChangeRef = useRef(onSceneChange);
+  const onHotspotDragRef = useRef(onHotspotDrag);
+  useEffect(() => {
+    onHotspotClickRef.current = onHotspotClick;
+    onHotspotSelectRef.current = onHotspotSelect;
+    onSceneChangeRef.current = onSceneChange;
+    onHotspotDragRef.current = onHotspotDrag;
+  });
+  // Whether a drag handler exists DOES change behaviour (draggable markers +
+  // the marker-dropped listener), so that stays a real dependency.
+  const hasDragHandler = Boolean(onHotspotDrag);
 
   const [vrSupport, setVrSupport] = useState<VRSupport>({
     gyroscope: false,
@@ -313,21 +405,16 @@ export function PanoramaViewer({
         plugins.push([StereoPlugin, {}]);
       }
 
-      const initialView = scene.metadata?.initial_view ?? tourSettings?.initial_view;
+      const initialView = scene.scene_metadata?.initial_view ?? tourSettings?.initial_view;
 
       const viewer = new Viewer({
         container,
         panorama: scene.image_url,
         defaultPitch: initialView?.pitch ?? VIEWER_DEFAULTS.defaultPitch,
         defaultYaw: initialView?.yaw ?? VIEWER_DEFAULTS.defaultYaw,
-        defaultZoomLvl:
-          typeof initialView === 'object' &&
-          'zoom' in initialView &&
-          typeof initialView.zoom === 'number'
-            ? initialView.zoom
-            : VIEWER_DEFAULTS.defaultZoom,
-        minFov: scene.metadata?.camera?.min_fov ?? VIEWER_DEFAULTS.minFov,
-        maxFov: scene.metadata?.camera?.max_fov ?? VIEWER_DEFAULTS.maxFov,
+        defaultZoomLvl: initialZoom(initialView),
+        minFov: scene.scene_metadata?.camera?.min_fov ?? VIEWER_DEFAULTS.minFov,
+        maxFov: scene.scene_metadata?.camera?.max_fov ?? VIEWER_DEFAULTS.maxFov,
         navbar: isEditor ? false : navbarItems.length > 0 ? navbarItems : false,
         plugins,
       });
@@ -458,11 +545,11 @@ export function PanoramaViewer({
       scheduleAutoRotate();
 
       // Apply per-scene field-of-view constraints (the viewer persists across scenes).
-      const camera = target.metadata?.camera;
+      const camera = target.scene_metadata?.camera;
       if (typeof camera?.min_fov === 'number') viewer.setOption('minFov', camera.min_fov);
       if (typeof camera?.max_fov === 'number') viewer.setOption('maxFov', camera.max_fov);
 
-      const initialView = target.metadata?.initial_view ?? tourSettings?.initial_view;
+      const initialView = target.scene_metadata?.initial_view ?? tourSettings?.initial_view;
       const url = force
         ? `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}reload=${Date.now()}`
         : targetUrl;
@@ -487,12 +574,7 @@ export function PanoramaViewer({
           // The app renders its own branded loading overlay; suppress PSV's.
           showLoader: false,
           position: { pitch: initialView?.pitch ?? 0, yaw: initialView?.yaw ?? 0 },
-          zoom:
-            typeof initialView === 'object' &&
-            'zoom' in initialView &&
-            typeof initialView.zoom === 'number'
-              ? initialView.zoom
-              : VIEWER_DEFAULTS.defaultZoom,
+          zoom: initialZoom(initialView),
         })
         .then(() => settle(true))
         .catch(() => settle(false));
@@ -524,7 +606,8 @@ export function PanoramaViewer({
 
     // Add new markers
     hotspots.forEach(hotspot => {
-      if (!hotspot.is_active) return;
+      // `position` is null when the stored position failed validation: nothing to place.
+      if (!hotspot.is_active || !hotspot.position) return;
       const markerId = escapeHtml(hotspot.id);
 
       const markerConfig: MarkerConfig & { draggable?: boolean } = {
@@ -543,10 +626,9 @@ export function PanoramaViewer({
       };
 
       // Set marker appearance based on type
-      switch (hotspot.type) {
-        case 'navigation': {
-          const label = escapeHtml(hotspot.title || '');
-          markerConfig.html = `
+      if (hotspot.type === 'navigation') {
+        const label = escapeHtml(hotspot.title || '');
+        markerConfig.html = `
             <div class="psv-nav-marker" role="button" tabindex="0" aria-label="${label || 'Go to room'}" data-marker-id="${markerId}">
               <span class="psv-nav-pulse" aria-hidden="true"></span>
               <span class="psv-nav-core" aria-hidden="true">
@@ -557,110 +639,17 @@ export function PanoramaViewer({
               ${label ? `<span class="psv-nav-label">${label}</span>` : ''}
             </div>
           `;
-          break;
-        }
-        case 'info':
-          markerConfig.html = `
-            <div class="psv-marker-info" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
-              width: ${safeSize(hotspot.icon_size)}px;
-              height: ${safeSize(hotspot.icon_size)}px;
-              background-color: ${safeColor(hotspot.icon_color, '#10b981')};
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              cursor: pointer;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              transition: transform 0.2s;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 16v-4M12 8h.01"/>
-              </svg>
-            </div>
-          `;
-          break;
-        case 'audio':
-          markerConfig.html = `
-            <div class="psv-marker-audio" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
-              width: ${safeSize(hotspot.icon_size)}px;
-              height: ${safeSize(hotspot.icon_size)}px;
-              background-color: ${safeColor(hotspot.icon_color, '#FF5733')};
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              cursor: pointer;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              transition: transform 0.2s;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-              </svg>
-            </div>
-          `;
-          break;
-        case 'video':
-          markerConfig.html = `
-            <div class="psv-marker-video" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
-              width: ${safeSize(hotspot.icon_size)}px;
-              height: ${safeSize(hotspot.icon_size)}px;
-              background-color: ${safeColor(hotspot.icon_color, '#ef4444')};
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              cursor: pointer;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              transition: transform 0.2s;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                <polygon points="5 3 19 12 5 21 5 3"/>
-              </svg>
-            </div>
-          `;
-          break;
-        case 'link':
-          markerConfig.html = `
-            <div class="psv-marker-link" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
-              width: ${safeSize(hotspot.icon_size)}px;
-              height: ${safeSize(hotspot.icon_size)}px;
-              background-color: ${safeColor(hotspot.icon_color, '#FF5733')};
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              cursor: pointer;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              transition: transform 0.2s;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-              </svg>
-            </div>
-          `;
-          break;
-        default:
-          markerConfig.html = `
-            <div class="psv-marker-default" role="button" tabindex="0" aria-label="${escapeHtml(hotspot.title || 'Hotspot')}" data-marker-id="${markerId}" style="
-              width: ${safeSize(hotspot.icon_size)}px;
-              height: ${safeSize(hotspot.icon_size)}px;
-              background-color: ${safeColor(hotspot.icon_color, '#f59e0b')};
-              border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              cursor: pointer;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-              transition: transform 0.2s;
-            ">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </div>
-          `;
+      } else {
+        const { className, defaultColor, iconPaths } =
+          PUCK_MARKERS[hotspot.type] ?? PUCK_MARKERS.default;
+        markerConfig.html = puckMarkerHtml({
+          className,
+          markerId,
+          label: escapeHtml(hotspot.title || 'Hotspot'),
+          size: safeSize(hotspot.icon_size),
+          color: safeColor(hotspot.icon_color, defaultColor),
+          iconPaths,
+        });
       }
 
       markersPluginRef.current?.addMarker(markerConfig);
@@ -672,12 +661,12 @@ export function PanoramaViewer({
       if (!hotspot) return;
 
       if (isEditor) {
-        onHotspotSelect?.(hotspot.id);
+        onHotspotSelectRef.current?.(hotspot.id);
       } else if (hotspot.type === 'navigation' && hotspot.target_scene_id) {
-        onSceneChange?.(hotspot.target_scene_id);
+        onSceneChangeRef.current?.(hotspot.target_scene_id);
       }
 
-      onHotspotClick?.(hotspot);
+      onHotspotClickRef.current?.(hotspot);
     };
 
     // Handle marker drag (editor mode only)
@@ -686,7 +675,7 @@ export function PanoramaViewer({
       marker?: { data?: unknown; position?: { yaw: number; pitch: number } };
     }) => {
       const hotspot = e.marker?.data as Hotspot;
-      if (!hotspot || !onHotspotDrag) return;
+      if (!hotspot || !onHotspotDragRef.current) return;
       if (!e.marker?.position) return;
 
       // Convert from radians (viewer) to degrees (API)
@@ -695,13 +684,13 @@ export function PanoramaViewer({
         pitch: e.marker.position.pitch,
       });
 
-      onHotspotDrag(hotspot.id, newPosition);
+      onHotspotDragRef.current(hotspot.id, newPosition);
     };
 
     markersPluginRef.current.addEventListener('select-marker', handleMarkerSelect);
 
     // Add drag listener in editor mode
-    if (isEditor && onHotspotDrag) {
+    if (isEditor && hasDragHandler) {
       // 'marker-dropped' is not part of the v5 markers-plugin event union, but
       // the plugin still emits it for draggable markers; cast to the event type.
       markersPluginRef.current.addEventListener(
@@ -722,16 +711,16 @@ export function PanoramaViewer({
       const markerId = markerEl.getAttribute('data-marker-id');
       const hotspot = hotspots.find(h => h.id === markerId);
       if (!hotspot) return;
-      if (isEditor) onHotspotSelect?.(hotspot.id);
+      if (isEditor) onHotspotSelectRef.current?.(hotspot.id);
       else if (hotspot.type === 'navigation' && hotspot.target_scene_id)
-        onSceneChange?.(hotspot.target_scene_id);
-      onHotspotClick?.(hotspot);
+        onSceneChangeRef.current?.(hotspot.target_scene_id);
+      onHotspotClickRef.current?.(hotspot);
     };
     container?.addEventListener('keydown', onMarkerKey);
 
     return () => {
       markersPluginRef.current?.removeEventListener('select-marker', handleMarkerSelect);
-      if (isEditor && onHotspotDrag) {
+      if (isEditor && hasDragHandler) {
         markersPluginRef.current?.removeEventListener(
           'marker-dropped' as MarkersEvents.MarkersPluginEvents['type'],
           handleMarkerDropped
@@ -739,15 +728,10 @@ export function PanoramaViewer({
       }
       container?.removeEventListener('keydown', onMarkerKey);
     };
-  }, [
-    hotspots,
-    isViewerReady,
-    isEditor,
-    onHotspotSelect,
-    onHotspotClick,
-    onSceneChange,
-    onHotspotDrag,
-  ]);
+    // The callbacks are read through refs: callers pass fresh inline arrows on
+    // every render (PublicTourPage, EmbedTourPage, TourEditPage), so depending
+    // on their identity tore down and re-added every marker each render.
+  }, [hotspots, isViewerReady, isEditor, hasDragHandler]);
 
   useEffect(() => {
     if (!containerRef.current) return;
