@@ -102,6 +102,22 @@ export function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Pre-fill identifier + channel from router state (e.g. RegisterPage's
+  // "Sign in instead" for an identifier that already has an account).
+  useEffect(() => {
+    const state = location.state as {
+      identifier?: string;
+      channel?: IdentifierChannel;
+    } | null;
+    if (state?.channel) {
+      setChannel(state.channel);
+    }
+    if (state?.identifier) {
+      identifierForm.setValue('identifier', state.identifier);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Surface Google-callback errors (?error=auth | ?error=not_staff).
   useEffect(() => {
     const msg = callbackErrorMessage(searchParams.get('error'));

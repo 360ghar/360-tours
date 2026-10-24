@@ -12,9 +12,9 @@ export function AuthLayout() {
         <div className="mx-auto w-full max-w-sm lg:w-96">
           {/* Logo */}
           <div className="mb-8">
-            <Link to="/" className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3" aria-label="360 Viewer home">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg gradient-primary">
-                <span className="text-xl font-bold text-white">3</span>
+                <img src="/logo-mark-white.png" alt="" className="h-6 w-6" draggable={false} />
               </div>
               <span className="text-xl font-bold text-[var(--color-text-primary)]">360 Viewer</span>
             </Link>

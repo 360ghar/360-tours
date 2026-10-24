@@ -18,3 +18,7 @@
 .claude/skills/*-workspace/
 .agents/skills/*-workspace/
 .playwright-mcp/
+
+# Python bytecode
+__pycache__/
+*.pyc

@@ -7,10 +7,10 @@ export type {
   IdentifierNextStep,
 } from './auth';
 export { toursApi } from './tours';
-export { collaborationApi } from './collaboration';
-export type { Collaborator, InviteCollaboratorInput } from './collaboration';
+export type { TourLikeCount, TourListParams } from './tours';
 export { usersApi } from './users';
 export { uploadApi } from './upload';
+export type { UploadOptions, MediaListParams, BatchDeleteResponse } from './upload';
 export { captureApi } from './capture';
 export { aiApi } from './ai';
 export { customDomainsApi } from './customDomains';
@@ -21,11 +21,25 @@ export type {
   CustomDomainSslStatus,
 } from './customDomains';
 export type {
-  SceneAnalysisResult,
-  HotspotSuggestion,
-  TourGenerationOptions,
-  DescriptionOptions,
-  ReelOptions,
-  ReelResult,
+  AIJobResponse,
+  AIJobResult,
   AIJobStatusResponse,
+  DescriptionOptions,
+  TourGenerationOptions,
+  TourGenerationResponse,
 } from './ai';
+export {
+  readDescriptions,
+  readHotspotSuggestions,
+  readSceneAnalysis,
+  readSpatialLinkSummary,
+  readTourGenerationResult,
+} from './aiResults';
+export type {
+  GeneratedTourSummary,
+  HotspotSuggestion,
+  SceneAnalysisResult,
+  SpatialLinkSummary,
+} from './aiResults';
+export { fetchAllPages, MAX_PAGE_LIMIT } from './pagination';
+export { parseApiError, describeFieldErrors } from './errors';
