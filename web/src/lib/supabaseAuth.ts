@@ -1,13 +1,30 @@
 import { createClient, type AuthChangeEvent, type Session } from '@supabase/supabase-js';
 import { STORAGE_KEYS, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from '@/constants';
 import { mapSupabaseAuthError, type AuthErrorContext } from '@/lib/authErrors';
+import { isSameOriginPath } from '@/utils/url';
 import type { AuthTokens } from '@/types';
 
+/**
+ * The user-facing message, with the original Supabase `status`, `code` and
+ * `__isAuthError` marker kept on the Error so callers can still tell a
+ * credential rejection (4xx) from a transient failure.
+ */
 function mappedError(error: unknown, context: AuthErrorContext = 'login'): Error {
-  return new Error(mapSupabaseAuthError(error, context));
+  const mapped = new Error(mapSupabaseAuthError(error, context)) as Error & {
+    status?: number;
+    code?: string;
+    __isAuthError?: boolean;
+  };
+  if (error && typeof error === 'object') {
+    const source = error as { status?: unknown; code?: unknown; __isAuthError?: unknown };
+    if (typeof source.status === 'number') mapped.status = source.status;
+    if (typeof source.code === 'string') mapped.code = source.code;
+    if (source.__isAuthError === true) mapped.__isAuthError = true;
+  }
+  return mapped;
 }
 
-export type SupabaseAuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED';
+export type SupabaseAuthEvent = 'INITIAL_SESSION' | 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED';
 
 export interface SupabaseSession extends AuthTokens {
   expires_at: number;
@@ -38,11 +55,22 @@ const supabase =
 
 let cachedSession: SupabaseSession | null = null;
 
-if (supabase) {
-  void supabase.auth.getSession().then(({ data }) => {
-    cachedSession = normalizeSession(data.session);
-  });
-}
+/**
+ * Resolves once the persisted session (if any) has been restored from
+ * storage on boot. Auth bootstrap (`authStore.checkAuth`) must await this
+ * before reading {@link getTokens} — otherwise the async restore can lose
+ * the race and a user with a valid stored session is silently treated as
+ * signed out on cold load.
+ */
+export const sessionReady: Promise<void> = supabase
+  ? supabase.auth.getSession().then(({ data }) => {
+      cachedSession = normalizeSession(data.session);
+    }).catch(() => {
+      // Storage/boot failure (e.g. privacy mode): treat as signed out rather
+      // than rejecting, which would strand checkAuth on an infinite spinner.
+      cachedSession = null;
+    })
+  : Promise.resolve();
 
 function nowEpochSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -77,7 +105,7 @@ export const OAUTH_NEXT_STORAGE_KEY = STORAGE_KEYS.OAUTH_NEXT;
  * `//host` strings that would escape the origin). Shared by stash/consume.
  */
 function isSafeSameSitePath(path: string | null | undefined): path is string {
-  return !!path && path.startsWith('/') && !path.startsWith('//');
+  return isSameOriginPath(path);
 }
 
 /**
@@ -125,6 +153,7 @@ export function consumeOAuthNext(urlNext?: string | null, fallback = '/'): strin
 }
 
 function mapEvent(event: AuthChangeEvent): SupabaseAuthEvent {
+  if (event === 'INITIAL_SESSION') return 'INITIAL_SESSION';
   if (event === 'SIGNED_OUT') return 'SIGNED_OUT';
   if (event === 'TOKEN_REFRESHED') return 'TOKEN_REFRESHED';
   return 'SIGNED_IN';

@@ -6,8 +6,6 @@ import { DateRange } from 'react-day-picker';
 import {
   ArrowLeft,
   Download,
-  TrendingUp,
-  TrendingDown,
   Eye,
   Users,
   Clock,
@@ -31,15 +29,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuLabel,
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-  Badge,
 } from '@/components/ui';
 import { toursApi } from '@/api';
 import { QUERY_KEYS, ROUTES } from '@/constants';
-import { formatCompactNumber } from '@/utils/format';
+import { formatCompactNumber, formatDateOnly } from '@/utils/format';
 import { downloadAnalyticsCSV, downloadAnalyticsJSON, formatDuration } from '@/utils/analytics';
 import { useToast } from '@/hooks/useToast';
 import {
@@ -72,13 +65,9 @@ interface StatCardProps {
   title: string;
   value: string | number;
   icon: React.ComponentType<{ className?: string }>;
-  change?: number;
-  changeLabel?: string;
 }
 
-function StatCard({ title, value, icon: Icon, change, changeLabel }: StatCardProps) {
-  const isPositive = change !== undefined && change >= 0;
-
+function StatCard({ title, value, icon: Icon }: StatCardProps) {
   return (
     <Card>
       <CardContent className="p-6">
@@ -86,25 +75,6 @@ function StatCard({ title, value, icon: Icon, change, changeLabel }: StatCardPro
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-primary-100)]">
             <Icon className="h-5 w-5 text-[var(--color-primary-600)]" />
           </div>
-          {change !== undefined && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant={isPositive ? 'success' : 'destructive'} className="text-xs">
-                    {isPositive ? (
-                      <TrendingUp className="mr-1 h-3 w-3" />
-                    ) : (
-                      <TrendingDown className="mr-1 h-3 w-3" />
-                    )}
-                    {Math.abs(change)}%
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{changeLabel || 'vs previous period'}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
         </div>
         <div className="mt-4">
           <p className="text-sm text-[var(--color-text-muted)]">{title}</p>
@@ -161,6 +131,9 @@ export function TourAnalyticsPage() {
     enabled: !!id,
   });
 
+  // The heatmap is the heaviest query on the page; load it only after the user
+  // expands the card (a deliberate gesture), not on mount.
+  const [heatmapExpanded, setHeatmapExpanded] = useState(false);
   const [heatmapSceneId, setHeatmapSceneId] = useState<string | undefined>();
 
   const { data: heatmapData } = useQuery({
@@ -171,7 +144,7 @@ export function TourAnalyticsPage() {
         start_date: dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined,
         end_date: dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined,
       }),
-    enabled: !!id,
+    enabled: !!id && heatmapExpanded,
   });
 
   const sceneViews = analytics?.scene_views;
@@ -470,12 +443,7 @@ export function TourAnalyticsPage() {
                     fontSize={12}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={value =>
-                      new Date(value).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })
-                    }
+                    tickFormatter={value => formatDateOnly(String(value), 'MMM d')}
                   />
                   <YAxis
                     stroke="var(--color-text-muted)"
@@ -489,14 +457,7 @@ export function TourAnalyticsPage() {
                       border: '1px solid var(--color-border)',
                       borderRadius: '8px',
                     }}
-                    labelFormatter={value =>
-                      new Date(value).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })
-                    }
+                    labelFormatter={value => formatDateOnly(String(value), 'EEEE, MMMM d, yyyy')}
                   />
                   <Area
                     type="monotone"
@@ -683,7 +644,19 @@ export function TourAnalyticsPage() {
       {!isAnalyticsError && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Interaction Heatmap</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle>Interaction Heatmap</CardTitle>
+              {!heatmapExpanded && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setHeatmapExpanded(true)}
+                  aria-expanded={false}
+                >
+                  Load heatmap
+                </Button>
+              )}
+            </div>
             {scenes && scenes.length > 0 && (
               <select
                 value={heatmapSceneId || ''}
@@ -700,74 +673,82 @@ export function TourAnalyticsPage() {
               </select>
             )}
           </CardHeader>
-          <CardContent>
-            <div className="h-[350px]">
-              {heatmapData?.heatmap && heatmapData.heatmap.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                    <XAxis
-                      type="number"
-                      dataKey="yaw"
-                      name="Yaw"
-                      domain={[-180, 180]}
-                      stroke="var(--color-text-muted)"
-                      fontSize={12}
-                      label={{
-                        value: 'Yaw (degrees)',
-                        position: 'bottom',
-                        offset: 0,
-                        style: { fill: 'var(--color-text-muted)', fontSize: 12 },
-                      }}
-                    />
-                    <YAxis
-                      type="number"
-                      dataKey="pitch"
-                      name="Pitch"
-                      domain={[-90, 90]}
-                      stroke="var(--color-text-muted)"
-                      fontSize={12}
-                      label={{
-                        value: 'Pitch (degrees)',
-                        angle: -90,
-                        position: 'insideLeft',
-                        style: { fill: 'var(--color-text-muted)', fontSize: 12 },
-                      }}
-                    />
-                    <ZAxis
-                      type="number"
-                      dataKey="intensity"
-                      range={[20, 400]}
-                      name="Interactions"
-                    />
-                    <RechartsTooltip
-                      cursor={{ strokeDasharray: '3 3' }}
-                      contentStyle={{
-                        backgroundColor: 'var(--color-surface-elevated)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value, name) => {
-                        const numericValue = typeof value === 'number' ? value : 0;
-                        if (name === 'Yaw') return [`${numericValue.toFixed(1)}°`, 'Yaw'];
-                        if (name === 'Pitch') return [`${numericValue.toFixed(1)}°`, 'Pitch'];
-                        return [numericValue, 'Interactions'];
-                      }}
-                    />
-                    <Scatter
-                      data={heatmapData.heatmap}
-                      fill="var(--color-primary-500)"
-                      fillOpacity={0.6}
-                    />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-[var(--color-text-muted)]">
-                  No heatmap data available yet
-                </div>
-              )}
-            </div>
-          </CardContent>
+          {heatmapExpanded ? (
+            <CardContent>
+              <div className="h-[350px]">
+                {heatmapData?.heatmap && heatmapData.heatmap.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                      <XAxis
+                        type="number"
+                        dataKey="yaw"
+                        name="Yaw"
+                        domain={[-180, 180]}
+                        stroke="var(--color-text-muted)"
+                        fontSize={12}
+                        label={{
+                          value: 'Yaw (degrees)',
+                          position: 'bottom',
+                          offset: 0,
+                          style: { fill: 'var(--color-text-muted)', fontSize: 12 },
+                        }}
+                      />
+                      <YAxis
+                        type="number"
+                        dataKey="pitch"
+                        name="Pitch"
+                        domain={[-90, 90]}
+                        stroke="var(--color-text-muted)"
+                        fontSize={12}
+                        label={{
+                          value: 'Pitch (degrees)',
+                          angle: -90,
+                          position: 'insideLeft',
+                          style: { fill: 'var(--color-text-muted)', fontSize: 12 },
+                        }}
+                      />
+                      <ZAxis
+                        type="number"
+                        dataKey="count"
+                        range={[20, 400]}
+                        name="Interactions"
+                      />
+                      <RechartsTooltip
+                        cursor={{ strokeDasharray: '3 3' }}
+                        contentStyle={{
+                          backgroundColor: 'var(--color-surface-elevated)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: '8px',
+                        }}
+                        formatter={(value, name) => {
+                          const numericValue = typeof value === 'number' ? value : 0;
+                          if (name === 'Yaw') return [`${numericValue.toFixed(1)}°`, 'Yaw'];
+                          if (name === 'Pitch') return [`${numericValue.toFixed(1)}°`, 'Pitch'];
+                          return [numericValue, 'Interactions'];
+                        }}
+                      />
+                      <Scatter
+                        data={heatmapData.heatmap}
+                        fill="var(--color-primary-500)"
+                        fillOpacity={0.6}
+                      />
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-[var(--color-text-muted)]">
+                    No heatmap data available yet
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          ) : (
+            <CardContent>
+              <div className="flex h-[350px] items-center justify-center text-[var(--color-text-muted)]">
+                Expand to load the interaction heatmap for this date range.
+              </div>
+            </CardContent>
+          )}
         </Card>
       )}
 

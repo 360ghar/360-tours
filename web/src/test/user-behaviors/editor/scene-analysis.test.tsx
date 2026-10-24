@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '../../test-utils';
 import { SceneAnalysis } from '@/components/features/ai/SceneAnalysis';
+import { makeScene } from '@/test/fixtures';
 import type { Scene } from '@/types';
 
 const aiApiMock = vi.hoisted(() => ({
@@ -9,9 +10,11 @@ const aiApiMock = vi.hoisted(() => ({
   cancelJob: vi.fn(),
 }));
 
-vi.mock('@/api', () => ({
-  aiApi: aiApiMock,
-}));
+// Keep the real result readers and error helpers; replace only the network client.
+vi.mock('@/api', async importActual => {
+  const actual = await importActual<typeof import('@/api')>();
+  return { ...actual, aiApi: aiApiMock };
+});
 
 vi.mock('@/hooks', async importActual => {
   const actual = await importActual<typeof import('@/hooks')>();
@@ -25,21 +28,11 @@ vi.mock('@/hooks', async importActual => {
 });
 
 const scenes: Scene[] = [
-  {
+  makeScene({
     id: 'scene-1',
-    tour_id: 'tour-1',
     title: 'Living Room',
-    description: null,
     image_url: 'https://example.com/living.jpg',
-    thumbnail_url: null,
-    vr_url: null,
-    order_index: 0,
-    metadata: undefined,
-    is_processed: true,
-    processing_error: null,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  },
+  }),
 ];
 
 describe('AI scene analysis behavior', () => {
@@ -54,16 +47,17 @@ describe('AI scene analysis behavior', () => {
     aiApiMock.getJobStatus.mockResolvedValue({
       job: {
         id: 'job-1',
-        job_type: 'scene_detection',
+        job_type: 'analyze_scenes',
         status: 'completed',
         progress: 100,
-        input_data: null,
-        result_data: null,
+        tour_id: 'tour-1',
+        scene_id: null,
         error_message: null,
-        estimated_duration: null,
-        actual_duration: null,
+        started_at: '2024-01-01T00:00:00Z',
+        completed_at: '2024-01-01T00:00:05Z',
+        actual_duration: 5,
         created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:05Z',
       },
       result: {
         analysis: [

@@ -12,7 +12,6 @@ const features = [
   'Advanced analytics & insights',
   'Public sharing & embedding',
   'API access',
-  'Team collaboration',
   'Priority community support',
 ];
 
