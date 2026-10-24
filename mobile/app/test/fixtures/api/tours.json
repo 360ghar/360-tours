@@ -1,0 +1,310 @@
+{
+  "analytics": {
+    "avg_session_duration": 52.5,
+    "country_breakdown": {},
+    "daily_views": [
+      {
+        "date": "2026-10-14",
+        "views": 12
+      }
+    ],
+    "device_breakdown": {
+      "desktop": 0,
+      "mobile": 0,
+      "tablet": 0,
+      "vr": 0
+    },
+    "hotspot_clicks": {
+      "h-1": 6,
+      "h-2": 4
+    },
+    "scene_views": {
+      "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001": 30,
+      "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1002": 11
+    },
+    "session_durations": [
+      30.0,
+      75.5,
+      52.0
+    ],
+    "share_breakdown": {},
+    "total_likes": 3,
+    "total_shares": 2,
+    "total_views": 41,
+    "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+    "unique_views": 30
+  },
+  "created": {
+    "archived_at": null,
+    "created_at": "2026-10-15T09:30:00Z",
+    "deleted_at": null,
+    "description": null,
+    "id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+    "is_featured": false,
+    "is_public": false,
+    "like_count": 0,
+    "published_at": null,
+    "scene_count": null,
+    "settings": null,
+    "share_count": 0,
+    "short_code": null,
+    "status": "draft",
+    "thumbnail_url": null,
+    "title": "Flat 4B, Sector 54",
+    "updated_at": "2026-10-15T09:30:00Z",
+    "user_id": 7,
+    "view_count": 0,
+    "visibility": "unlisted"
+  },
+  "detail": {
+    "archived_at": null,
+    "created_at": "2026-10-15T09:30:00Z",
+    "deleted_at": null,
+    "description": null,
+    "floor_plans": [
+      {
+        "created_at": "2026-10-15T09:30:00Z",
+        "floor_number": 1,
+        "id": "fp-1",
+        "image_url": "https://res.cloudinary.com/demo/image/upload/tours/3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11/plan-1",
+        "markers": [
+          {
+            "label": "Living room",
+            "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+            "x": 40.5,
+            "y": 22.0
+          }
+        ],
+        "name": "Ground floor",
+        "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+        "updated_at": "2026-10-15T09:30:00Z"
+      }
+    ],
+    "id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+    "is_featured": false,
+    "is_public": false,
+    "like_count": 0,
+    "main_scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+    "published_at": null,
+    "scene_count": 2,
+    "scenes": [
+      {
+        "created_at": "2026-10-15T09:30:00Z",
+        "description": null,
+        "hotspots": [
+          {
+            "content": null,
+            "created_at": "2026-10-15T09:30:00Z",
+            "custom_data": {},
+            "description": null,
+            "icon": null,
+            "icon_color": null,
+            "icon_name": null,
+            "icon_size": 32,
+            "id": "h-1",
+            "is_active": true,
+            "order_index": 0,
+            "position": {
+              "pitch": -12.25,
+              "radius": null,
+              "yaw": 45.5
+            },
+            "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+            "target_scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1002",
+            "title": "Kitchen",
+            "type": "navigation",
+            "updated_at": "2026-10-15T09:30:00Z"
+          }
+        ],
+        "id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+        "image_url": "https://res.cloudinary.com/demo/image/upload/tours/3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11/originals/6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+        "is_processed": true,
+        "order_index": 0,
+        "processing_error": null,
+        "scene_metadata": null,
+        "thumbnail_url": null,
+        "title": "Living room",
+        "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+        "updated_at": "2026-10-15T09:30:00Z",
+        "vr_url": null
+      },
+      {
+        "created_at": "2026-10-15T09:30:00Z",
+        "description": null,
+        "hotspots": [],
+        "id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1002",
+        "image_url": "https://res.cloudinary.com/demo/image/upload/tours/3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11/originals/6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1002",
+        "is_processed": true,
+        "order_index": 1,
+        "processing_error": null,
+        "scene_metadata": null,
+        "thumbnail_url": null,
+        "title": "Kitchen",
+        "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+        "updated_at": "2026-10-15T09:30:00Z",
+        "vr_url": null
+      }
+    ],
+    "settings": null,
+    "share_count": 0,
+    "short_code": "aB3xZ9",
+    "status": "published",
+    "thumbnail_url": null,
+    "title": "Flat 4B, Sector 54",
+    "updated_at": "2026-10-15T09:30:00Z",
+    "user_id": 7,
+    "view_count": 0,
+    "visibility": "unlisted"
+  },
+  "detail_empty": {
+    "archived_at": null,
+    "created_at": "2026-10-15T09:30:00Z",
+    "deleted_at": null,
+    "description": null,
+    "floor_plans": [],
+    "id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+    "is_featured": false,
+    "is_public": false,
+    "like_count": 0,
+    "main_scene_id": null,
+    "published_at": null,
+    "scene_count": null,
+    "scenes": [],
+    "settings": null,
+    "share_count": 0,
+    "short_code": null,
+    "status": "draft",
+    "thumbnail_url": null,
+    "title": "Flat 4B, Sector 54",
+    "updated_at": "2026-10-15T09:30:00Z",
+    "user_id": 7,
+    "view_count": 0,
+    "visibility": "unlisted"
+  },
+  "detail_public": {
+    "archived_at": null,
+    "created_at": "2026-10-15T09:30:00Z",
+    "deleted_at": null,
+    "description": null,
+    "floor_plans": [
+      {
+        "created_at": "2026-10-15T09:30:00Z",
+        "floor_number": 1,
+        "id": "fp-1",
+        "image_url": "https://res.cloudinary.com/demo/image/upload/tours/3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11/plan-1",
+        "markers": [
+          {
+            "label": "Living room",
+            "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+            "x": 40.5,
+            "y": 22.0
+          }
+        ],
+        "name": "Ground floor",
+        "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+        "updated_at": "2026-10-15T09:30:00Z"
+      }
+    ],
+    "id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+    "is_featured": false,
+    "is_public": false,
+    "like_count": 0,
+    "main_scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+    "published_at": null,
+    "scene_count": null,
+    "scenes": [
+      {
+        "created_at": "2026-10-15T09:30:00Z",
+        "description": null,
+        "hotspots": [
+          {
+            "content": null,
+            "created_at": "2026-10-15T09:30:00Z",
+            "custom_data": {},
+            "description": null,
+            "icon": null,
+            "icon_color": null,
+            "icon_name": null,
+            "icon_size": 32,
+            "id": "h-1",
+            "is_active": true,
+            "order_index": 0,
+            "position": {
+              "pitch": -12.25,
+              "radius": null,
+              "yaw": 45.5
+            },
+            "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+            "target_scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1002",
+            "title": "Kitchen",
+            "type": "navigation",
+            "updated_at": "2026-10-15T09:30:00Z"
+          }
+        ],
+        "id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+        "image_url": "https://res.cloudinary.com/demo/image/upload/tours/3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11/originals/6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+        "is_processed": true,
+        "order_index": 0,
+        "scene_metadata": null,
+        "thumbnail_url": null,
+        "title": "Living room",
+        "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+        "updated_at": "2026-10-15T09:30:00Z",
+        "vr_url": null
+      }
+    ],
+    "settings": null,
+    "share_count": 0,
+    "short_code": "aB3xZ9",
+    "status": "published",
+    "thumbnail_url": null,
+    "title": "Flat 4B, Sector 54",
+    "updated_at": "2026-10-15T09:30:00Z",
+    "view_count": 0,
+    "visibility": "unlisted"
+  },
+  "published": {
+    "archived_at": null,
+    "created_at": "2026-10-15T09:30:00Z",
+    "deleted_at": null,
+    "description": null,
+    "id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+    "is_featured": false,
+    "is_public": false,
+    "like_count": 0,
+    "published_at": "2026-10-15T09:31:10Z",
+    "scene_count": null,
+    "settings": null,
+    "share_count": 0,
+    "short_code": "aB3xZ9",
+    "status": "published",
+    "thumbnail_url": null,
+    "title": "Flat 4B, Sector 54",
+    "updated_at": "2026-10-15T09:30:00Z",
+    "user_id": 7,
+    "view_count": 0,
+    "visibility": "unlisted"
+  },
+  "published_no_short_code": {
+    "archived_at": null,
+    "created_at": "2026-10-15T09:30:00Z",
+    "deleted_at": null,
+    "description": null,
+    "id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+    "is_featured": false,
+    "is_public": false,
+    "like_count": 0,
+    "published_at": null,
+    "scene_count": null,
+    "settings": null,
+    "share_count": 0,
+    "short_code": null,
+    "status": "published",
+    "thumbnail_url": null,
+    "title": "Flat 4B, Sector 54",
+    "updated_at": "2026-10-15T09:30:00Z",
+    "user_id": 7,
+    "view_count": 0,
+    "visibility": "unlisted"
+  }
+}

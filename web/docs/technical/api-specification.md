@@ -1,6 +1,6 @@
 # API Specification (v1)
 
-This is the canonical REST API contract for the 360 Tours Platform.
+This is the narrative REST API design for the 360 Tours Platform. The machine-readable contract is `openapi/openapi.json` (copied from the backend `docs/openapi.json`); where a section below differs from it, the OpenAPI document wins. The rules that the generated types do not show are in `api-implementation-notes.md`.
 
 Shared types and conventions are defined in `../00-conventions.md`.
 
@@ -219,9 +219,9 @@ Tour schema is defined in `../00-conventions.md`.
 
 ### List tours
 
-`GET /api/v1/tours?page=1&page_size=20&status=draft|published|archived&search=...`
+`GET /api/v1/tours?cursor=...&limit=20&include_total=false&status=draft|published|archived&search=...`
 
-Response (200): pagination envelope of `Tour`.
+Response (200): `CursorPage` of `Tour` (`{items, next_cursor, has_more, limit, total}`; `limit` at most 100; `total` is null unless `include_total=true`).
 
 ### Create tour
 
@@ -236,13 +236,15 @@ Request:
 }
 ```
 
+A new tour is a draft: `status` is not accepted.
+
 Response (201): `Tour`
 
 ### Get tour
 
 `GET /api/v1/tours/{tour_id}`
 
-Response (200): `Tour` (includes `scenes` array)
+Response (200): the owner gets `Tour` with `floor_plans`, `main_scene_id` and a first page of `scenes` (read the full list from the scenes route). Another caller gets the public shape of a published tour; a draft or private tour of another user is a 404.
 
 ### Update tour
 
@@ -253,9 +255,9 @@ Request (example):
 { "title": "Updated title", "settings": { "enable_vr": true } }
 ```
 
-Response (200): `Tour`
+`status` is not accepted: use publish and unpublish. `settings` is deep-merged; a key set to `null` is removed.
 
-> `PUT /api/v1/tours/{tour_id}` is also accepted as a legacy alias.
+Response (200): `Tour`
 
 ### Delete tour
 
@@ -282,7 +284,7 @@ Scene schema is defined in `../00-conventions.md`.
 
 `GET /api/v1/tours/{tour_id}/scenes`
 
-Response (200): array of `Scene` (ordered by `order_index`).
+Response (200): `CursorPage` of `Scene` (ordered by `order_index`; `limit` 1 to 100, default 20; follow `next_cursor`).
 
 ### Create a scene
 
@@ -293,18 +295,13 @@ Request:
 {
   "title": "Living Room",
   "image_url": "https://... (uploaded image URL)",
-  "thumbnail_url": "https://... (optional)",
-  "order_index": 0
+  "thumbnail_url": "https://... (optional)"
 }
 ```
 
+The server appends the scene (no `order_index`); order scenes with the reorder route. The metadata key is `scene_metadata`.
+
 Response (201): `Scene`
-
-### Get a scene
-
-`GET /api/v1/scenes/{scene_id}`
-
-Response (200): `Scene`
 
 ### Update scene
 
@@ -312,12 +309,12 @@ Response (200): `Scene`
 
 Request (example):
 ```json
-{ "title": "Bedroom", "metadata": { "initial_view": { "yaw": 10, "pitch": 0 } } }
+{ "title": "Bedroom", "scene_metadata": { "initial_view": { "yaw": 10, "pitch": 0 } } }
 ```
 
-Response (200): `Scene`
+`scene_metadata` is deep-merged; a key set to `null` is removed.
 
-> `PUT /api/v1/scenes/{scene_id}` is also accepted as a legacy alias.
+Response (200): `Scene`
 
 ### Delete scene
 
@@ -332,9 +329,7 @@ Request:
 { "scene_ids": ["scene1", "scene2", "scene3"] }
 ```
 
-Response (200): array of `Scene` (updated order)
-
-> `PUT /api/v1/tours/{tour_id}/scenes/reorder` is also accepted as a legacy alias.
+Response (200): `CursorPage` of `Scene` (updated order)
 
 ## Hotspots (MVP)
 
@@ -494,12 +489,19 @@ Request:
   "event_type": "scene_view",
   "session_id": "string",
   "scene_id": "string",
-  "hotspot_id": "string",
-  "event_data": { "referrer": "https://example.com" }
+  "event_data": { "yaw": 12.5, "pitch": -3 }
 }
 ```
 
-Response (200): `{ "status": "ok" }`
+`event_type` is one of `scene_view`, `hotspot_click`, `share`, `fullscreen_enter`, `fullscreen_exit`, `vr_enter`, `vr_exit`, `session_start`, `session_end`, `session_duration`. A `scene_view` needs `scene_id` and numeric `event_data.yaw` and `event_data.pitch`. The body is required; there are no query keys.
+
+Response (204): no body.
+
+### Tour heatmap
+
+`GET /api/v1/tours/{tour_id}/heatmap?scene_id=...&start_date=...&end_date=...` (owner only)
+
+Response (200): `{ "tour_id": "string", "heatmap": [{ "scene_id": "string", "yaw": 10, "pitch": -5, "intensity": 0.4, "count": 3 }] }`
 
 ### Tour analytics summary
 
@@ -524,141 +526,90 @@ Response (200):
 
 ## AI jobs
 
-AI job schema is defined in `../00-conventions.md`.
+All AI job routes require authentication. A job is `AIJobBase`: `id`, `job_type`, `status`, `progress`, `tour_id`, `scene_id`, `error_message`, `started_at`, `completed_at`, `created_at`, `updated_at`, `actual_duration`.
 
-### Create a job
-
-`POST /api/v1/ai/jobs`
-
-Request:
-```json
-{ "job_type": "hotspot_suggestions", "tour_id": "string", "input": {} }
-```
-
-Response (201): `AIJob`
-
-### Get job
-
-`GET /api/v1/ai/jobs/{job_id}` → Response (200): `AIJob`
-
-### List jobs
-
-`GET /api/v1/ai/jobs?page=1&page_size=20&status=queued|processing|completed|failed`
-
-Response (200): pagination envelope of `AIJob`.
-
-### Cancel job
-
-`POST /api/v1/ai/jobs/{job_id}/cancel` → Response (204)
+- `status` is `pending`, `processing`, `completed`, `failed` or `cancelled`. The last three are final.
+- `job_type` is one of `analyze_scene`, `analyze_scenes`, `generate_description`, `generate_descriptions`, `generate_tour`, `optimize_tour`, `spatial_connect`, `analyze_floor_plan`, `suggest_hotspots`, `suggest_tour_hotspots`, `panorama_stitch`. It is `null` when the stored value is outside this list.
 
 ### Generate tour (multipart)
 
 `POST /api/v1/ai/tours/generate`
 
-Request: `multipart/form-data` with image files and tour metadata.
+Request: `multipart/form-data` with `images` (files) and the optional fields `title`, `description`, `generate_titles`, `suggest_hotspots`, `generate_descriptions`, `spatial`, `apply_to_scenes`, `language`. Unknown fields are not read. The client always sends `spatial`: its server default decides how hotspots are placed.
 
-Response (201): `AIJob`
+Response (200): `{ "job": AIJobBase, "tour_id": "string", "scene_ids": ["string"] }`
 
-### Apply scene analysis
+### Analyze scenes
 
-`POST /api/v1/ai/jobs/{job_id}/apply-scenes`
+`POST /api/v1/ai/tours/{tour_id}/analyze` → `{ "job": AIJobBase }`
 
-Response (200): updated `Scene[]`
+### Suggest hotspots for a scene
 
-### Apply hotspot suggestions
+`POST /api/v1/ai/scenes/{scene_id}/hotspots` → `{ "job": AIJobBase }`
 
-`POST /api/v1/ai/jobs/{job_id}/apply-hotspots`
+### Generate descriptions
 
-Response (200): updated `Hotspot[]`
+`POST /api/v1/ai/tours/{tour_id}/descriptions` (optional `DescriptionOptions` body) → `{ "job": AIJobBase }`
 
-### Generate 360 reel
+### Get job
 
-`POST /api/v1/ai/tours/{tour_id}/reel`
+`GET /api/v1/ai/jobs/{job_id}` → `{ "job": AIJobBase, "result": object | null }`
 
-Renders the tour's panoramas into a vertical 9:16 "tiny planet" reel video (see `../features/reel-generation.md`).
+`result` is the model of the job type. A finished `generate_tour` job returns `{ "tour_id", "tour", "scenes": [...], "generated": [...], "created_hotspots": [...] }`; an `analyze_scenes` job returns `{ "analysis": [...] }`; a `suggest_hotspots` job returns `{ "hotspots": [...] }`.
 
-Request (all fields optional):
-```json
-{
-  "scene_ids": ["scene1", "scene2"],
-  "scene_duration": 3,
-  "transition_duration": 0.5,
-  "rotation_degrees": 120
-}
-```
+### Cancel job
 
-- `scene_ids`: ordered list of the tour's scene ids to include; defaults to all scenes in `order_index` order.
-- `scene_duration`: seconds per scene, `2`–`6` (default `3`).
-- `transition_duration`: crossfade seconds between scenes, `0`–`1` (default `0.5`).
-- `rotation_degrees`: yaw rotation per scene, `0`–`360` (default `120`).
+`POST /api/v1/ai/jobs/{job_id}/cancel` → Response (200): `{ "job": AIJobBase, "result": object | null }`. Response (409) `JOB_NOT_CANCELLABLE` when the job already ended.
 
-Response (200): standard `AIJobResponse` (`{ "job": AIJob }`) with `job_type: "generate_reel"`.
-
-Track progress via the existing `GET /api/v1/ai/jobs/{job_id}` and the WebSocket `/ws/jobs/{job_id}?token=...`.
-
-Completed job `result`:
-```json
-{
-  "tour_id": "string",
-  "video_url": "https://.../tours/{tour_id}/reels/{job_id}.mp4",
-  "thumbnail_url": "https://.../tours/{tour_id}/reels/{job_id}.jpg",
-  "duration_seconds": 24.5,
-  "scene_count": 8,
-  "width": 1080,
-  "height": 1920
-}
-```
-
-Limits: at most 10 scenes per reel and ~60 seconds total (`scene_duration * scene_count`); scenes beyond either cap are silently dropped rather than rejected.
-
-Errors:
-- `400` — the tour has no scenes, or `scene_ids` references scenes not in the tour
-- `403` — the tour is not owned by the caller
-- `404` — tour not found
-- `422` — option values outside the allowed ranges
-- `503` — video rendering unavailable (`ffmpeg` is not installed on the server)
+There is no job list route, no reel route and no `apply-*` route.
 
 ## WebSocket endpoints
 
-WebSocket endpoints are mounted at the server root (no `/api/v1` prefix). Authentication is via token query parameter.
+WebSocket endpoints are mounted at the server root (no `/api/v1` prefix). The token is never sent in the URL: after the socket opens, the first frame the client sends is
+
+```json
+{ "type": "auth", "token": "<access_token>" }
+```
+
+The server closes the socket with code `4001` when that frame is missing or the token is not valid, and with `4004` when a job does not exist or is not the caller's. A client does not reconnect after `4001` or `4004`. The client sends the text `ping` every 25 seconds; the server answers `pong`.
 
 ### Job progress
 
-`ws(s)://<host>/ws/jobs/{job_id}?token=<access_token>`
+`ws(s)://<host>/ws/jobs/{job_id}`
 
-Messages (JSON):
+Frames (JSON), one `job_update` per state change:
 ```json
 {
-  "type": "job_update | connected | heartbeat | error",
+  "type": "job_update",
   "job_id": "string",
   "data": {
-    "status": "processing | completed | failed",
+    "status": "pending | processing | completed | failed | cancelled",
     "progress": 50,
-    "result": {},
-    "error_message": "string"
+    "error_message": "string | null",
+    "result": {}
   }
 }
 ```
-
-The client sends `ping` every 25 seconds; the server responds with `pong`.
+`connected` and `heartbeat` frames also arrive (`{"type": "connected", "message": "..."}`).
 
 ### User notifications
 
-`ws(s)://<host>/ws/user?token=<access_token>`
+`ws(s)://<host>/ws/user`
 
-Messages (JSON):
+Frames (JSON):
 ```json
 {
   "type": "notification",
-  "data": { ... }
+  "data": {
+    "id": "string",
+    "type": "string",
+    "title": "string",
+    "message": "string",
+    "created_at": "2026-01-01T00:00:00Z"
+  }
 }
 ```
-
-### Tour collaboration (scaffolded)
-
-`ws(s)://<host>/ws/tours/{tour_id}?token=<access_token>`
-
-Reserved for future real-time collaboration features.
+A finished or failed AI job is also sent here. There is no per-tour socket.
 
 ## Social share previews
 
@@ -668,16 +619,9 @@ The backend provides server-rendered HTML for link unfurling:
 
 Renders Open Graph + Twitter Card meta tags, then redirects human visitors to the viewer.
 
-## Error codes (canonical)
+## Errors
 
-The backend SHOULD use stable `error.code` values. Recommended codes:
-- `unauthorized`
-- `forbidden`
-- `not_found`
-- `validation_failed`
-- `rate_limited`
-- `conflict`
-- `internal`
+Every non-2xx JSON body is `{ "error": { "code": "string", "message": "string", "details": {} } }`. `details` is absent when it is empty. A 422 has `code` `VALIDATION_ERROR` and `details.fields`, a list of `{ "field": "body.title", "msg": "...", "type": "..." }` (`field` keeps its source prefix: `body`, `query`, `path`); `details.fields` is always present on a 422 and can be empty. Branch on `code`, not on `message`. Examples: `VALIDATION_ERROR`, `INVALID_CURSOR`, `RATE_LIMIT_EXCEEDED`, `TOKEN_INVALID`, `USER_INACTIVE`, `JOB_NOT_CANCELLABLE`, `FOLDER_TYPE_NOT_ALLOWED`, `TOUR_ID_REQUIRED`. A 429 and a 503 carry `Retry-After`.
 
 **Document Links**:
 - [Architecture](architecture.md) ← Previous: System architecture
