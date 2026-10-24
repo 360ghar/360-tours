@@ -43,6 +43,8 @@ Example:
 
 ### URL parameters
 
+The embed generator (`src/utils/embedCode.ts`) emits boolean params as lowercase `true|false` (URLSearchParams format; the page parser also accepts `1/0`). Its default snippet is pinned byte-for-byte in the cross-app contract fixture `docs/embed-parity-golden.html` (repo root), asserted by both the web and mobile unit suites — see root `AGENTS.md`.
+
 - `scene`: initial scene id
 - `autoplay`: `true|false`
 - `navbar`: `true|false`

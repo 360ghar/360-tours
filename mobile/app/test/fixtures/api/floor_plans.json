@@ -1,0 +1,52 @@
+{
+  "list_last_page": {
+    "has_more": false,
+    "items": [
+      {
+        "created_at": "2026-10-15T09:30:00Z",
+        "floor_number": 2,
+        "id": "fp-2",
+        "image_url": "https://res.cloudinary.com/demo/image/upload/tours/3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11/plan-1",
+        "markers": [
+          {
+            "label": "Living room",
+            "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+            "x": 40.5,
+            "y": 22.0
+          }
+        ],
+        "name": "First floor",
+        "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+        "updated_at": "2026-10-15T09:30:00Z"
+      }
+    ],
+    "limit": 100,
+    "next_cursor": null,
+    "total": null
+  },
+  "list_page": {
+    "has_more": true,
+    "items": [
+      {
+        "created_at": "2026-10-15T09:30:00Z",
+        "floor_number": 1,
+        "id": "fp-1",
+        "image_url": "https://res.cloudinary.com/demo/image/upload/tours/3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11/plan-1",
+        "markers": [
+          {
+            "label": "Living room",
+            "scene_id": "6b1d2f10-5b5e-4c0e-9d0e-0a1f6a7c1001",
+            "x": 40.5,
+            "y": 22.0
+          }
+        ],
+        "name": "Ground floor",
+        "tour_id": "3f0c7a52-6a77-4a46-8f37-2c1d9e7b0a11",
+        "updated_at": "2026-10-15T09:30:00Z"
+      }
+    ],
+    "limit": 100,
+    "next_cursor": "eyJrIjpbMSwiZnAtMSJdLCJmIjoiYWJjIn0",
+    "total": null
+  }
+}

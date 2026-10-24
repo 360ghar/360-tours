@@ -36,7 +36,6 @@ This documentation is now organized around core delivery quality:
 - `features/analytics.md`
 - `features/floor-plan-integration.md`
 - `features/branding-whitelabel.md`
-- `features/reel-generation.md`
 
 ### AI
 - `ai-features/README.md`

@@ -12,7 +12,12 @@ vi.mock('@/api', () => ({
   },
 }));
 
-import { uploadSceneFile, uploadSceneFiles, validateSceneUploadFile } from '@/lib/sceneUpload';
+import {
+  canContinueToEditor,
+  uploadSceneFile,
+  uploadSceneFiles,
+  validateSceneUploadFile,
+} from '@/lib/sceneUpload';
 
 const createImageFile = (name: string) => new File(['image-bytes'], name, { type: 'image/jpeg' });
 
@@ -30,7 +35,7 @@ describe('sceneUpload helper', () => {
     uploadFileMock.mockReset();
   });
 
-  it('uploads to the shared scene folder and creates a scene from the file name', async () => {
+  it('uploads a panorama as tour_original with the tour id and creates a scene from the file name', async () => {
     uploadFileMock.mockResolvedValue({ public_url: 'https://cdn.example.com/panorama.jpg' });
     createSceneMock.mockResolvedValue({ id: 'scene-1' });
 
@@ -39,7 +44,8 @@ describe('sceneUpload helper', () => {
     expect(uploadFileMock).toHaveBeenCalledWith(
       expect.any(File),
       expect.objectContaining({
-        folder: 'scenes',
+        folderType: 'tour_original',
+        tourId: 'tour-1',
         visibility: 'public',
       })
     );
@@ -109,5 +115,23 @@ describe('sceneUpload helper', () => {
         error: expect.stringContaining('Invalid file type'),
       })
     );
+  });
+
+  it('blocks Continue to Editor until at least one scene upload succeeds', () => {
+    expect(canContinueToEditor([])).toBe(false);
+    expect(canContinueToEditor([{ status: 'error' }])).toBe(false);
+    expect(canContinueToEditor([{ status: 'pending' }])).toBe(false);
+    expect(
+      canContinueToEditor([
+        { status: 'completed' },
+        { status: 'uploading' },
+      ])
+    ).toBe(false);
+    expect(
+      canContinueToEditor([
+        { status: 'completed' },
+        { status: 'error' },
+      ])
+    ).toBe(true);
   });
 });
