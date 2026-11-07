@@ -16,6 +16,8 @@ import { ProtectedRoute } from '@/components/features/ProtectedRoute';
 
 // Landing page (eagerly loaded — first paint)
 import { HomePage } from '@/pages/HomePage';
+import { BestPage } from '@/pages/BestPage';
+import { BEST_PAGES } from '@/content/bestPages';
 
 // Auth Pages (eagerly loaded — common entry point)
 import { LoginPage } from '@/pages/auth/LoginPage';
@@ -126,6 +128,15 @@ export const router = createBrowserRouter([
       </RootRedirect>
     ),
     children: [{ index: true, element: <HomePage /> }],
+  },
+
+  // "Best X" comparison pages (public, static HTML at build time)
+  {
+    element: <PublicLayout />,
+    children: BEST_PAGES.map(page => ({
+      path: `/${page.slug}`,
+      element: <BestPage page={page} />,
+    })),
   },
 
   // Auth routes

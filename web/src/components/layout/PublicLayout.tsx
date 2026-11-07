@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Moon, Sun, Monitor, Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ROUTES } from '@/constants';
+import { BEST_PAGES } from '@/content/bestPages';
 import { useUIStore } from '@/stores';
 import { cn } from '@/utils';
 
@@ -265,6 +266,29 @@ export function PublicLayout() {
                     Pricing
                   </a>
                 </li>
+              </ul>
+            </div>
+
+            {/* Guides */}
+            <div>
+              <h4
+                className="text-sm font-semibold uppercase tracking-wider text-white/70"
+                style={{ fontFamily: 'var(--font-body)' }}
+              >
+                Guides
+              </h4>
+              <ul className="mt-4 space-y-3">
+                {BEST_PAGES.map(page => (
+                  <li key={page.slug}>
+                    <Link
+                      to={`/${page.slug}`}
+                      className="text-sm text-white/50 hover:text-white transition-colors"
+                      style={{ fontFamily: 'var(--font-body)' }}
+                    >
+                      {page.term}
+                    </Link>
+                  </li>
+                ))}
               </ul>
             </div>
 

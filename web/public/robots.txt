@@ -1,0 +1,96 @@
+# Public pages are open to all crawlers, including AI crawlers.
+# App-only paths are blocked in every group below. A crawler that has its own
+# group ignores the * group, so each group repeats the same Disallow lines.
+
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /tours
+Disallow: /settings
+Disallow: /media
+Disallow: /analytics
+Disallow: /profile
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+
+User-agent: GPTBot
+Allow: /
+Disallow: /dashboard
+Disallow: /tours
+Disallow: /settings
+Disallow: /media
+Disallow: /analytics
+Disallow: /profile
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /dashboard
+Disallow: /tours
+Disallow: /settings
+Disallow: /media
+Disallow: /analytics
+Disallow: /profile
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /dashboard
+Disallow: /tours
+Disallow: /settings
+Disallow: /media
+Disallow: /analytics
+Disallow: /profile
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /dashboard
+Disallow: /tours
+Disallow: /settings
+Disallow: /media
+Disallow: /analytics
+Disallow: /profile
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /dashboard
+Disallow: /tours
+Disallow: /settings
+Disallow: /media
+Disallow: /analytics
+Disallow: /profile
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /dashboard
+Disallow: /tours
+Disallow: /settings
+Disallow: /media
+Disallow: /analytics
+Disallow: /profile
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+
+Sitemap: https://tours.360ghar.com/sitemap.xml

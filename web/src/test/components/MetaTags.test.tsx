@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
-import { VirtualTourStructuredData } from '@/components/common/MetaTags';
+import {
+  MetaTags,
+  OrganizationStructuredData,
+  VirtualTourStructuredData,
+  WebApplicationStructuredData,
+} from '@/components/common/MetaTags';
 
 describe('VirtualTourStructuredData', () => {
   afterEach(() => {
@@ -38,5 +43,68 @@ describe('VirtualTourStructuredData', () => {
 
     // Stable data identity (useMemo) keeps the effect from re-running.
     expect(appendSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('MetaTags canonical', () => {
+  afterEach(() => {
+    document.querySelectorAll('link[rel="canonical"]').forEach((el) => el.remove());
+  });
+
+  it('sets the canonical link to the url prop, without the query or hash of the current URL', () => {
+    const { unmount } = render(
+      <MetaTags title="Best virtual tour software India" url="https://tours.360ghar.com/best-virtual-tour-software-india" />
+    );
+
+    const canonical = document.querySelector('link[rel="canonical"]');
+    expect(canonical?.getAttribute('href')).toBe(
+      'https://tours.360ghar.com/best-virtual-tour-software-india'
+    );
+    expect(document.title).toBe('Best virtual tour software India | 360 Tours');
+
+    unmount();
+    expect(document.querySelector('link[rel="canonical"]')).toBeNull();
+  });
+});
+
+describe('Organization and WebApplication structured data', () => {
+  afterEach(() => {
+    document.getElementById('structured-data-Organization')?.remove();
+    document.getElementById('structured-data-WebApplication')?.remove();
+  });
+
+  it('emits the Organization @id that the app publisher references', () => {
+    render(
+      <OrganizationStructuredData
+        id="https://360ghar.com/#organization"
+        name="360Ghar"
+        url="https://360ghar.com"
+      />
+    );
+
+    const data = JSON.parse(
+      document.getElementById('structured-data-Organization')?.textContent ?? '{}'
+    ) as Record<string, unknown>;
+    expect(data['@type']).toBe('Organization');
+    expect(data['@id']).toBe('https://360ghar.com/#organization');
+    expect(data.name).toBe('360Ghar');
+    expect(data.url).toBe('https://360ghar.com');
+  });
+
+  it('emits the WebApplication @id and points its publisher at the Organization @id', () => {
+    render(
+      <WebApplicationStructuredData
+        id="https://tours.360ghar.com/#app"
+        publisherId="https://360ghar.com/#organization"
+      />
+    );
+
+    const data = JSON.parse(
+      document.getElementById('structured-data-WebApplication')?.textContent ?? '{}'
+    ) as Record<string, unknown>;
+    expect(data['@type']).toBe('WebApplication');
+    expect(data['@id']).toBe('https://tours.360ghar.com/#app');
+    expect(data.url).toBe('https://tours.360ghar.com');
+    expect(data.publisher).toEqual({ '@id': 'https://360ghar.com/#organization' });
   });
 });

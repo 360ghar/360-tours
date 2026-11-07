@@ -7,7 +7,12 @@ import {
   PricingSection,
   FinalCTA,
 } from '@/components/landing';
-import { MetaTags } from '@/components/common/MetaTags';
+import {
+  MetaTags,
+  OrganizationStructuredData,
+  WebApplicationStructuredData,
+} from '@/components/common/MetaTags';
+import { ORGANIZATION, SITE_ORIGIN, WEB_APPLICATION_ID } from '@/content/bestPages';
 
 export function HomePage() {
   return (
@@ -16,7 +21,10 @@ export function HomePage() {
         title="AI-Powered Virtual Tours"
         description="Create immersive 360 degree virtual tours with AI-assisted scene analysis, hotspot generation, sharing, embeds, analytics, branding, and floor plans."
         keywords={['360 virtual tours', 'AI tour builder', 'real estate virtual tours']}
+        url={`${SITE_ORIGIN}/`}
       />
+      <OrganizationStructuredData id={ORGANIZATION.id} name={ORGANIZATION.name} url={ORGANIZATION.url} />
+      <WebApplicationStructuredData id={WEB_APPLICATION_ID} publisherId={ORGANIZATION.id} />
 
       {/* Hero Section - Full viewport with animated 360 demo */}
       <HeroSection />
