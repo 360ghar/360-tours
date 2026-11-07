@@ -51,19 +51,25 @@ describe('MetaTags canonical', () => {
     document.querySelectorAll('link[rel="canonical"]').forEach((el) => el.remove());
   });
 
-  it('sets the canonical link to the url prop, without the query or hash of the current URL', () => {
-    const { unmount } = render(
-      <MetaTags title="Best virtual tour software India" url="https://tours.360ghar.com/best-virtual-tour-software-india" />
-    );
+  it('sets the canonical link to the url prop, not to the current URL with its query and hash', () => {
+    const originalUrl = window.location.href;
+    window.history.replaceState({}, '', '/best-virtual-tour-software-india?utm_source=ad#pricing');
+    try {
+      const { unmount } = render(
+        <MetaTags title="Best virtual tour software India" url="https://tours.360ghar.com/best-virtual-tour-software-india" />
+      );
 
-    const canonical = document.querySelector('link[rel="canonical"]');
-    expect(canonical?.getAttribute('href')).toBe(
-      'https://tours.360ghar.com/best-virtual-tour-software-india'
-    );
-    expect(document.title).toBe('Best virtual tour software India | 360 Tours');
+      const canonical = document.querySelector('link[rel="canonical"]');
+      expect(canonical?.getAttribute('href')).toBe(
+        'https://tours.360ghar.com/best-virtual-tour-software-india'
+      );
+      expect(document.title).toBe('Best virtual tour software India | 360 Tours');
 
-    unmount();
-    expect(document.querySelector('link[rel="canonical"]')).toBeNull();
+      unmount();
+      expect(document.querySelector('link[rel="canonical"]')).toBeNull();
+    } finally {
+      window.history.replaceState({}, '', originalUrl);
+    }
   });
 });
 

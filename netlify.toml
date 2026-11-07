@@ -5,11 +5,12 @@
   command = "npm run build"
   publish = "dist"
   # Skip the build when neither web/ nor the shared embed fixture changed
-  # (mobile-only and docs-only commits). Runs from `base`; exit 0 skips.
-  # The `[ -n ]` guard matters: with no CACHED_COMMIT_REF (first build, or a
-  # relinked site), `git diff --quiet $COMMIT_REF` compares the clean working
-  # tree and exits 0, which cancels the build. An empty cache now builds.
-  ignore = "[ -n \"$CACHED_COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- . ../docs/embed-parity-golden.html"
+  # (mobile-only and docs-only commits). Runs from `base`; exit 1 builds, exit 0 skips
+  # (https://docs.netlify.com/build/configure-builds/ignore-builds/).
+  # Build when there is no cached commit, or when the cached commit equals the
+  # current one (Netlify sets CACHED_COMMIT_REF = COMMIT_REF on a rebuild). The
+  # diff also covers netlify.toml, because a change to it alters the build.
+  ignore = "[ -n \"$CACHED_COMMIT_REF\" ] && [ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- . ../docs/embed-parity-golden.html ../netlify.toml"
 
 [build.environment]
   NODE_VERSION = "22"

@@ -11,25 +11,15 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  BEST_PAGES,
-  CHECKED_ON_TEXT,
-  HOW_WE_PICKED,
-  PUBLISHER_LINE,
-  SITE_NAME,
-  SITE_ORIGIN,
-  bestPageJsonLd,
-  pageUrl,
-} from '../src/content/bestPages.ts';
+import { BEST_PAGES, SITE_NAME, SITE_ORIGIN, bestPageJsonLd, pageUrl } from '../src/content/bestPages.ts';
+import { escapeHtml, renderBestPageArticle } from '../src/content/bestPageMarkup.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = process.env.DIST_DIR ?? resolve(here, '..', 'dist');
 const ROOT_PLACEHOLDER = '<div id="root"></div>';
 const OG_IMAGE = `${SITE_ORIGIN}/og-image-home.jpg`;
 
-function esc(value) {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+const esc = escapeHtml;
 
 /** JSON for a <script>: escape < and > so the text cannot close the tag. */
 function jsonForScript(value) {
@@ -76,67 +66,10 @@ function pageHeadTags(page) {
   ].join('\n    ');
 }
 
-/** Body markup. Same headings, table and FAQ text as src/pages/BestPage.tsx. */
+/** Body markup comes from the same renderer as the React page. */
 function pageBodyHtml(page) {
-  const rows = page.products
-    .map(
-      (product, index) => `<tr>
-            <td>${index + 1}</td>
-            <td><strong>${esc(product.name)}</strong></td>
-            <td>${esc(product.kind)}</td>
-            <td>${esc(product.howTours)}</td>
-            <td>${esc(product.pricing)}</td>
-            <td><a href="${esc(product.sourceUrl)}" target="_blank" rel="noopener noreferrer">Product site</a>, checked ${esc(product.checkedOn)}</td>
-          </tr>`
-    )
-    .join('\n          ');
-  const faqs = page.faqs
-    .map(
-      (faq) => `<div>
-          <h3>${esc(faq.question)}</h3>
-          <p>${esc(faq.answer)}</p>
-        </div>`
-    )
-    .join('\n        ');
-  const others = BEST_PAGES.filter((other) => other.slug !== page.slug)
-    .map((other) => `<li><a href="/${other.slug}">${esc(other.term)}</a></li>`)
-    .join('');
-  const picked = HOW_WE_PICKED.map((item) => `<li>${esc(item)}</li>`).join('');
-
-  return `<div id="root"><article>
-        <h1>${esc(page.term)}</h1>
-        <p>${esc(page.answer)}</p>
-        <p>${esc(PUBLISHER_LINE)}</p>
-
-        <h2>How we picked</h2>
-        <ol>${picked}</ol>
-
-        <h2>Ranked list</h2>
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Rank</th>
-              <th scope="col">Product</th>
-              <th scope="col">Type</th>
-              <th scope="col">How tours are made</th>
-              <th scope="col">Pricing model, as published</th>
-              <th scope="col">Source</th>
-            </tr>
-          </thead>
-          <tbody>
-          ${rows}
-          </tbody>
-        </table>
-        <p>Checked on ${esc(CHECKED_ON_TEXT)}.</p>
-
-        <h2>Frequently asked questions</h2>
-        ${faqs}
-
-        <nav aria-label="More guides">
-          <h2>More guides</h2>
-          <ul>${others}</ul>
-        </nav>
-      </article></div>`;
+  // Same DOM as BestPage.tsx: the React wrapper <div> around the article.
+  return `<div id="root"><div>${renderBestPageArticle(page)}</div></div>`;
 }
 
 function renderPage(page, shell) {
@@ -162,7 +95,7 @@ function main() {
     const html = renderPage(page, shell);
     // Self-check: the exact term must be in the title and the H1.
     const term = esc(page.term);
-    if (!html.includes(`<title>${term} | ${esc(SITE_NAME)}</title>`) || !html.includes(`<h1>${term}</h1>`)) {
+    if (!html.includes(`<title>${term} | ${esc(SITE_NAME)}</title>`) || !html.includes(`>${term}</h1>`)) {
       throw new Error(`/${page.slug}: term missing from <title> or <h1>.`);
     }
     // Flat file (dist/<slug>.html), not dist/<slug>/index.html: Netlify 301s

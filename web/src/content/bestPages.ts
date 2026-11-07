@@ -27,6 +27,8 @@ export interface BestPageProduct {
   pricing: string;
   /** Product page the facts were checked on. */
   sourceUrl: string;
+  /** Store or product page that names an iOS or Android app. Set only for app rows. */
+  appSourceUrl?: string;
   checkedOn: string;
 }
 
@@ -43,6 +45,8 @@ export interface BestPageContent {
   /** Exactly two sentences. This is the text that search engines and LLMs quote. */
   answer: string;
   products: BestPageProduct[];
+  /** Criteria that apply only to this page, listed after HOW_WE_PICKED. */
+  extraCriteria?: string[];
   faqs: BestPageFaq[];
 }
 
@@ -75,6 +79,7 @@ const PRODUCTS: BestPageProduct[] = [
       'Upload 360 photos, 360 video or 2D images. You can also capture with the CloudPano mobile app.',
     pricing: 'Free tier and paid plans. Prices are shown in $ with no currency code.',
     sourceUrl: 'https://www.cloudpano.com/',
+    appSourceUrl: 'https://apps.apple.com/us/app/cloudpano-virtual-tour-creator/id1553738112',
     checkedOn: CHECKED_ON,
   },
   {
@@ -92,6 +97,7 @@ const PRODUCTS: BestPageProduct[] = [
       'Captured with a Matterport Pro2 or Pro3 3D camera. The Matterport app on iOS or Android controls the camera.',
     pricing: 'Not stated on the page checked.',
     sourceUrl: 'https://matterport.com/cameras',
+    appSourceUrl: 'https://matterport.com/cameras',
     checkedOn: CHECKED_ON,
   },
   {
@@ -128,6 +134,7 @@ const PRODUCTS: BestPageProduct[] = [
     pricing:
       'No free plan listed. Free trial. Paid plans from $25 a month, or $19 a month billed yearly. Currency is not stated.',
     sourceUrl: 'https://www.teliportme.com/pricing',
+    appSourceUrl: 'https://www.teliportme.com/pricing',
     checkedOn: CHECKED_ON,
   },
   {
@@ -140,6 +147,9 @@ const PRODUCTS: BestPageProduct[] = [
     checkedOn: CHECKED_ON,
   },
 ];
+
+/** Rows whose own site names an iOS or Android app. 360 Tours has no store listing we could cite, so it is not here. */
+const APP_PRODUCTS = PRODUCTS.filter((product) => product.appSourceUrl !== undefined);
 
 export const BEST_PAGES: BestPageContent[] = [
   {
@@ -254,35 +264,38 @@ export const BEST_PAGES: BestPageContent[] = [
     slug: 'best-virtual-tour-apps',
     term: 'Best virtual tour apps',
     description:
-      'Compare virtual tour apps and mobile options: capture in an app, how each makes tours and published prices. Checked 8 November 2026.',
+      'Compare virtual tour apps for iPhone and Android: which products list an app, what each app does and published prices. Checked 8 November 2026.',
     answer:
-      '360 Tours has a mobile app for guided 360 capture. CloudPano, Matterport and TeliportMe also list mobile apps on their own sites.',
-    products: PRODUCTS,
+      'CloudPano, Matterport and TeliportMe each list an iOS or Android app on their own sites. The table shows how each product makes tours, and the pricing that each site states.',
+    products: APP_PRODUCTS,
+    extraCriteria: [
+      "The product's own site names an iOS or Android app. Each row links to the page that names it.",
+    ],
     faqs: [
       {
-        question: 'Does 360 Tours have a mobile app?',
+        question: 'Which virtual tour apps run on iPhone?',
         answer:
-          'Yes. The app guides you through a 16-shot 360 capture. It can also scan a room with LiDAR on supported devices.',
+          'CloudPano Virtual Tour Creator runs on iPhone and iPad, and the App Store lists it as free. It uses the iPhone camera to capture auto-stitched 360 photos.',
       },
       {
-        question: 'Which tools list a mobile app?',
+        question: 'Which apps run on Android?',
         answer:
-          '360 Tours, CloudPano, Matterport and TeliportMe list a mobile app on their own sites. We did not find a mobile app on the other product sites we checked.',
+          "TeliportMe links an Android app from its pricing page. Matterport's app runs on iOS and Android and controls its 3D cameras.",
       },
       {
-        question: 'Does a mobile app replace a 360 camera?',
+        question: 'Does the Matterport app replace a 3D camera?',
         answer:
-          'Not always. CloudPano lists a 360 camera, a video or its mobile app as capture options. Check each app page for the devices it supports.',
+          'No. The Matterport cameras page describes the app as a remote for its Pro2 and Pro3 3D cameras. It does not state that a phone alone can capture a space.',
       },
       {
-        question: 'Is there a free option for phones?',
+        question: 'Can I capture a 360 tour with a phone?',
         answer:
-          '360 Tours lists its features at no cost for 360 Ghar users. Momento360 offers free sign-up with no credit card needed.',
+          'CloudPano says you can capture with its mobile app, or with any 360 camera or video. The Matterport page does not state phone-only capture.',
       },
       {
-        question: 'Can a viewer open a tour on a phone without an app?',
+        question: 'What does each product charge?',
         answer:
-          'Yes, for 360 Tours. A published tour opens in a mobile browser at its public link. Momento360 states that viewers need no app or sign-up.',
+          'CloudPano lists paid plans in $, with no currency code. TeliportMe lists paid plans from $25 a month, or $19 a month billed yearly. Matterport does not state prices on the page checked.',
       },
     ],
   },
