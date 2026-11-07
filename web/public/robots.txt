@@ -1,5 +1,6 @@
 # Public pages are open to all crawlers, including AI crawlers.
-# App-only paths and embed frames are blocked in every group. A crawler that has its
+# App-only paths are blocked in every group. Embed frames stay crawlable so crawlers
+# can read their noindex tag. A crawler that has its
 # own group ignores the * group, so each group repeats the same Disallow lines.
 
 User-agent: *
@@ -14,7 +15,6 @@ Disallow: /auth
 Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
-Disallow: /embed/
 
 User-agent: GPTBot
 Allow: /
@@ -28,7 +28,6 @@ Disallow: /auth
 Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
-Disallow: /embed/
 
 User-agent: OAI-SearchBot
 Allow: /
@@ -42,7 +41,6 @@ Disallow: /auth
 Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
-Disallow: /embed/
 
 User-agent: ClaudeBot
 Allow: /
@@ -56,7 +54,6 @@ Disallow: /auth
 Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
-Disallow: /embed/
 
 User-agent: Claude-SearchBot
 Allow: /
@@ -70,7 +67,6 @@ Disallow: /auth
 Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
-Disallow: /embed/
 
 User-agent: PerplexityBot
 Allow: /
@@ -84,7 +80,6 @@ Disallow: /auth
 Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
-Disallow: /embed/
 
 User-agent: Google-Extended
 Allow: /
@@ -98,6 +93,5 @@ Disallow: /auth
 Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
-Disallow: /embed/
 
 Sitemap: https://tours.360ghar.com/sitemap.xml
