@@ -23,7 +23,7 @@ export function HomePage() {
         keywords={['360 virtual tours', 'AI tour builder', 'real estate virtual tours']}
         url={`${SITE_ORIGIN}/`}
       />
-      <OrganizationStructuredData id={ORGANIZATION.id} name={ORGANIZATION.name} url={ORGANIZATION.url} />
+      <OrganizationStructuredData id={ORGANIZATION.id} name={ORGANIZATION.name} url={ORGANIZATION.url} logo={ORGANIZATION.logo} sameAs={[...ORGANIZATION.sameAs]} />
       <WebApplicationStructuredData id={WEB_APPLICATION_ID} publisherId={ORGANIZATION.id} />
 
       {/* Hero Section - Full viewport with animated 360 demo */}

@@ -13,6 +13,16 @@ export const ORGANIZATION = {
   id: 'https://360ghar.com/#organization',
   name: '360Ghar',
   url: 'https://360ghar.com',
+  // Same logo and profiles as the Organization node on 360ghar.com, so all three sites describe one entity.
+  logo: 'https://360ghar.com/assets/images/logo/logo.png',
+  sameAs: [
+    'https://www.instagram.com/360ghar',
+    'https://www.facebook.com/360ghar',
+    'https://www.linkedin.com/company/360ghar',
+    'https://twitter.com/360ghar',
+    'https://www.youtube.com/@360ghar',
+    'https://share.google/DgcLFqSyBgz7kBwKe',
+  ],
 } as const;
 
 export const WEB_APPLICATION_ID = 'https://tours.360ghar.com/#app';
