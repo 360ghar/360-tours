@@ -17,12 +17,11 @@
   # Set in the Netlify site settings, not here: VITE_API_BASE_URL,
   # VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VITE_APP_URL.
 
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+# Cache headers live in web/public/_headers (shared with Cloudflare).
 
-[[headers]]
-  for = "/sw.js"
-  [headers.values]
-    Cache-Control = "no-cache"
+# SPA fallback for Netlify. It is here and not in web/public/_redirects because
+# Cloudflare rejects that rule (it uses not_found_handling in web/wrangler.jsonc).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

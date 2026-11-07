@@ -1,0 +1,20 @@
+// Cloudflare Worker that serves tours.360ghar.com: static assets only.
+// Build: `npm run build` in web/ (writes dist/). Deploy: `npx wrangler deploy` in web/.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "360-tours-web",
+  "compatibility_date": "2026-11-02",
+  "assets": {
+    "directory": "./dist",
+    // dist/<slug>.html is served at /<slug> with no slash redirect, matching the canonicals.
+    "html_handling": "auto-trailing-slash",
+    // Client-side routes (/login, /view/:id, /embed/:id) get index.html with 200.
+    "not_found_handling": "single-page-application"
+  },
+  // The proxied DNS record stays; the route sends every request to this Worker.
+  "routes": [{ "pattern": "tours.360ghar.com/*", "zone_name": "360ghar.com" }],
+  // No public workers.dev copy of the site; PR builds still get preview URLs.
+  "workers_dev": false,
+  "preview_urls": true,
+  "observability": { "enabled": true }
+}
