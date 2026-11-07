@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Expand, Minimize } from 'lucide-react';
 import { PageLoader, Button } from '@/components/ui';
+import { MetaTags } from '@/components/common/MetaTags';
 import { toursApi } from '@/api';
 import { PanoramaViewer } from '@/components/features/PanoramaViewer';
 import { FloorPlanOverlay } from '@/components/features/FloorPlanOverlay';
@@ -487,6 +488,7 @@ export function EmbedTourPage() {
       className="relative h-screen w-screen overflow-hidden bg-black"
       style={{ fontFamily: viewerSettings?.branding?.font_family }}
     >
+      <MetaTags noindex title="Embedded tour" />
       {/* Viewer */}
       <PanoramaViewer
         scene={currentScene}

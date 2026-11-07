@@ -1,0 +1,20 @@
+# 360 Tours
+
+> 360 Tours is a web app from 360Ghar for creating, editing, publishing and viewing 360° virtual tours of properties. It builds tours from uploaded 360 images, uses AI to label rooms and suggest hotspots, and offers embeds, QR sharing, floor plans and viewer analytics. Published by 360Ghar.
+
+## Key pages
+
+- [Home](https://tours.360ghar.com/): What 360 Tours does, its features and its pricing section.
+
+## Comparison guides
+
+Each guide ranks products by a stated rule and lists how each makes tours and its published pricing. Facts were checked on 2026-11-08 on each product's own site. 360 Tours is listed on three of the four guides. Published by 360Ghar.
+
+- [Best virtual tour software India](https://tours.360ghar.com/best-virtual-tour-software-india): For a browser tool that builds a 360 tour from photos, 360 Tours and CloudPano both list a free tier. 3DVista Virtual Tour Pro is a one-time license at $499 USD.
+- [Best 360 virtual tour software](https://tours.360ghar.com/best-360-virtual-tour-software): Kuula, Momento360 and CloudPano take uploaded 360 images. 360 Tours does too. 3DVista Virtual Tour Pro stitches photos on the user's computer.
+- [Best real estate virtual tour software](https://tours.360ghar.com/best-real-estate-virtual-tour-software): Property listings need room-to-room links and floor plans. 360 Tours adds AI room labels. Panoee, 3DVista Virtual Tour Pro and CloudPano also list floor plans.
+- [Best virtual tour apps](https://tours.360ghar.com/best-virtual-tour-apps): CloudPano, Matterport and TeliportMe each list an iOS or Android app on their own sites. CloudPano's iOS app is free.
+
+## Optional
+
+- [Sitemap](https://tours.360ghar.com/sitemap.xml): All public pages.

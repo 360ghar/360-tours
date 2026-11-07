@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { APP_NAME } from '@/constants';
+import { SITE_ORIGIN } from '@/content/bestPages';
 
 interface MetaTagsProps {
   title?: string;
@@ -18,9 +19,18 @@ interface MetaTagsProps {
 
 interface StructuredDataProps {
   /** Must be a real schema.org type — consumers silently drop an unknown one. */
-  type: 'WebApplication' | 'Organization' | 'Product' | 'ImageGallery';
+  type:
+    | 'WebApplication'
+    | 'Organization'
+    | 'Product'
+    | 'ImageGallery'
+    | 'ItemList'
+    | 'BreadcrumbList'
+    | 'FAQPage';
   data: Record<string, unknown>;
 }
+
+const NO_SAME_AS: string[] = [];
 
 /** Default social preview image; overridden per page via the `image` prop. */
 const DEFAULT_OG_IMAGE = '/og-image-home.jpg';
@@ -175,27 +185,31 @@ export function StructuredData({ type, data }: StructuredDataProps) {
 }
 
 export function OrganizationStructuredData({
+  id,
   name = APP_NAME,
   url,
   logo,
-  sameAs = [],
+  sameAs = NO_SAME_AS,
 }: {
+  /** Stable node id (`@id`) so other schema nodes can reference this organization. */
+  id?: string;
   name?: string;
   url?: string;
   logo?: string;
   sameAs?: string[];
 }) {
-  return (
-    <StructuredData
-      type="Organization"
-      data={{
-        name,
-        url: url || (typeof window !== 'undefined' ? window.location.origin : ''),
-        logo,
-        sameAs,
-      }}
-    />
+  // Memoize so the StructuredData effect does not re-run on every parent render.
+  const data = useMemo(
+    () => ({
+      '@id': id,
+      name,
+      url: url || (typeof window !== 'undefined' ? window.location.origin : ''),
+      logo,
+      sameAs,
+    }),
+    [id, name, url, logo, sameAs]
   );
+  return <StructuredData type="Organization" data={data} />;
 }
 
 export function VirtualTourStructuredData({
@@ -242,10 +256,16 @@ export function VirtualTourStructuredData({
 }
 
 export function WebApplicationStructuredData({
+  id,
+  publisherId,
   applicationCategory = 'BusinessApplication',
   operatingSystem = 'Web Browser',
   offers,
 }: {
+  /** Stable node id (`@id`) for this application. */
+  id?: string;
+  /** `@id` of the Organization that publishes this application. */
+  publisherId?: string;
   applicationCategory?: string;
   operatingSystem?: string;
   offers?: {
@@ -257,9 +277,12 @@ export function WebApplicationStructuredData({
     <StructuredData
       type="WebApplication"
       data={{
+        '@id': id,
         name: APP_NAME,
+        url: SITE_ORIGIN,
         applicationCategory,
         operatingSystem,
+        publisher: publisherId ? { '@id': publisherId } : undefined,
         offers: offers
           ? {
               '@type': 'Offer',
@@ -269,10 +292,10 @@ export function WebApplicationStructuredData({
           : undefined,
         featureList: [
           '360° virtual tours',
-          'VR support',
+          'VR viewing',
           'Interactive hotspots',
-          'Analytics dashboard',
-          'White-label branding',
+          'Floor plans',
+          'Viewer analytics',
         ],
       }}
     />
