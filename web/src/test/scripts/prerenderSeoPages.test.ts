@@ -54,8 +54,10 @@ describe('prerender-seo-pages', () => {
   it.each(BEST_PAGES.map((page) => [page.slug, page] as const))(
     '/%s: writes the page with the term in title and h1',
     (slug, page) => {
-      const file = join(dir, slug, 'index.html');
+      // Flat file, so Netlify serves /<slug> with 200 and no trailing-slash redirect.
+      const file = join(dir, `${slug}.html`);
       expect(existsSync(file)).toBe(true);
+      expect(existsSync(join(dir, slug))).toBe(false);
       const html = readFileSync(file, 'utf-8');
 
       expect(html).toContain(`<title>${page.term} | 360 Tours</title>`);
@@ -71,7 +73,7 @@ describe('prerender-seo-pages', () => {
 
   it('writes JSON-LD that parses and carries the page FAQ text', () => {
     const page = BEST_PAGES[0];
-    const html = readFileSync(join(dir, page.slug, 'index.html'), 'utf-8');
+    const html = readFileSync(join(dir, `${page.slug}.html`), 'utf-8');
     const blocks = jsonLdBlocks(html);
 
     expect(blocks.map((b) => b['@type'])).toEqual(['ItemList', 'BreadcrumbList', 'FAQPage']);

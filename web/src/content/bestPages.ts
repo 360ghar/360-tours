@@ -52,10 +52,10 @@ export interface JsonLdBlock {
 }
 
 export const HOW_WE_PICKED: string[] = [
-  'The product builds a tour from 360 photos or video. We did not list a product when its own site did not say how tours are made. Matterport and RICOH THETA were checked and left out for this reason.',
-  'The product states a free plan, a free trial or a price on its own site.',
+  'The product builds a tour from 360 images, 360 video or 3D capture. A product is included only when its own site says how tours are made.',
+  "The product's own site describes its tour service. We give its pricing when the site publishes it, and we say so when it does not.",
   "Every fact comes from the product's own website, checked on 8 November 2026. We did not use reviews or third-party data.",
-  'Web-based tools rank above desktop software. Within each group, names are in alphabetical order. 360 Tours follows the same rules as the other products.',
+  'Hosted tools rank above desktop software. Within each group, names are in alphabetical order. 360 Tours follows the same rules as the other products.',
 ];
 
 const PRODUCTS: BestPageProduct[] = [
@@ -86,6 +86,15 @@ const PRODUCTS: BestPageProduct[] = [
     checkedOn: CHECKED_ON,
   },
   {
+    name: 'Matterport',
+    kind: 'Platform with 3D cameras',
+    howTours:
+      'Captured with a Matterport Pro2 or Pro3 3D camera. The Matterport app on iOS or Android controls the camera.',
+    pricing: 'Not stated on the page checked.',
+    sourceUrl: 'https://matterport.com/cameras',
+    checkedOn: CHECKED_ON,
+  },
+  {
     name: 'Momento360',
     kind: 'Browser platform',
     howTours:
@@ -100,6 +109,15 @@ const PRODUCTS: BestPageProduct[] = [
     howTours: 'Upload 360 panoramas. Add hotspots, floor plans and maps.',
     pricing: 'Free plan. Paid plans, monthly or yearly. Currency is not published.',
     sourceUrl: 'https://www.panoee.com/pricing',
+    checkedOn: CHECKED_ON,
+  },
+  {
+    name: 'RICOH360 Virtual Tour Creation Service',
+    kind: 'Tour creation service',
+    howTours:
+      'Connects 360-degree images into immersive tours. The page does not state the upload steps.',
+    pricing: 'Not stated on the page checked.',
+    sourceUrl: 'https://www.ricoh360.com/',
     checkedOn: CHECKED_ON,
   },
   {
@@ -182,7 +200,7 @@ export const BEST_PAGES: BestPageContent[] = [
       {
         question: 'Do I need a special 360 camera?',
         answer:
-          'CloudPano lists any 360 camera, a video or its mobile app as capture options. Momento360 says it works with any 360 camera.',
+          'CloudPano lists any 360 camera, a video or its mobile app as capture options. Momento360 says it works with any 360 camera. Matterport uses its own Pro2 or Pro3 3D cameras.',
       },
       {
         question: 'Does 360 Tours capture the photos for me?',
@@ -238,7 +256,7 @@ export const BEST_PAGES: BestPageContent[] = [
     description:
       'Compare virtual tour apps and mobile options: capture in an app, how each makes tours and published prices. Checked 8 November 2026.',
     answer:
-      '360 Tours has a mobile app for guided 360 capture. CloudPano and TeliportMe also list mobile apps on their own sites.',
+      '360 Tours has a mobile app for guided 360 capture. CloudPano, Matterport and TeliportMe also list mobile apps on their own sites.',
     products: PRODUCTS,
     faqs: [
       {
@@ -249,7 +267,7 @@ export const BEST_PAGES: BestPageContent[] = [
       {
         question: 'Which tools list a mobile app?',
         answer:
-          '360 Tours, CloudPano and TeliportMe list a mobile app on their own sites. We did not find a mobile app on the other product sites we checked.',
+          '360 Tours, CloudPano, Matterport and TeliportMe list a mobile app on their own sites. We did not find a mobile app on the other product sites we checked.',
       },
       {
         question: 'Does a mobile app replace a 360 camera?',

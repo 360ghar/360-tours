@@ -86,6 +86,20 @@ describe('best X page data', () => {
     expect(crumbs[crumbs.length - 1]).toMatchObject({ name: page.term, item: pageUrl(page) });
   });
 
+  it.each(BEST_PAGES.map((page) => [page.slug, page] as const))(
+    '%s: rows follow the stated rule (hosted first, alphabetical, desktop last)',
+    (_slug, page) => {
+      const isDesktop = (kind: string) => kind.startsWith('Desktop');
+      const hosted = page.products.filter((p) => !isDesktop(p.kind)).map((p) => p.name);
+      const desktop = page.products.filter((p) => isDesktop(p.kind)).map((p) => p.name);
+      expect(hosted).toEqual([...hosted].sort((a, b) => a.localeCompare(b)));
+      // Desktop rows come after every hosted row: the flags must be sorted false, then true.
+      const flags = page.products.map((p) => isDesktop(p.kind));
+      expect(flags).toEqual([...flags].sort((a, b) => Number(a) - Number(b)));
+      expect(desktop.length).toBeGreaterThan(0);
+    }
+  );
+
   it('keeps em dashes out of all copy', () => {
     const copy = JSON.stringify(BEST_PAGES);
     expect(copy).not.toMatch(/[—–]/);

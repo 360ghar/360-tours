@@ -1,6 +1,6 @@
 // Writes dist/<slug>/index.html for each "best X" page. Runs after `vite build`.
 //
-// Each file is the built dist/index.html with per-page head tags and JSON-LD,
+// Each file (dist/<slug>.html) is the built dist/index.html with per-page head tags and JSON-LD,
 // and the page body as static HTML inside #root. React replaces #root on mount.
 // The content comes from src/content/bestPages.ts, the same module the React
 // page uses, so the static text and the React text match.
@@ -8,7 +8,7 @@
 // Run: node --experimental-strip-types scripts/prerender-seo-pages.mjs
 // DIST_DIR overrides the output folder (the vitest check uses it).
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -165,9 +165,9 @@ function main() {
     if (!html.includes(`<title>${term} | ${esc(SITE_NAME)}</title>`) || !html.includes(`<h1>${term}</h1>`)) {
       throw new Error(`/${page.slug}: term missing from <title> or <h1>.`);
     }
-    const outDir = resolve(DIST_DIR, page.slug);
-    mkdirSync(outDir, { recursive: true });
-    writeFileSync(resolve(outDir, 'index.html'), html);
+    // Flat file (dist/<slug>.html), not dist/<slug>/index.html: Netlify 301s
+    // /<slug> to /<slug>/ for a directory index, but serves /<slug> with 200 for a .html file.
+    writeFileSync(resolve(DIST_DIR, `${page.slug}.html`), html);
     console.log(`prerendered /${page.slug}`);
   }
 }
