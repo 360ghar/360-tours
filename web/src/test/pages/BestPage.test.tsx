@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { BestPage } from '@/pages/BestPage';
 import { BEST_PAGES } from '@/content/bestPages';
+
+function LocationProbe() {
+  const location = useLocation();
+  return <p data-testid="location">{location.pathname}</p>;
+}
 
 describe('BestPage', () => {
   it.each(BEST_PAGES.map((page) => [page.slug, page] as const))(
@@ -24,13 +29,28 @@ describe('BestPage', () => {
     }
   );
 
-  it('routes an internal "More guides" link through the router', () => {
+  it('moves the router to the linked guide when an internal "More guides" link is clicked', () => {
     render(
-      <MemoryRouter>
-        <BestPage page={BEST_PAGES[0]} />
+      <MemoryRouter initialEntries={[`/${BEST_PAGES[0].slug}`]}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <>
+                <BestPage page={BEST_PAGES[0]} />
+                <LocationProbe />
+              </>
+            }
+          />
+        </Routes>
       </MemoryRouter>
     );
+    expect(screen.getByTestId('location').textContent).toBe(`/${BEST_PAGES[0].slug}`);
+
     const link = screen.getByRole('link', { name: BEST_PAGES[1].term });
     expect(link.getAttribute('href')).toBe(`/${BEST_PAGES[1].slug}`);
+    fireEvent.click(link);
+
+    expect(screen.getByTestId('location').textContent).toBe(`/${BEST_PAGES[1].slug}`);
   });
 });

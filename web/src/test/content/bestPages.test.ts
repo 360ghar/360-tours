@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   BEST_PAGES,
   CHECKED_ON,
@@ -125,6 +127,7 @@ describe('best X page data', () => {
   it('apps page lists only products with a sourced iOS or Android app', () => {
     const apps = BEST_PAGES.find((page) => page.slug === 'best-virtual-tour-apps');
     expect(apps).toBeDefined();
+    expect(apps?.products.map((p) => p.name)).toEqual(['CloudPano', 'Matterport', 'TeliportMe']);
     for (const product of apps?.products ?? []) {
       expect(product.appSourceUrl).toMatch(/^https:\/\//);
     }
@@ -139,14 +142,42 @@ describe('best X page data', () => {
 
 describe('best X article markup', () => {
   it.each(BEST_PAGES.map((page) => [page.slug, page] as const))(
-    '%s: each product row has a row header and a named site link',
+    '%s: one row header per product name, and a named link per row',
     (_slug, page) => {
       const html = renderBestPageArticle(page);
+      const rowHeaders = html.match(/<th scope="row"/g) ?? [];
+      expect(rowHeaders).toHaveLength(page.products.length);
+      const linkLabel = page.sourceKind === 'app' ? 'app page' : 'site';
       for (const product of page.products) {
-        expect(html).toContain(`<th scope="row"`);
-        expect(html).toContain(`>${escapeHtml(product.name)} site</a>`);
+        expect(html).toMatch(
+          new RegExp(`<th scope="row" class="[^"]*">${escapeHtml(product.name)}</th>`)
+        );
+        expect(html).toContain(`>${escapeHtml(product.name)} ${linkLabel}</a>`);
       }
       expect(html).toContain('aria-labelledby="ranked-list"');
+    }
+  );
+
+  it('apps guide links each row to its app source, not the product site', () => {
+    const apps = BEST_PAGES.find((page) => page.slug === 'best-virtual-tour-apps');
+    expect(apps).toBeDefined();
+    const html = renderBestPageArticle(apps!);
+    for (const product of apps!.products) {
+      expect(html).toContain(`href="${escapeHtml(product.appSourceUrl ?? '')}"`);
+    }
+    expect(html).not.toContain('href="https://www.cloudpano.com/"');
+  });
+});
+
+describe('llms.txt guide list', () => {
+  const llms = readFileSync(resolve(process.cwd(), 'public/llms.txt'), 'utf-8');
+
+  it.each(BEST_PAGES.map((page) => [page.slug, page] as const))(
+    '%s: its bullet names 360 Tours exactly when the page lists it',
+    (_slug, page) => {
+      const bullet = llms.split('\n').find((line) => line.includes(`(${pageUrl(page)})`));
+      expect(bullet).toBeDefined();
+      expect(bullet?.includes(OWN_PRODUCT)).toBe(page.products.some((p) => p.name === OWN_PRODUCT));
     }
   );
 });

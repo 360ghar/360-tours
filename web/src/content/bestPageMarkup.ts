@@ -10,6 +10,7 @@ import {
   PUBLISHER_LINE,
   BEST_PAGES,
   type BestPageContent,
+  type BestPageProduct,
 } from './bestPages.ts';
 
 /** The product this site publishes. The publisher line is shown only on pages that list it. */
@@ -33,6 +34,10 @@ export function renderBestPageArticle(page: BestPageContent): string {
   const e = escapeHtml;
   const listsOwnProduct = page.products.some((product) => product.name === OWN_PRODUCT);
   const criteria = [...HOW_WE_PICKED, ...(page.extraCriteria ?? [])];
+  const appPage = page.sourceKind === 'app';
+  const linkLabel = appPage ? 'app page' : 'site';
+  const linkUrl = (product: BestPageProduct) =>
+    appPage ? (product.appSourceUrl ?? product.sourceUrl) : product.sourceUrl;
 
   const rows = page.products
     .map(
@@ -43,7 +48,7 @@ export function renderBestPageArticle(page: BestPageContent): string {
               <td class="${CELL}">${e(product.kind)}</td>
               <td class="${CELL}">${e(product.howTours)}</td>
               <td class="${CELL}">${e(product.pricing)}</td>
-              <td class="${CELL}"><a href="${e(product.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="underline underline-offset-4">${e(product.name)} site</a>, checked ${e(product.checkedOn)}</td>
+              <td class="${CELL}"><a href="${e(linkUrl(product))}" target="_blank" rel="noopener noreferrer" class="underline underline-offset-4">${e(product.name)} ${linkLabel}</a>, checked ${e(product.checkedOn)}</td>
             </tr>`
     )
     .join('');

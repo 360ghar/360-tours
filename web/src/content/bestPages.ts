@@ -47,6 +47,8 @@ export interface BestPageContent {
   products: BestPageProduct[];
   /** Criteria that apply only to this page, listed after HOW_WE_PICKED. */
   extraCriteria?: string[];
+  /** Which link the table shows per row: the product site, or the app page that supports the row. */
+  sourceKind?: 'site' | 'app';
   faqs: BestPageFaq[];
 }
 
@@ -268,6 +270,7 @@ export const BEST_PAGES: BestPageContent[] = [
     answer:
       'CloudPano, Matterport and TeliportMe each list an iOS or Android app on their own sites. The table shows how each product makes tours, and the pricing that each site states.',
     products: APP_PRODUCTS,
+    sourceKind: 'app',
     extraCriteria: [
       "The product's own site names an iOS or Android app. Each row links to the page that names it.",
     ],
