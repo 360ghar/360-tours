@@ -59,7 +59,7 @@ Only `VITE_*` vars are exposed to the client. Parsed in `src/constants/config.ts
 | `VITE_AUTH_REDIRECT_URL` | `window.location.origin/auth/callback` | Google OAuth redirect override |
 | `VITE_APP_NAME` / `VITE_APP_VERSION` | `360 Viewer` / `1.0.0` | Display metadata |
 
-Production values live in `web/.env.production` (public client values only; they ship in the bundle).
+Production build values (`VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_APP_URL`) are Workers Builds build variables on the `360-tours-web` Worker. A local production deploy reads your gitignored `web/.env`.
 
 ## Deploy
 
