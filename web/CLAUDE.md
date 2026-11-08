@@ -59,6 +59,12 @@ Only `VITE_*` vars are exposed to the client. Parsed in `src/constants/config.ts
 | `VITE_AUTH_REDIRECT_URL` | `window.location.origin/auth/callback` | Google OAuth redirect override |
 | `VITE_APP_NAME` / `VITE_APP_VERSION` | `360 Viewer` / `1.0.0` | Display metadata |
 
+Production build values (`VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_APP_URL`) are Workers Builds build variables on the `360-tours-web` Worker. A local production deploy reads your gitignored `web/.env`.
+
+## Deploy
+
+tours.360ghar.com is the Cloudflare Worker `360-tours-web`, static assets only (`web/wrangler.jsonc`, since 2026-11-08). Build `npm run build`, deploy `npx wrangler deploy`, both in `web/`. `not_found_handling: single-page-application` is the SPA fallback; do not add `/* /index.html 200` to `web/public/_redirects` (Cloudflare rejects it as an infinite loop). Headers are in `web/public/_headers`. The route `tours.360ghar.com/*` sits on a proxied CNAME that still points at Netlify; deleting the route rolls back to Netlify.
+
 ## Project Structure
 
 ```

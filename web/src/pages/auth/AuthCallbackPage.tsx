@@ -9,16 +9,9 @@ import { mapSupabaseAuthError } from '@/lib/authErrors';
 import { PageLoader } from '@/components/ui';
 
 /**
- * Roles allowed into this INTERNAL tour viewer/creator tool. Google sign-in is
- * open to any Google account, but the staff-gate below bounces anyone who is
- * not provisioned staff (mirrors the role guard in ProtectedRoute).
- */
-const STAFF_ROLES = new Set(['agent', 'admin']);
-
-/**
  * OAuth (Google) redirect landing. Exchanges the `code` for a Supabase session,
- * then enforces the internal-tool staff-gate before letting the user into the
- * dashboard. The Zustand store's onAuthStateChange listener also picks up the
+ * then sends the user to the stashed return path. Any signed-in 360Ghar user may
+ * use 360 Tours, the same as with password and OTP sign-in. The Zustand store's onAuthStateChange listener also picks up the
  * session and hydrates the user.
  */
 export function AuthCallbackPage() {
@@ -66,14 +59,7 @@ export function AuthCallbackPage() {
       try {
         await supabaseAuth.exchangeCodeForSession(code);
 
-        // Staff-gate: only provisioned staff may use this internal tool.
         const user = await authApi.getCurrentUser();
-        if (!STAFF_ROLES.has(user.role ?? 'user')) {
-          await supabaseAuth.signOut().catch(() => {});
-          clearAuth();
-          navigate(`${ROUTES.LOGIN}?error=not_staff`, { replace: true });
-          return;
-        }
 
         setLastAuthMethod('google', user.email);
         void authApi.recordLastMethod('google');
