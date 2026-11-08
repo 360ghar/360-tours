@@ -40,9 +40,6 @@ const AUTH_RETURN_BLOCKLIST: readonly string[] = [
 
 function callbackErrorMessage(code: string | null): string | null {
   if (!code) return null;
-  if (code === 'not_staff') {
-    return 'This account is not authorized to access the 360 Viewer tool. Contact an administrator.';
-  }
   if (code === 'auth') {
     return 'Sign-in could not be completed. Please try again.';
   }
@@ -93,7 +90,7 @@ export function LoginPage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [stepLoading, setStepLoading] = useState(false);
-  // Surface Google-callback errors (?error=auth | ?error=not_staff).
+  // Surface Google-callback errors (?error=auth).
   const [localError, setLocalError] = useState<string | null>(
     () => callbackErrorMessage(searchParams.get('error')) || null
   );

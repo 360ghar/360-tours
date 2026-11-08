@@ -15,7 +15,7 @@ Canonical, code-derived inventory of every feature and user flow in the monorepo
 Each section documents its route/screen inventory, then every feature as a user story with a numbered flow, expected behavior, and acceptance criteria derived from the code. A `**Known gap:**` line flags places where behavior differs from intent (with file:line evidence) — those feed the verification-and-fix pass.
 # Web App — 360 Viewer: Features & User Flows
 
-**360 Viewer** is the web app of the 360Ghar monorepo: a React 19 + TypeScript SPA (Vite 7) for creating, editing, publishing, and viewing 360° virtual property tours, backed by the shared FastAPI backend (`/api/v1`) with Supabase auth. Rendering uses `@photo-sphere-viewer` (markers/gyroscope/stereo plugins); server state is TanStack Query, client state is Zustand. The app is an internal tool gated to staff roles (`agent`/`admin`), while public viewers (buyers/tenants) consume published tours via `/view/:id`, and `/embed/:id` — the same routes the Flutter mobile app loads in its WebView (byte-parity contract with `mobile/`).
+**360 Viewer** is the web app of the 360Ghar monorepo: a React 19 + TypeScript SPA (Vite 7) for creating, editing, publishing, and viewing 360° virtual property tours, backed by the shared FastAPI backend (`/api/v1`) with Supabase auth. Rendering uses `@photo-sphere-viewer` (markers/gyroscope/stereo plugins); server state is TanStack Query, client state is Zustand. Any signed-in 360Ghar user can create tours, while public viewers (buyers/tenants) consume published tours via `/view/:id`, and `/embed/:id` — the same routes the Flutter mobile app loads in its WebView (byte-parity contract with `mobile/`).
 
 **How to read this doc:** the route inventory maps every registered route to its page file; each feature below is written as a user story with a concrete numbered flow, expected behavior, and testable acceptance criteria, all derived from the code. A `**Known gap:**` line at the end of a feature flags places where the code behaves differently from intent (each carries file:line evidence); those are inputs for a later verification-and-fix pass, not fixes made here. API endpoints are named as `<METHOD /path>`; all paths are relative to the API base (`/api/v1`).
 
@@ -27,7 +27,7 @@ Each section documents its route/screen inventory, then every feature as a user 
 | `/login` | `src/pages/auth/LoginPage.tsx` | Sign in via phone/email (password or OTP) or Google | public |
 | `/register` | `src/pages/auth/RegisterPage.tsx` | Create account (identifier + name + OTP + set password) | public |
 | `/forgot-password` | `src/pages/auth/ForgotPasswordPage.tsx` | Reset password via OTP (phone/email) | public |
-| `/auth/callback` | `src/pages/auth/AuthCallbackPage.tsx` | Google OAuth code exchange + staff-gate, then redirect; no chrome | public |
+| `/auth/callback` | `src/pages/auth/AuthCallbackPage.tsx` | Google OAuth code exchange, then redirect; no chrome | public |
 | `/dashboard` | `src/pages/dashboard/DashboardPage.tsx` | Overview: stats cards, storage bar, weekly views chart, recent tours | protected |
 | `/tours` | `src/pages/tours/ToursPage.tsx` | Tour list: search, status filter, grid/list, cursor pagination, row actions | protected |
 | `/tours/create` | `src/pages/tours/TourCreatePage.tsx` | Create tour: choose path (guided capture / upload / AI), info form, upload scenes | protected |
@@ -140,16 +140,14 @@ Each section documents its route/screen inventory, then every feature as a user 
 - **User flow:**
   1. User clicks "Continue with Google" on `/login` or `/register`; the return path is stashed in `sessionStorage` (`stashOAuthNext`) and the browser redirects to Google (`signInWithGoogle`).
   2. Google redirects back to `/auth/callback?code=…`; `AuthCallbackPage` (no chrome) runs `exchangeCodeForSession`, then `GET /users/me`.
-  3. Staff gate: only roles `agent`/`admin` proceed; anyone else is signed out and bounced to `/login?error=not_staff`.
-  4. Staff users get `setLastAuthMethod('google', …)` + `POST /auth/last-method`, then navigate to the stashed return path (default `/dashboard`). Errors navigate to `/login?error=…` with a mapped message.
-- **User story:** "As a staff user, I want to sign in with my Google account, so that I skip password entry and land where I was going."
+  3. The user gets `setLastAuthMethod('google', …)` + `POST /auth/last-method`, then navigate to the stashed return path (default `/dashboard`). Errors navigate to `/login?error=…` with a mapped message.
+- **User story:** "As a 360Ghar user, I want to sign in with my Google account, so that I skip password entry and land where I was going."
 - **Expected behavior:**
-  - `?error=not_staff` and `?error=auth` render friendly messages on the login page.
+  - `?error=auth` renders a friendly message on the login page.
   - The return path survives the OAuth round trip via sessionStorage.
   - Double-invocation of the callback effect is guarded by a `handledRef` (StrictMode safety).
 - **Acceptance criteria:**
-  - Given a staff Google account, when the callback completes, then the user lands on the stashed path with a session.
-  - Given a non-staff Google account, when the callback completes, then the session is cleared and `/login?error=not_staff` is shown.
+  - Given any Google account, when the callback completes, then the user lands on the stashed path with a session.
   - Given a callback without a `code`, when loaded, then the user is redirected to `/login?error=auth`.
 - **Known gap:** The return path is consumed at AuthCallbackPage.tsx:38 (`consumeOAuthNext`) inside an effect that depends on a `handledRef` guard to survive React StrictMode double-mounting; the next-path handling is fragile in dev (the stash can be consumed while the effect re-runs).
 
