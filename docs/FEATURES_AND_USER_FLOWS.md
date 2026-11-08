@@ -90,7 +90,7 @@ Each section documents its route/screen inventory, then every feature as a user 
   4. Otherwise (unverified existing user, or unknown identifier treated as signup) → OTP step: Supabase `requestEmailOtp`/`requestOtp` (`shouldCreateUser: !exists`), user enters the 6-digit code (`useWebOtp` autofill on Android Chrome), `authStore.verifyLoginOtp` establishes the session.
   5. If the account has no password (passwordless/unknown identifier), a mandatory, non-skippable "set password" step runs against the OTP session (`setPasswordAndComplete` → `supabaseAuth.updatePassword`), then navigates to the return path.
   6. User exits by navigating away; session persists via Supabase (`360ghar:auth-tokens` storage key).
-- **User story:** "As a staff user, I want to sign in with phone/email via password or OTP, so that I can access my tours securely from any device."
+- **User story:** "As a 360Ghar user, I want to sign in with phone/email via password or OTP, so that I can access my tours securely from any device."
 - **Expected behavior:**
   - Errors render inline (`role="alert"`) with mapped Supabase messages; OTP resend shows a 30s cooldown.
   - A failed identifier-status call never creates an account or sends an OTP.
@@ -110,7 +110,7 @@ Each section documents its route/screen inventory, then every feature as a user 
   3. OTP step: user enters code (autofill supported); `verifyEmailOtp`/`verifyOtp` establishes the session.
   4. Set-password step: password + confirmation validated (zod schema, min length), `supabaseAuth.updatePassword` runs on the OTP session, `fetchCurrentUser()` hydrates, then navigation to `/dashboard` (`replace`).
   5. User exits to the app; new account is active immediately.
-- **User story:** "As a new staff member, I want to register with my phone or email, so that I can start creating tours."
+- **User story:** "As a new 360Ghar user, I want to register with my phone or email, so that I can start creating tours."
 - **Expected behavior:**
   - Full name is required; terms checkbox is required; both surface inline errors.
   - Resend OTP has a 30s cooldown and only starts after a confirmed send.
