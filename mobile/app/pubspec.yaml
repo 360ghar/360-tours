@@ -53,7 +53,7 @@ dependencies:
   dio: ^5.11.1
   connectivity_plus: ^7.3.1
   cached_network_image: ^4.0.0
-  flutter_cache_manager: ^3.4.1
+  flutter_cache_manager: ^3.4.5
   app_links: ^7.2.1
   crypto: ^3.0.3
   lidar_scanner:
